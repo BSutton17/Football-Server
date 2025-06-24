@@ -9,7 +9,7 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'https://electric-football.netlify.app',
+    origin: 'https://electric-football.netlify.app/',
     methods: ['GET', 'POST']
   }
 });
