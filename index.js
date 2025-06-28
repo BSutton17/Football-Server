@@ -9,7 +9,7 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'https://electric-football.netlify.app',
+    origin: 'https://electric-football.netlify.app/',
     methods: ['GET', 'POST']
   }
 });
@@ -69,10 +69,6 @@ io.on("connection", (socket) => {
   }
 });
 
-  socket.on("play_stopped", ({ yardLine, down, distance, roomId }) => {
-    io.to(roomId).emit("play_stopped", { yardLine, down, distance });
-  });
-
   socket.on("assign_zone", (data) => {
     const { room, playerId, zoneType, zoneCircle, assignedOffensiveId } = data;
     if (room) {
@@ -109,13 +105,12 @@ io.on("connection", (socket) => {
   });
 
   socket.on("play_outcome", (data) => {
-    const { outcome, completedYards, firstDownStartY, roomId } = data;
+    const { outcome, completedYards, roomId } = data;
 
     if (roomId) {
       socket.to(roomId).emit("play_outcome", {
         outcome,
-        completedYards,
-        firstDownStartY
+        completedYards
       });
     }
   });
@@ -124,18 +119,19 @@ io.on("connection", (socket) => {
     io.to(roomId).emit("switch_sides", { outcome, yardLine });
   });
 
-  socket.on("play_reset", ({ newYardLine, newDown, newDistance, inventory, roomId }) => {
-    console.log(`[SERVER] play_reset | room: ${roomId}`);
-    
-    // Relay reset to the other side
-    socket.to(roomId).emit("play_reset", {
+  socket.on("play_reset", (data) => {
+
+    const { newYardLine, newDown, newDistance, newFirstDownStartY } = data;
+
+    console.log(newYardLine, newDown, newDistance, newFirstDownStartY);
+
+    io.to(data.roomId).emit("play_reset", {
       newYardLine,
       newDown,
       newDistance,
-      inventory,
+      newFirstDownStartY
     });
   });
-
 
   socket.on("player_positions_update", (data) => {
     const room = socket.data.room;
