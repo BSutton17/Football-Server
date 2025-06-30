@@ -9,7 +9,7 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'https://electric-football.netlify.app/',
+    origin: 'http://localhost:5173',
     methods: ['GET', 'POST']
   }
 });
@@ -57,7 +57,6 @@ io.on("connection", (socket) => {
 
   socket.on('place_character', (data) => {
     const { room, position } = data;
-    console.log("character placed at: " + position.x + ", " + position.y + " in room: " + room)
     socket.to(room).emit('character_placed', data);
   });
 
@@ -92,8 +91,8 @@ io.on("connection", (socket) => {
     }
   });
 
-  socket.on("update_character_position", ({ playerId, position, room }) => {
-    socket.to(room).emit("character_position_updated", { playerId, position });
+  socket.on("update_character_position", ({ playerId, normalizedX, normalizedY, isOffense, room }) => {
+    socket.to(room).emit("character_position_updated", { playerId, normalizedX, normalizedY, isOffense });
   });
 
 
@@ -103,6 +102,12 @@ io.on("connection", (socket) => {
       socket.to(room).emit("ready_to_catch", playerIds);
     }
   });
+
+    socket.on("ball_thrown", (data) => {
+      const { normalizedX, normalizedY, roomId } = data;
+      socket.to(roomId).emit("ball_thrown", normalizedX, normalizedY);
+    });
+
 
   socket.on("play_outcome", (data) => {
     const { outcome, completedYards, roomId } = data;
@@ -122,8 +127,7 @@ io.on("connection", (socket) => {
   socket.on("play_reset", (data) => {
 
     const { newYardLine, newDown, newDistance, newFirstDownStartY } = data;
-
-    console.log(newYardLine, newDown, newDistance, newFirstDownStartY);
+    console.log(newFirstDownStartY)
 
     io.to(data.roomId).emit("play_reset", {
       newYardLine,
