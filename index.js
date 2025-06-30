@@ -94,7 +94,12 @@ io.on("connection", (socket) => {
   socket.on("update_character_position", ({ playerId, normalizedX, normalizedY, isOffense, room }) => {
     socket.to(room).emit("character_position_updated", { playerId, normalizedX, normalizedY, isOffense });
   });
-
+  
+  socket.on("pre_snap_players", (data) => {
+    const { room } = data
+    console.log("pre_snap_players to", room, "with data:", data);
+    io.to(room).emit("pre_snap_players", data);
+  });
 
   socket.on("ready_to_catch", (playerIds) => {
     const room = socket.data.room;
