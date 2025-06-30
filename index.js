@@ -9,7 +9,7 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'https://electric-football.netlify.app',
+    origin: 'https://electric-football.netlify.app/',
     methods: ['GET', 'POST']
   }
 });
@@ -89,6 +89,12 @@ io.on("connection", (socket) => {
         zoneCircle,
       });
     }
+  });
+
+  socket.on("remove_player", (data) => {
+    const { playerId, room } = data;  
+    console.log(`Removing player ${playerId} from room ${room}`);
+    socket.to(room).emit("player_removed", playerId);
   });
 
   socket.on("update_character_position", ({ playerId, normalizedX, normalizedY, isOffense, room }) => {
