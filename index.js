@@ -5,11 +5,11 @@ const { Server } = require("socket.io");
 const cors = require("cors");
 
 app.use(cors());
-
+//https://electric-football.netlify.app
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'https://electric-football.netlify.app',
+    origin: 'http://localhost:5173',
     methods: ['GET', 'POST']
   }
 });
