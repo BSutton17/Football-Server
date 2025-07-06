@@ -19,6 +19,12 @@ const rooms = {}; // Track users in each room
 io.on("connection", (socket) => {
   console.log(`User Connected: ${socket.id}`);
 
+  socket.on("client_log", (data) => {
+    const { timestamp, message, context } = data;
+    console.log(`[CLIENT LOG] ${timestamp}: ${message}`);
+    if (context) console.dir(context, { depth: null });
+  });
+
   socket.on("join_room", (room, name) => {
     socket.join(room);
 
@@ -93,7 +99,6 @@ io.on("connection", (socket) => {
 
   socket.on("remove_player", (data) => {
     const { playerId, room } = data;  
-    console.log(`Removing player ${playerId} from room ${room}`);
     socket.to(room).emit("player_removed", playerId);
   });
 
@@ -103,10 +108,13 @@ io.on("connection", (socket) => {
   
   socket.on("pre_snap_players", (data) => {
     const { room } = data
-    console.log("pre_snap_players to", room, "with data:", data);
     io.to(room).emit("pre_snap_players", data);
   });
 
+  socket.on("offense_set", ({roomId})=>{
+    console.log("set")
+     io.to(roomId).emit("offense_set");
+  })
   socket.on("ready_to_catch", (playerIds) => {
     const room = socket.data.room;
     if (room) {
@@ -153,6 +161,11 @@ io.on("connection", (socket) => {
     if (room) {
       socket.to(room).emit("player_positions_updated", data);
     }
+
+  socket.on("stop_clock", ({ roomId }) => {
+    io.to(roomId).emit("stop_clock");
+  });
+
   });
   socket.on("disconnect", () => {
     console.log(`User Disconnected: (${socket.id})`);
@@ -166,6 +179,7 @@ io.on("connection", (socket) => {
     }
   });
 });
+
 
 server.listen(process.env.PORT || 3001, () => {
   console.log("SERVER RUNNING");
