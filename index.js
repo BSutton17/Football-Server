@@ -9,7 +9,7 @@ app.use(cors());
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: 'https://electric-football.netlify.app',
+    origin: 'http://localhost:5173',
     methods: ['GET', 'POST']
   }
 });
@@ -62,7 +62,7 @@ io.on("connection", (socket) => {
 
 
   socket.on('place_character', (data) => {
-    const { room, position } = data;
+    const { room } = data;
     socket.to(room).emit('character_placed', data);
   });
 
@@ -159,14 +159,14 @@ io.on("connection", (socket) => {
   socket.on("player_positions_update", (data) => {
     const room = socket.data.room;
     if (room) {
-      socket.to(room).emit("player_positions_updated", data);
+      socket.to(room).emit("player_positions_update", data);
     }
+  });
 
   socket.on("stop_clock", ({ roomId }) => {
     io.to(roomId).emit("stop_clock");
   });
 
-  });
   socket.on("disconnect", () => {
     console.log(`User Disconnected: (${socket.id})`);
 
