@@ -102,8 +102,15 @@ io.on("connection", (socket) => {
     socket.to(room).emit("player_removed", playerId);
   });
 
-  socket.on("update_character_position", ({ playerId, normalizedX, normalizedY, isOffense, room }) => {
-    socket.to(room).emit("character_position_updated", { playerId, normalizedX, normalizedY, isOffense });
+  socket.on("update_character_position", ({ playerId, logicalX, logicalY, normalizedX, normalizedY, isOffense, room }) => {
+    socket.to(room).emit("character_position_updated", {
+      playerId,
+      logicalX,
+      logicalY,
+      normalizedX,
+      normalizedY,
+      isOffense,
+    });
   });
   
   socket.on("pre_snap_players", (data) => {
@@ -145,14 +152,15 @@ io.on("connection", (socket) => {
 
   socket.on("play_reset", (data) => {
 
-    const { newYardLine, newDown, newDistance, newFirstDownStartY } = data;
+    const { newYardLine, newDown, newDistance, newFirstDownStartY, ballSpotX } = data;
     console.log(newFirstDownStartY)
 
     io.to(data.roomId).emit("play_reset", {
       newYardLine,
       newDown,
       newDistance,
-      newFirstDownStartY
+      newFirstDownStartY,
+      ballSpotX,
     });
   });
 
