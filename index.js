@@ -118,10 +118,11 @@ io.on("connection", (socket) => {
     io.to(room).emit("pre_snap_players", data);
   });
 
-  socket.on("offense_set", ({roomId})=>{
-    console.log("set")
-     io.to(roomId).emit("offense_set");
-  })
+  socket.on("offense_set", ({ roomId }) => {
+    const targetRoomId = roomId || socket.data.room;
+    if (!targetRoomId) return;
+    io.to(targetRoomId).emit("offense_set");
+  });
   socket.on("ready_to_catch", (playerIds) => {
     const room = socket.data.room;
     if (room) {
@@ -151,11 +152,21 @@ io.on("connection", (socket) => {
   });
 
   socket.on("play_reset", (data) => {
+    const {
+      roomId,
+      outcome,
+      newYardLine,
+      newDown,
+      newDistance,
+      newFirstDownStartY,
+      ballSpotX,
+    } = data;
 
-    const { newYardLine, newDown, newDistance, newFirstDownStartY, ballSpotX } = data;
-    console.log(newFirstDownStartY)
+    const targetRoomId = roomId || socket.data.room;
+    if (!targetRoomId) return;
 
-    io.to(data.roomId).emit("play_reset", {
+    io.to(targetRoomId).emit("play_reset", {
+      outcome,
       newYardLine,
       newDown,
       newDistance,
@@ -173,6 +184,10 @@ io.on("connection", (socket) => {
 
   socket.on("stop_clock", ({ roomId }) => {
     io.to(roomId).emit("stop_clock");
+  });
+
+  socket.on("clock_sync", ({ roomId, gameClock, quarter }) => {
+    io.to(roomId).emit("clock_sync", { gameClock, quarter });
   });
 
   socket.on("disconnect", () => {
