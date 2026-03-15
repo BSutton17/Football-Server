@@ -7,10 +7,34 @@ const cors = require("cors");
 app.use(cors());
 //https://electric-football.netlify.app
 const server = http.createServer(app);
+
+const allowedOriginPatterns = [
+  /^http:\/\/localhost(?::\d+)?$/,
+  /^http:\/\/127\.0\.0\.1(?::\d+)?$/,
+  /^http:\/\/192\.168\.\d{1,3}\.\d{1,3}(?::\d+)?$/,
+  /^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}(?::\d+)?$/,
+  /^http:\/\/172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}(?::\d+)?$/,
+  /^https:\/\/electric-football\.netlify\.app$/,
+  /^https:\/\/[a-z0-9-]+--electric-football\.netlify\.app$/,
+];
+
+const isAllowedOrigin = (origin = "") => {
+  return allowedOriginPatterns.some((pattern) => pattern.test(origin));
+};
+
 const io = new Server(server, {
   cors: {
-    origin: ['http://localhost:5173', 'https://electric-football.netlify.app'],
-    methods: ['GET', 'POST']
+    origin: (origin, callback) => {
+      if (!origin || isAllowedOrigin(origin)) {
+        callback(null, true);
+        return;
+      }
+
+      console.warn(`Blocked by CORS origin policy: ${origin}`);
+      callback(new Error(`Origin not allowed by CORS: ${origin}`));
+    },
+    methods: ['GET', 'POST'],
+    credentials: true,
   }
 });
 
@@ -204,6 +228,20 @@ io.on("connection", (socket) => {
 });
 
 
-server.listen(process.env.PORT || 3001, () => {
-  console.log("SERVER RUNNING");
+const PORT = Number(process.env.PORT) || 3001;
+const HOST = process.env.HOST || '0.0.0.0';
+
+server.on('error', (error) => {
+  if (error?.code === 'EADDRINUSE') {
+    console.error(`Port ${PORT} is already in use on ${HOST}. Stop the other server process or change PORT.`);
+    process.exit(1);
+    return;
+  }
+
+  console.error('Server startup error:', error);
+  process.exit(1);
+});
+
+server.listen(PORT, HOST, () => {
+  console.log(`SERVER RUNNING on ${HOST}:${PORT}`);
 });
