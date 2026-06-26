@@ -7,12 +7,15 @@ function isLineman(label) {
   return LINEMAN.has(label ?? '')
 }
 
-function getOrInit(state, playerId, label) {
+// slot — which team (0 | 1) this player belongs to, so fatigue can be reported to the right viewer
+// even after the per-play offense/defense maps are wiped at a play boundary ([fatigue]).
+function getOrInit(state, playerId, label, slot) {
   if (!state.playerFatigue.has(playerId)) {
-    state.playerFatigue.set(playerId, { stamina: 100, label: label ?? '' })
+    state.playerFatigue.set(playerId, { stamina: 100, label: label ?? '', slot })
   }
   const f = state.playerFatigue.get(playerId)
   if (!f.label && label) f.label = label
+  if (f.slot == null && slot != null) f.slot = slot
   return f
 }
 
@@ -25,16 +28,19 @@ const DRAIN_SCALE = 0.65
 // Called each LIVE tick — drain stamina based on position rating.
 // Linemen are skipped. Settled receivers (waiting for the ball) drain much slower.
 export function drainStamina(state, _io, dt) {
+  // A player's team slot is fixed: the offense is the team with possession, the defense the other.
+  const offenseSlot = state.possession
+  const defenseSlot = 1 - state.possession
   for (const p of state.offensePlayers.values()) {
     if (isLineman(p.label)) continue
-    const f    = getOrInit(state, p.id, p.label)
+    const f    = getOrInit(state, p.id, p.label, offenseSlot)
     const rate = drainFromStaminaRating(ratingOf(p, 'stamina'))
     const mult = p.routePhase === 'settled' ? SETTLED_DRAIN_FACTOR : 1.0
     f.stamina  = Math.max(0, f.stamina - rate * mult * DRAIN_SCALE * dt)
   }
   for (const p of state.defensePlayers.values()) {
     if (isLineman(p.label)) continue
-    const f    = getOrInit(state, p.id, p.label)
+    const f    = getOrInit(state, p.id, p.label, defenseSlot)
     const rate = drainFromStaminaRating(ratingOf(p, 'stamina'))
     f.stamina  = Math.max(0, f.stamina - rate * DRAIN_SCALE * dt)
   }

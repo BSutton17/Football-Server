@@ -65,7 +65,7 @@ describe('touchdowns ([194]/[195])', () => {
     processQueue('gr-td', s, noIo)
     expect(s.score[0]).toBe(7)
     expect(s.possession).toBe(1)
-    expect(s.yardLine).toBe(25)
+    expect(s.yardLine).toBe(30)   // [Special Teams][5] receiving team's own 30 after the kickoff
   })
 })
 

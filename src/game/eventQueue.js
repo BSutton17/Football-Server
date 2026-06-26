@@ -1,11 +1,24 @@
 import { PHASE, transition } from './stateMachine.js'
-import { RULES } from '../constants.js'
-import { getGame, advanceDown, changePossession, yardLineFromAbsY } from './gameState.js'
+import { RULES, FIELD, FIELD_CENTER_X } from '../constants.js'
+import { getGame, advanceDown, changePossession, yardLineFromAbsY, getLosY, clampToHash } from './gameState.js'
+import {
+  DECISION, DECISION_SECONDS, decisionRequired, isDecisionLegal, decisionDefault, fieldGoalDistance,
+  KICK, ST_PHASE, beginSpecialTeams, advanceSTPhase, endSpecialTeams, serializeSpecialTeams,
+} from './specialTeams.js'
+import { calculateKickResult, DEFAULT_KICK_POWER, DEFAULT_KICK_ACCURACY } from './kickEngine.js'
+import { getSpecialist } from '../data/specialists.js'
 import { getRoom } from './roomManager.js'
 import { serializeClock, serializeScore, serializeGameState, serializeGameOver, serializePlayResult } from './serialization.js'
 import { recoverStamina } from './systems/stamina.js'
 import { computeReceiverOpenness } from './utils/openness.js'
-import { resolvePass } from './utils/passOutcome.js'
+import { resolvePass, opennessTier } from './utils/passOutcome.js'
+import {
+  recordPassOutcome, recordScramble, recordPassingTouchdown,
+  recordReceiverOutcome, recordTouchdownScorer, recordRun,
+  recordDefenderOutcome, findGuardingDB,
+  throwCompletionBonus, adjustOpennessForReceiver, applyDefenderOpenness, receiverThrowMods, defenderThrowMods,
+  findOffenseQB, resetXFactors, resetDriveProgress, DEEP_YARDS,
+} from './systems/xFactors.js'
 import { getRatings, ratingOf } from '../data/ratings.js'
 
 // How long to pause (ms) before the next play begins.
@@ -24,7 +37,6 @@ export const EVENT = {
   // Client-initiated
   SNAP:              'SNAP',              // offense snapped the ball
   THROW:             'THROW',             // QB threw a pass
-  PUNT:              'PUNT',              // offense punted on 4th down
 
   // Detected by movement system
   PASS_COMPLETE:     'PASS_COMPLETE',     // receiver caught the ball
@@ -97,7 +109,6 @@ function dispatch({ type, payload }, state, io) {
     case EVENT.OUT_OF_BOUNDS:     return onOutOfBounds(payload, state, io)
     case EVENT.TOUCHDOWN:         return onTouchdown(payload, state, io)
     case EVENT.SAFETY:            return onSafety(payload, state, io)
-    case EVENT.PUNT:              return onPunt(payload, state, io)
     case EVENT.TURNOVER_ON_DOWNS: return onTurnoverOnDowns(payload, state, io)
     case EVENT.CLOCK_EXPIRED:     return onClockExpired(payload, state, io)
     case EVENT.SACK:              return onSack(payload, state, io)
@@ -143,10 +154,34 @@ function onThrow({ receiverId, x, y }, state, io) {
   const qbAccuracy    = qb ? ratingOf(qb, 'accuracy') : getRatings('QB').accuracy
   const receiverCatch = ratingOf(receiver, 'catching')
 
+  // [294] Classify the throw for X-Factor effects/earns. Deep = ≥ DEEP_YARDS past the LOS. The
+  // window can be reclassified BEFORE the pass resolves: a WR's ability widens/un-smothers it (High
+  // Point, I'm Always F*cking Open), then the guarding DB's Intimidator can shrink the open band.
+  const guardingDB  = findGuardingDB(state, receiver)
+  const airYards    = (receiver.y - getLosY(state)) * state.direction
+  const deep        = airYards >= DEEP_YARDS
+  let   effOpenness = adjustOpennessForReceiver(state, receiver, openness, deep)
+  effOpenness       = applyDefenderOpenness(state, guardingDB, effOpenness)
+  const tier        = opennessTier(effOpenness)
+
+  // Throw-chance modifiers: QB ability (completion) + WR ability (catch + INT) + guarding DB
+  // (catch penalty + INT bonus). All fold into resolvePass's completionBonus / intDelta.
+  const qbBonus  = throwCompletionBonus(state, qb, { tier, deep })
+  const wrMods   = receiverThrowMods(state, receiver, { tier })
+  const dbMods   = defenderThrowMods(state, guardingDB, { tier, deep })
+
   const { outcome, reason } = resolvePass({
-    openness, qbAccuracy, receiverCatch,
+    openness: effOpenness, qbAccuracy, receiverCatch,
+    completionBonus: qbBonus + wrMods.catchBonus + dbMods.catchBonus,
+    intDelta: wrMods.intDelta + dbMods.intDelta,
     interceptionEligible: state.throwAtDefender ?? false,
   })
+
+  // [294] Feed the resolved outcome into every involved player's X-Factor progress (earns + losses):
+  // the QB, the targeted receiver, and the DB guarding that receiver.
+  recordPassOutcome(state, qb, { outcome, tier, deep, receiverId }, io)
+  recordReceiverOutcome(state, receiver, { outcome, reason, tier, deep }, io)
+  recordDefenderOutcome(state, guardingDB, { outcome, reason, tier }, io)
 
   if (outcome === 'complete') {
     enqueue(state.roomId, EVENT.PASS_COMPLETE, { receiverId, x: receiver.x, y: receiver.y })
@@ -177,6 +212,10 @@ function onPassComplete({ receiverId, x, y }, state, _io) {
   state.ballCarrierId    = receiverId
   state.targetReceiverId = null
   state.activeThrow      = null
+
+  // [294] Mark that this play featured a completed pass — onTouchdown reads this to credit a
+  // PASSING touchdown (vs a QB scramble TD) toward the QB's X-Factor progress.
+  state.passCompletedThisPlay = true
 }
 
 // payload: { reason? } — [180] incompletion handling. reason is 'broken_up' (defended) or 'drop'
@@ -186,6 +225,7 @@ function onPassIncomplete({ reason } = {}, state, io) {
   // and it's the next down.
   const result = advanceDown(state, 0)
   state.clockStopped = true   // [204] incompletion stops the clock
+  state.prevPlayIncompletePass = true   // [294] Short Term Memory keys off the prior play being an incompletion
 
   let newPossessionSlot = null
   if (result === 'turnover_on_downs') {
@@ -237,7 +277,9 @@ function onInterception({ catcherId, x, y }, state, io) {
 // Settles a finished interception: the intercepting team takes over at the spot, possession and
 // direction flip, the play goes dead. Shared by the no-returner fallback and the return tackle.
 function settleInterception(state, io, absX, absY) {
+  state.prevPlayIncompletePass = false   // [294] an interception isn't an incomplete pass
   state.deadBallSpot = { x: absX, y: absY }
+  state.ballX        = clampToHash(absX)   // [hash] new offense lines up on the hash at the return spot
 
   // Spot in the new offense's frame: the same physical point mirrors to (100 − old-frame spot).
   const spotRel = yardLineFromAbsY(state, absY)
@@ -265,13 +307,16 @@ function settleInterception(state, io, absX, absY) {
 }
 
 // payload: { carrierId, x, y, interceptionReturn? }
-function onTackle({ x, y, interceptionReturn }, state, io) {
+function onTackle({ carrierId, x, y, interceptionReturn }, state, io) {
   // [190] Contact ends an interception return: the intercepting team takes over at the spot.
   if (interceptionReturn) { settleInterception(state, io, x, y); return }
+
+  state.prevPlayIncompletePass = false   // [294] this play wasn't an incomplete pass
 
   // Record the exact spot the runner was brought down ([162]) — the authoritative dead-ball
   // location that the next LOS, the first-down measurement, and scoring all derive from.
   state.deadBallSpot = { x, y }
+  state.ballX        = clampToHash(x)   // [hash] spot the ball laterally on the nearest hash
 
   // Spot the ball at that exact location: the new yard line IS the spot's yard line, so
   // forward progress is measured precisely rather than from a rounded delta. Yards gained
@@ -285,7 +330,18 @@ function onTackle({ x, y, interceptionReturn }, state, io) {
 
   const yardsGained  = spotYardLine - state.yardLine
 
+  // [294] A QB brought down as the ball carrier was a scramble (or designed QB run) — credit the
+  // yardage toward Shake It Off's earn condition (a single scramble of ≥10 yds).
+  const carrier = carrierId ? state.offensePlayers.get(carrierId) : null
+  if (carrier?.label === 'QB') recordScramble(state, carrier, yardsGained, io)
+
   const result = advanceDown(state, yardsGained)   // sets state.yardLine = spotYardLine
+
+  // [294] A run by an RB ball carrier drives its X-Factor progress (Shifty 20+ yd run, Serious
+  // Dedication first downs) and the RB loss trigger (3 consecutive non-positive runs).
+  if (carrier?.label === 'RB') {
+    recordRun(state, carrier, { yards: yardsGained, firstDown: result === 'first_down' }, io)
+  }
 
   let newPossessionSlot = null
   if (result === 'turnover_on_downs') {
@@ -320,25 +376,58 @@ function onOutOfBounds({ carrierId }, _state, _io) {
   // Same as tackle but clock stops.
 }
 
-// payload: { scoringSlot, x, y }
-function onTouchdown({ scoringSlot }, state, io) {
-  // [195] Seven points to the scoring team.
-  state.score[scoringSlot] = (state.score[scoringSlot] ?? 0) + 7
-
-  // After the score the team that was scored on receives the kickoff at their own 25 and becomes
-  // the offense (direction follows the slot, as at kickoff). This sets possession explicitly
-  // rather than via changePossession, because on a defensive-return TD the scoring team is the
-  // defense — the receiving team is NOT simply "the other side of the current possession".
-  const receivingSlot = 1 - scoringSlot
+// ── Kickoff ([Special Teams][5]) ───────────────────────────────────────────────
+//
+// After EVERY score, an automatic kickoff: no input, no return. The receiving team (whoever did NOT
+// just put points on the board) takes over at its own 30. We enter the unified special-teams state
+// ([1]) so both clients show a brief "Kickoff" interstitial, then beginNextPlay clears it and the
+// receiving team lines up at the 30. `kickingSlot` is the team kicking off (the scoring team on a
+// TD/FG; the conceding team on a safety free-kick). Returns the receiving slot.
+function enterKickoff(state, io, kickingSlot) {
+  const receivingSlot = 1 - kickingSlot
   state.possession         = receivingSlot
   state.direction          = receivingSlot === 0 ? 1 : -1
-  state.yardLine           = RULES.KICKOFF_YARD_LINE
+  state.yardLine           = RULES.KICKOFF_RESULT_YARD_LINE   // receiving team's own 30
+  state.ballX              = FIELD_CENTER_X
   state.down               = 1
   state.distance           = RULES.FIRST_DOWN_YARDS
   state.interceptionReturn = false
   state.ballCarrierId      = null
-  state.clockStopped       = true   // [204] a score stops the clock
+  state.clockStopped       = true   // a score stops the clock
   state.pendingStaminaRecovery = Math.max(state.pendingStaminaRecovery, 0.5)
+
+  // Automatic kick — straight to KICKING (no aim/power window), cleared by beginNextPlay.
+  beginSpecialTeams(state, KICK.KICKOFF, { kickingSlot })
+  advanceSTPhase(state, ST_PHASE.KICKING)
+  broadcastSpecialTeams(state, io)
+  return receivingSlot
+}
+
+// payload: { scoringSlot, carrierId, x, y }
+function onTouchdown({ scoringSlot, carrierId }, state, io) {
+  state.prevPlayIncompletePass = false   // [294] a TD isn't an incomplete pass
+
+  // [294] Credit X-Factor progress for a touchdown by the OFFENSE (not a defensive return).
+  if (scoringSlot === state.possession) {
+    // A passing TD (the play featured a completed pass) → the QB's universal 2-TD earn path.
+    if (state.passCompletedThisPlay) {
+      const qb = findOffenseQB(state)
+      if (qb) recordPassingTouchdown(state, qb, io)
+    }
+    // A WR/TE/RB who scored → the skill-player universal earn path (a single TD earns any of their
+    // abilities). recordTouchdownScorer ignores a QB scorer (their path is 2 passing TDs).
+    const scorer = carrierId ? state.offensePlayers.get(carrierId) : null
+    if (scorer) recordTouchdownScorer(state, scorer, io)
+  }
+
+  // [195] Seven points to the scoring team.
+  state.score[scoringSlot] = (state.score[scoringSlot] ?? 0) + 7
+
+  // [Special Teams][5] After the score, the team that was scored on receives the kickoff at its own
+  // 30 (automatic — no input/return). enterKickoff sets possession explicitly (a defensive-return TD
+  // means the scoring team was the defense, so the receiver is NOT simply the other side of the
+  // current possession) and stages the kickoff interstitial.
+  const receivingSlot = enterKickoff(state, io, scoringSlot)
 
   transition(state, PHASE.DEAD)
 
@@ -367,20 +456,14 @@ function onTouchdown({ scoringSlot }, state, io) {
 // zone) and the proper free-kick spot are future work — this lays the scoring/possession/clock
 // scaffolding the rest builds on, mirroring the touchdown handler.
 function onSafety({ safetySlot }, state, io) {
+  state.prevPlayIncompletePass = false   // [294]
   const scoringSlot = 1 - safetySlot
   state.score[scoringSlot] = (state.score[scoringSlot] ?? 0) + 2
 
-  // The conceding team kicks the ball back to the scoring team (simplified to its own 25 for
-  // now; the real free-kick spot comes with full implementation).
-  state.possession         = scoringSlot
-  state.direction          = scoringSlot === 0 ? 1 : -1
-  state.yardLine           = RULES.KICKOFF_YARD_LINE
-  state.down               = 1
-  state.distance           = RULES.FIRST_DOWN_YARDS
-  state.interceptionReturn = false
-  state.ballCarrierId      = null
-  state.clockStopped       = true   // [204] a score stops the clock
-  state.pendingStaminaRecovery = Math.max(state.pendingStaminaRecovery, 0.5)
+  // [Special Teams][5] The conceding team free-kicks to the scoring team, which receives at its own
+  // 30 (modeled as an automatic kickoff). kickingSlot is the conceding team, so the receiver is the
+  // scoring team.
+  enterKickoff(state, io, safetySlot)
 
   transition(state, PHASE.DEAD)
 
@@ -399,30 +482,115 @@ function onSafety({ safetySlot }, state, io) {
   beginNextPlay(state.roomId, io)
 }
 
-// payload: (none) — [punt] A 4th-down punt. Placeholder model until punters with ratings exist:
-// the ball travels 50 yards downfield, or 25 if punting from the opponent's half (a 50-yarder would
-// sail through the end zone), then the other team takes over there. The clock stops. Punting from
-// inside the opponent's 25 is blocked in validation. This WILL change when punter stats land.
-function onPunt(_payload, state, io) {
-  const from        = state.yardLine                       // own-goal-relative (0–100)
-  const distance    = from > 50 ? 25 : 50
-  const landSpot    = from + distance                      // in the punting team's frame
-  const newYardLine = Math.max(1, Math.min(99, 100 - landSpot))   // receiving team's frame
+// ── Kick execution ([Special Teams][6][8]) ─────────────────────────────────────
+//
+// Run the unified kick engine on the captured power + aim, then hand the raw result to the
+// per-type outcome. Called by the kick clock when the player taps Kick or the timer expires.
+export function executeKick(state, io) {
+  const st = state.specialTeams
+  if (!st) return
+  advanceSTPhase(state, ST_PHASE.KICKING)
+  // The kick is away — tell both clients so they freeze the meter and show "KICKED".
+  broadcastSpecialTeams(state, io)
 
-  state.clockStopped = true   // [204] a punt (change of possession) stops the clock
+  // [15][16][17] Resolve the kick with the player's input AND the kicker's ratings (Kicker for
+  // FG/XP, Punter for punts — defaults until those players exist).
+  const isFG = st.kickType === KICK.FIELD_GOAL || st.kickType === KICK.EXTRA_POINT
+  const result = calculateKickResult({
+    kickType:        st.kickType,
+    power:           st.power,
+    angle:           st.angle,
+    kickerPower:     getKickRating(state, st.kickType, 'power'),
+    kickerAccuracy:  getKickRating(state, st.kickType, 'accuracy'),
+    yardLine:        state.yardLine,
+    requiredDistance: isFG ? fieldGoalDistance(state) : 0,
+    ballX:           state.ballX,          // [18] the hash the ball is spotted on
+    uprightsX:       FIELD_CENTER_X,       // [18] the goalposts are centered
+    backspin:        st.backspin,          // [21] punt backspin toggle
+    fieldWidth:      FIELD.WIDTH,          // [24] enables out-of-bounds detection
+  })
+  st.result = result
+  switch (st.kickType) {
+    case KICK.PUNT:       return applyPuntOutcome(state, io, result)
+    case KICK.FIELD_GOAL: return applyFieldGoalOutcome(state, io, result)
+    default: return    // EXTRA_POINT lands with its own ticket
+  }
+}
+
+// [15][16] The kicker's Power / Accuracy rating for this kick, from the KICKING TEAM's real
+// specialist: the Punter powers punts, the Kicker powers field goals and extra points. We look up
+// the team that's kicking (state.teams[kickingSlot]) in the specialist table; falls back to a
+// default if the team/data is missing.
+function getKickRating(state, kickType, which) {
+  const fallback    = which === 'power' ? DEFAULT_KICK_POWER : DEFAULT_KICK_ACCURACY
+  const kickingSlot = state.specialTeams?.kickingSlot ?? state.possession
+  const teamId      = state.teams?.[kickingSlot]
+  const specialist  = getSpecialist(teamId, kickType === KICK.PUNT ? 'punter' : 'kicker')
+  const r           = specialist?.[which]
+  return typeof r === 'number' ? r : fallback
+}
+
+// A punt: the ball carries to result.landingYardLine; the receiving team takes over there (a real
+// return is a later ticket). The clock stops.
+function applyPuntOutcome(state, io, result) {
+  state.prevPlayIncompletePass = false
+  const from = state.yardLine
+
+  state.clockStopped = true
+  state.ballX        = FIELD_CENTER_X
   transition(state, PHASE.DEAD)
 
-  const newPossessionSlot = turnover(state, io, newYardLine)
+  const newPossessionSlot = turnover(state, io, result.landingYardLine)
 
+  // [24] An out-of-bounds punt is downed where it crossed the sideline; flag it for the play notice.
+  const detail = result.outOfBounds ? 'out_of_bounds' : result.touchback ? 'touchback' : null
   const room = getRoom(state.roomId)
   if (room) {
     room.players.forEach((socketId, slot) => {
-      if (!socketId) return
-      io.to(socketId).emit('play_result', serializePlayResult(state, 'punt', 0, newPossessionSlot, slot))
+      if (socketId) io.to(socketId).emit('play_result', serializePlayResult(state, 'punt', 0, newPossessionSlot, slot, false, detail))
     })
   }
+  const tag = result.outOfBounds ? ', out of bounds' : result.touchback ? ', touchback' : ''
+  console.log(`[game] ${state.roomId} PUNT from ${from} (${result.distance.toFixed(0)} yds${tag}) → slot ${newPossessionSlot} at ${state.yardLine}`)
+  beginNextPlay(state.roomId, io)
+}
 
-  console.log(`[game] ${state.roomId} PUNT from ${from} (${distance} yds) → slot ${newPossessionSlot} ball at ${state.yardLine}`)
+// A field goal: good per the engine result. A make scores 3 and is followed by a kickoff; a miss
+// turns the ball over at the spot of the kick.
+function applyFieldGoalOutcome(state, io, result) {
+  state.prevPlayIncompletePass = false
+  const kickingSlot = state.possession
+  const required    = fieldGoalDistance(state)
+  const good        = result.good
+  state.clockStopped = true
+
+  if (good) {
+    state.score[kickingSlot] = (state.score[kickingSlot] ?? 0) + RULES.FG_POINTS
+    const receivingSlot = enterKickoff(state, io, kickingSlot)   // [5] kickoff after the score
+    transition(state, PHASE.DEAD)
+    const room = getRoom(state.roomId)
+    if (room) {
+      room.players.forEach((socketId, slot) => {
+        if (!socketId) return
+        io.to(socketId).emit('score_update', serializeScore(state, slot))
+        io.to(socketId).emit('play_result', serializePlayResult(state, 'field_goal', 0, receivingSlot, slot, false, 'made'))
+      })
+    }
+    notifyRoleSwap(state, io)
+    console.log(`[game] ${state.roomId} FIELD GOAL GOOD slot ${kickingSlot} (+3, ${required} yd) — score ${state.score[0]}-${state.score[1]}`)
+  } else {
+    // Missed — the opponent takes over at the spot of the kick (the line of scrimmage), mirrored.
+    state.ballX = FIELD_CENTER_X
+    transition(state, PHASE.DEAD)
+    const newPossessionSlot = turnover(state, io, Math.max(1, Math.min(99, 100 - state.yardLine)))
+    const room = getRoom(state.roomId)
+    if (room) {
+      room.players.forEach((socketId, slot) => {
+        if (socketId) io.to(socketId).emit('play_result', serializePlayResult(state, 'field_goal', 0, newPossessionSlot, slot, false, 'missed'))
+      })
+    }
+    console.log(`[game] ${state.roomId} FIELD GOAL MISSED (${required} yd) → slot ${newPossessionSlot} at ${state.yardLine}`)
+  }
   beginNextPlay(state.roomId, io)
 }
 
@@ -431,14 +599,68 @@ function onTurnoverOnDowns(_payload, _state, _io) {
   // 4th down failed — flip possession at the current yard line.
 }
 
-// payload: { qbY, losY, dir }
-function onSack({ qbY, losY, dir }, state, io) {
+// [Special Teams][1] Push the viewer-relative special-teams state to both players.
+export function broadcastSpecialTeams(state, io) {
+  const room = getRoom(state.roomId)
+  if (!room) return
+  room.players.forEach((socketId, slot) => {
+    if (socketId) io.to(socketId).emit('special_teams_update', serializeSpecialTeams(state, slot))
+  })
+}
+
+// ── 4th-down decision ([Special Teams][2][3][4]) ───────────────────────────────
+//
+// Resolve the offense's 4th-down choice (or the auto-pick when the menu times out). Server-
+// authoritative: an illegal option falls back to the default. Go For It resumes normal pre-snap;
+// Punt / Field Goal hand off to the unified kicking engine — they enter the special-teams SETUP so
+// the offense aims + powers the kick ([6][7][8][9]); the kick clock resolves it.
+export function resolveDecision(state, io, option) {
+  if (!state.decisionPending) return
+  if (!isDecisionLegal(state, option)) option = decisionDefault(state)
+
+  state.decisionPending = false
+  state.decisionTimer   = 0
+  const roomId = state.roomId
+
+  if (option === DECISION.PUNT || option === DECISION.FIELD_GOAL) {
+    const kickType = option === DECISION.PUNT ? KICK.PUNT : KICK.FIELD_GOAL
+    beginSpecialTeams(state, kickType, { kickingSlot: state.possession })
+    broadcastSpecialTeams(state, io)
+    console.log(`[game] ${roomId} 4th-down decision: ${option} — kicking interface up`)
+  } else {
+    // Go For It — resume normal pre-snap; re-sync so the menu clears and the play clock runs.
+    const room = getRoom(roomId)
+    if (room) {
+      room.players.forEach((socketId, slot) => {
+        if (socketId) io.to(socketId).emit('game_state', serializeGameState(state, slot))
+      })
+    }
+    console.log(`[game] ${roomId} 4th-down decision: GO FOR IT`)
+  }
+}
+
+// Arm (or clear) the 4th-down menu for the upcoming snap. Called from beginNextPlay AFTER the play
+// is set up in PRE_SNAP, so the game_state it then emits carries the menu. While decisionPending is
+// true the play clock is paused (runPlayClock) and the offense can't set/snap (validation).
+function maybeStartDecision(state) {
+  state.decisionPending = decisionRequired(state)
+  state.decisionTimer   = state.decisionPending ? DECISION_SECONDS : 0
+  if (state.decisionPending) {
+    console.log(`[game] ${state.roomId} 4th down — decision menu (default ${decisionDefault(state)})`)
+  }
+}
+
+// payload: { qbY, losY, dir, qbX }
+function onSack({ qbY, losY, dir, qbX }, state, io) {
   // [201] A sack ends the play and records the loss of yardage (negative — the QB was behind
   // the LOS). It is an in-bounds play, so the clock keeps running ([204]) unless the sack
   // happened to be a turnover on downs (change of possession), which stops it.
 
   // [202] Sacked in your own end zone is a safety, not a normal loss.
   if (yardLineFromAbsY(state, qbY) < 0) { onSafety({ safetySlot: state.possession }, state, io); return }
+
+  state.prevPlayIncompletePass = false   // [294] a sack isn't an incomplete pass
+  if (qbX != null) state.ballX = clampToHash(qbX)   // [hash] spot the ball laterally where the QB was downed
 
   const yardsGained = Math.round((qbY - losY) * dir)
 
@@ -503,6 +725,7 @@ function advanceQuarter(state, io) {
     // Halftime: 80% stamina recovery for non-linemen, and swap ends ([217]).
     state.pendingStaminaRecovery = Math.max(state.pendingStaminaRecovery, 0.8)
     state.direction = -state.direction
+    resetXFactors(state, io)   // [294] every X-Factor and all earn progress is wiped at the half
   }
 
   io.to(state.roomId).emit('clock_update', serializeClock(state))
@@ -514,6 +737,7 @@ function advanceQuarter(state, io) {
 // [219][220] End the game: enter the terminal GAME_OVER phase (no further snaps) and send each
 // player the viewer-relative final result (win / loss / tie).
 function endGame(state, io) {
+  resetXFactors(state, io)   // [294] wipe X-Factors at game end
   transition(state, PHASE.GAME_OVER)
 
   const room = getRoom(state.roomId)
@@ -540,6 +764,8 @@ function endGame(state, io) {
 // switch_sides so the client adopts its new role. Both players switch responsibilities in place,
 // without leaving the game.
 function notifyRoleSwap(state, io) {
+  resetDriveProgress(state)   // [294] possession changed → the offense's drive ended (Serious Dedication per-drive count)
+  state.newDrive = true       // [play-clock] a possession change begins a new drive → 40 s play clock next snap
   const room = getRoom(state.roomId)
   if (!room) return
   room.players.forEach((socketId, slot) => {
@@ -600,8 +826,21 @@ function beginNextPlay(roomId, io, delayMs = BETWEEN_PLAYS_MS) {
     state.qbUnderHeavyPressure  = false
     state.sackEnqueued          = false
     state.tackleEnqueued        = false
+    state.passCompletedThisPlay = false   // [294] per-play: did this play feature a completed pass
+    state.qbSackImmunity        = 0       // [294] Shake It Off grace window resets each play
+    endSpecialTeams(state)                // [Special Teams][5] clear the kickoff (or any kick) interstitial
+
+    // [play-clock] Reset the play clock for the upcoming snap: 40 s on the first play of a drive
+    // (the offense needs time to drag its formation in), 25 s on every other play.
+    state.playClock        = state.newDrive ? RULES.PLAY_CLOCK_NEW_DRIVE : RULES.PLAY_CLOCK_SECONDS
+    state.playClockRunning = true
+    state.newDrive         = false
 
     transition(state, PHASE.PRE_SNAP)
+
+    // [Special Teams][2][3] Arm the 4th-down menu before the game_state below goes out (so it
+    // carries the menu). Pauses the play clock and gates set/snap until the offense chooses.
+    maybeStartDecision(state)
 
     // Send the full game state to each player so their screens reflect
     // the current quarter, clock, down, distance, and field position

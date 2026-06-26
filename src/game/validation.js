@@ -137,6 +137,9 @@ export function validateSetOffense(socket, payload) {
   )
   if (base) return base
 
+  // [Special Teams][2] Normal play is paused until the 4th-down decision (Go For It) is made.
+  if (state.decisionPending) return 'Make your 4th-down decision first'
+
   const { playType, runAngle, players } = payload ?? {}
   if (playType !== 'run' && playType !== 'pass') return 'playType must be "run" or "pass"'
 
@@ -309,24 +312,6 @@ export function validateScramble(socket) {
     if (p.label === 'QB') { qb = p; break }
   }
   if (!qb) return 'No quarterback on the field'
-
-  return null
-}
-
-// punt — [punt] offense punts on 4th down. Pre-snap only, must be 4th down, and not within 25 yards
-// of the opponent's end zone (yardLine ≥ 75).
-export function validatePunt(socket) {
-  const state = resolveState(socket)
-  if (!state) return 'No active game found for this room'
-
-  const baseErr = first(
-    checkPhase(state, PHASE.PRE_SNAP),
-    checkRole(socket, 'offense'),
-  )
-  if (baseErr) return baseErr
-
-  if (state.down !== 4)     return 'Can only punt on 4th down'
-  if (state.yardLine >= 75) return 'Too close to the end zone to punt'
 
   return null
 }

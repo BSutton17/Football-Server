@@ -102,7 +102,7 @@ describe('touchdown scoring ([195])', () => {
     expect(state.score[0]).toBe(7)
     expect(state.possession).toBe(1)          // the scored-on team receives
     expect(state.direction).toBe(-1)
-    expect(state.yardLine).toBe(25)           // kickoff spot
+    expect(state.yardLine).toBe(30)           // [Special Teams][5] kickoff spot (receiving team's own 30)
     expect(state.phase).toBe(PHASE.DEAD)
 
     const scores = io.emits.filter(e => e.event === 'score_update')

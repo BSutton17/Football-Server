@@ -1,4 +1,4 @@
-import { RULES, FIELD } from '../constants.js'
+import { RULES, FIELD, HASH, FIELD_CENTER_X } from '../constants.js'
 import { PHASE } from './stateMachine.js'
 
 // ── Coordinate system ────────────────────────────────────────────────────────
@@ -97,6 +97,23 @@ export function initGame(roomId, offenseSlot) {
     // ends with a tackle.
     deadBallSpot: null,
 
+    // [hash] Lateral spot of the ball for the NEXT snap (absolute X). Set when a play ends: a tackle/
+    // sack/interception spots it ON the nearest hash if it ended outside the hashes, otherwise at the
+    // exact spot; a score/safety/punt resets it to center (kickoff). Persists across the play
+    // boundary so the next formation lines up on it. Sent to clients in game_state.
+    ballX: FIELD_CENTER_X,
+
+    // ── Special teams ([Special Teams][1]) ───────────────────────────────────
+    // null during normal scrimmage plays; set to the unified kicking-engine descriptor while a
+    // kickoff / punt / field goal / extra point is in progress. See game/specialTeams.js.
+    specialTeams: null,
+
+    // [Special Teams][2][3] 4th-down decision menu. While decisionPending is true, normal pre-snap
+    // is paused (the offense must choose Go For It / Punt / Field Goal); decisionTimer counts down
+    // from DECISION_SECONDS and the server auto-picks the default at 0.
+    decisionPending: false,
+    decisionTimer:   0,
+
     // ── Play design (set when offense locks formation) ───────────────────────
     // playDesign: { playType, runAngle, players: [{ id, x, y, label, team, route?, routeDepthScale? }] }
     playDesign: null,
@@ -111,10 +128,16 @@ export function initGame(roomId, offenseSlot) {
     defenseCoverage: new Map(),
 
     // ── Play clock ───────────────────────────────────────────────────────────
-    // Counts down from 25 during PRE_SNAP. Pauses when offense presses Set
-    // (transition to COUNTDOWN). Resets to 25 on each new play.
-    playClock:        25,
+    // Counts down during PRE_SNAP. Pauses when offense presses Set (transition to COUNTDOWN).
+    // Reset on each new play: 40 s on the first play of a drive (time to set the formation),
+    // 25 s otherwise. The opening snap of the game is a drive start, so it begins at 40.
+    playClock:        RULES.PLAY_CLOCK_NEW_DRIVE,
     playClockRunning: true,
+
+    // True when the upcoming snap is the first of a drive (set on any possession change). Consumed
+    // by beginNextPlay to pick the 40 s play clock, then cleared. The opening play uses the 40 s
+    // initial value above, so this starts false.
+    newDrive: false,
 
     // ── Player fatigue ───────────────────────────────────────────────────────
     // Persists across plays (NOT reset in resetPlay).
@@ -137,6 +160,23 @@ export function initGame(roomId, offenseSlot) {
 
     // Guard: prevents multiple TACKLE events from firing in one play.
     tackleEnqueued: false,
+
+    // ── X-Factors ([294]) ─────────────────────────────────────────────────────
+    // Per-player ability progress + active state, keyed by playerId. Persists across plays within
+    // a half; wiped entirely at half-time and game end (resetXFactors). See systems/xFactors.js.
+    xFactors: new Map(),
+
+    // True when the play that just ended was an incomplete pass — Short Term Memory reads this on
+    // the NEXT throw. Set by the terminal play handlers; carries across the play boundary.
+    prevPlayIncompletePass: false,
+
+    // True once a completed pass happened this play (so a TD can be classed as a passing TD).
+    // Reset each play.
+    passCompletedThisPlay: false,
+
+    // Seconds of sack immunity remaining after a Shake It Off escape (rusher is shoved off and the
+    // QB can't be re-sacked for this window). Reset each play.
+    qbSackImmunity: 0,
   }
 
   gameStates.set(roomId, state)
@@ -158,6 +198,12 @@ export function getLosY(state) {
   return state.direction === 1
     ? FIELD.END_ZONE_DEPTH + state.yardLine              // 10 + yardLine
     : FIELD.LENGTH - FIELD.END_ZONE_DEPTH - state.yardLine  // 110 - yardLine
+}
+
+// [hash] Spot the ball laterally: a dead-ball X outside a hash mark is pulled IN to that hash; an X
+// between the hashes is kept. The result is the lateral origin the next formation lines up on.
+export function clampToHash(x) {
+  return Math.max(HASH.LEFT, Math.min(HASH.RIGHT, x))
 }
 
 // Inverse of getLosY: the offense-relative yard line (0–100) of an absolute y position.

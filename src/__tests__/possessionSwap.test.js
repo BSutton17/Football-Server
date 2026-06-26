@@ -124,7 +124,7 @@ describe('field flip & field position on possession change ([212]/[214])', () =>
     enqueue('ps-td-spot', EVENT.TOUCHDOWN, { scoringSlot: 0, x: 26, y: 111 })
     processQueue('ps-td-spot', s, io)
     expect(s.direction).toBe(-1)   // receiving slot 1 → direction -1
-    expect(s.yardLine).toBe(25)    // [214] kickoff spot
+    expect(s.yardLine).toBe(30)    // [Special Teams][5] kickoff spot (receiving team's own 30)
   })
 })
 

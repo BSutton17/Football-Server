@@ -7,6 +7,8 @@ import { runPushForce }         from './systems/pushForce.js'
 import { runCollisionResponse } from './systems/collisionResponse.js'
 import { runClock }             from './systems/clock.js'
 import { runPlayClock }         from './systems/playClock.js'
+import { runDecisionClock }     from './systems/decisionClock.js'
+import { runKickClock }         from './systems/kickClock.js'
 import { runEventQueue }        from './systems/eventQueue.js'
 import { runBroadcast }         from './systems/broadcast.js'
 import { drainStamina }         from './systems/stamina.js'
@@ -90,6 +92,18 @@ function tick(roomId, io) {
 
   switch (state.phase) {
     case PHASE.PRE_SNAP:
+      // [Special Teams][3] While the 4th-down menu is up everything else pauses — only the decision
+      // clock ticks (and may auto-resolve the choice, which advances the phase).
+      if (state.decisionPending) {
+        runDecisionClock(state, io, DT)
+        break
+      }
+      // [Special Teams][6][8][9] A player-controlled kick (punt / FG) owns pre-snap: the kick clock
+      // drains the power meter and resolves the kick.
+      if (state.specialTeams && state.specialTeams.playerControlled) {
+        runKickClock(state, io, DT)
+        break
+      }
       runPlayClock(state, io, DT)
       // [204] After a play that doesn't stop the clock (in-bounds tackle, sack), the game clock
       // keeps running between plays; it restarts on the snap after a stopping play.

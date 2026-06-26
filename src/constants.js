@@ -17,6 +17,16 @@ export const FIELD = {
   PLAY_LENGTH: 100,  // between the two goal lines
 }
 
+// Hash marks (the two center tick columns drawn by the renderer at 0.35 / 0.65 of the width). A
+// dead ball outside a hash is spotted ON that hash; between them it keeps its exact lateral spot.
+export const HASH = {
+  LEFT:  FIELD.WIDTH * 0.35,   // ≈ 18.67
+  RIGHT: FIELD.WIDTH * 0.65,   // ≈ 34.67
+}
+
+// Center of the field — the lateral spot after a kickoff / touchback (score, safety, punt).
+export const FIELD_CENTER_X = FIELD.WIDTH / 2
+
 export const RULES = {
   DOWNS: 4,
   FIRST_DOWN_YARDS: 10,
@@ -24,7 +34,12 @@ export const RULES = {
   QUARTER_SECONDS: 300,   // 5 minutes per quarter
   TD_POINTS: 7,
   SAFETY_POINTS: 2,
-  KICKOFF_YARD_LINE: 25,
+  FG_POINTS: 3,            // [Special Teams] successful field goal
+  XP_POINTS: 1,           // [Special Teams] successful extra point
+  KICKOFF_YARD_LINE: 25,         // opening drive / game-start spot
+  KICKOFF_RESULT_YARD_LINE: 30,  // [Special Teams][5] receiving team's spot after an (automatic) kickoff
+  PLAY_CLOCK_SECONDS: 25,        // normal play clock
+  PLAY_CLOCK_NEW_DRIVE: 40,      // first play of a drive — extra time to set the formation
 }
 
 // Tick rate — read from TICK_RATE env variable at startup.

@@ -55,11 +55,15 @@ export function getRatings(label) {
 // bridge that lets a team's actual roster ratings — speed, awareness, blocking, route running,
 // pass rush, etc. — drive the simulation instead of generic position defaults.
 export function ratingOf(player, key) {
+  // [294] X-Factor passive buffs add a bonus on top of the base rating (e.g. High Point's +4
+  // acceleration). The bonus is deliberately NOT clamped to 99 — the spec allows it to exceed 99.
+  const bonus = player?.ratingBonus?.[key] ?? 0
+
   const fromRatings = player?.ratings?.[key]
-  if (fromRatings != null) return fromRatings
+  if (fromRatings != null) return fromRatings + bonus
   const flat = player?.[key]
-  if (typeof flat === 'number') return flat
-  return getRatings(player?.label)[key]
+  if (typeof flat === 'number') return flat + bonus
+  return getRatings(player?.label)[key] + bonus
 }
 
 // ── Strength modifier ─────────────────────────────────────────────────────────

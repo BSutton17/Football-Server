@@ -2,6 +2,7 @@ import { getScoreFor } from './gameState.js'
 import { FIELD } from '../constants.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { findBallCarrier } from './systems/movement.js'
+import { serializeSpecialTeams, serializeDecision } from './specialTeams.js'
 
 const RECEIVER_LABELS = new Set(['WR', 'TE', 'RB'])
 
@@ -37,22 +38,26 @@ export function serializeGameState(state, viewerSlot) {
     down:     state.down,
     distance: state.distance,
     yardLine: state.yardLine,
+    ballX:    roundCoord(state.ballX ?? FIELD.WIDTH / 2),   // [hash] lateral spot the next formation lines up on
+    playClock: Math.ceil(state.playClock ?? 25),           // [play-clock] starting value for this snap (40 on a drive start)
     score:    getScoreFor(state, viewerSlot),
     role:     state.possession === viewerSlot ? 'offense' : 'defense',
+    specialTeams: serializeSpecialTeams(state, viewerSlot),   // [Special Teams][1] null on a normal scrimmage play
+    decision: serializeDecision(state, viewerSlot),          // [Special Teams][2][3] 4th-down menu (offense only)
     fatigue:  serializeFatigue(state, viewerSlot),   // [fatigue] own-team stamina (drives the bars)
   }
 }
 
 // Per-player stamina (0–100) for the VIEWER'S OWN team only ([fatigue feedback]: never show the
-// opponent's fatigue). The client renders these as bars when the Fatigue view is toggled on. Sent
-// at each play boundary, so the bars reflect the latest wear and tear without per-tick traffic.
+// opponent's fatigue). The client renders these as bars when the Fatigue view is toggled on. Read
+// from the PERSISTENT fatigue map (tagged with each player's team slot) rather than the per-play
+// offense/defense maps — those are wiped at the play boundary where this game_state is sent, so the
+// bars must survive across plays.
 function serializeFatigue(state, viewerSlot) {
-  const role = state.possession === viewerSlot ? 'offense' : 'defense'
-  const own  = role === 'offense' ? state.offensePlayers : state.defensePlayers
-  const out  = {}
-  for (const id of own.keys()) {
-    const f = state.playerFatigue.get(id)
-    if (f && Number.isFinite(f.stamina)) out[id] = Math.round(f.stamina)
+  const out = {}
+  if (!state.playerFatigue) return out
+  for (const [id, f] of state.playerFatigue) {
+    if (f && f.slot === viewerSlot && Number.isFinite(f.stamina)) out[id] = Math.round(f.stamina)
   }
   return out
 }

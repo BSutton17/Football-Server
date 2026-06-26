@@ -83,24 +83,24 @@ describe('overlap tackle detection ([161])', () => {
 
 describe('tackleBreakChance', () => {
   it('scales the per-attempt base by run power (99 → full, 0 → none)', () => {
-    expect(tackleBreakChance(99, 0)).toBeCloseTo(0.55)
-    expect(tackleBreakChance(99, 1)).toBeCloseTo(0.40)
-    expect(tackleBreakChance(99, 2)).toBeCloseTo(0.10)
+    expect(tackleBreakChance(99, 0)).toBeCloseTo(0.45)
+    expect(tackleBreakChance(99, 1)).toBeCloseTo(0.30)
+    expect(tackleBreakChance(99, 2)).toBeCloseTo(0.50)
     expect(tackleBreakChance(0,  0)).toBe(0)
     expect(tackleBreakChance(99, 3)).toBe(0)   // no break after the third attempt
-    expect(tackleBreakChance(50, 0)).toBeCloseTo(0.55 * 50 / 99)
+    expect(tackleBreakChance(50, 0)).toBeCloseTo(0.45 * 50 / 99)
   })
 })
 
 describe('runTackleDetection — breaking a tackle', () => {
-  it('a low roll breaks the tackle: the play stays live, speed is halved, brokenTackles increments', () => {
+  it('a low roll breaks the tackle: the play stays live, speed drops, brokenTackles increments', () => {
     const carrier = { id: 'rb', label: 'RB', x: 26, y: 50, vx: 0, vy: 8 }
     const state = makeState({ offense: [carrier], defense: [defAt(0.5)] })
     runTackleDetection(state, null, 0.05, () => 0)   // low roll → breaks
 
     expect(state.tackleEnqueued).toBe(false)   // play continues
     expect(carrier.brokenTackles).toBe(1)
-    expect(carrier.vy).toBeCloseTo(4)          // momentum halved
+    expect(carrier.vy).toBeCloseTo(8 * 0.4)    // momentum retained at BREAK_SPEED_RETENTION (0.4)
     expect(carrier.tackleBreakCooldown).toBeGreaterThan(0)
   })
 

@@ -10,16 +10,18 @@ import {
   validateThrowAtDefender,
   validateScramble,
   validateThrowaway,
-  validatePunt,
 } from '../game/validation.js'
 import { getGame, initGame, commitThrowTarget, resolveThrowTarget } from '../game/gameState.js'
 import { transition, PHASE } from '../game/stateMachine.js'
 import { FIELD } from '../constants.js'
 import { initLivePhase } from '../game/systems/init.js'
-import { enqueue, EVENT } from '../game/eventQueue.js'
+import { enqueue, EVENT, resolveDecision, broadcastSpecialTeams } from '../game/eventQueue.js'
 import { startGameLoop } from '../game/simulation.js'
 import { getRoom } from '../game/roomManager.js'
 import { serializeGameState } from '../game/serialization.js'
+import {
+  beginSpecialTeams, applyKickInput, isSpecialTeamsActive, isValidKickType,
+} from '../game/specialTeams.js'
 
 // Shared rejection helper — rejects the action and logs it without crashing.
 function reject(socket, event, reason) {
@@ -124,15 +126,6 @@ export function registerGameHandlers(io, socket) {
         io.to(roomId).emit('hike_countdown', { count })
       }, i * 1000)
     })
-  })
-
-  // ── Punt (4th down) ────────────────────────────────────────────────────────
-
-  socket.on('punt', () => {
-    const err = validatePunt(socket)
-    if (err) return reject(socket, 'punt', err)
-    enqueue(socket.data.roomId, EVENT.PUNT, {})
-    console.log(`[game] ${socket.data.roomId} punt requested`)
   })
 
   // ── Snap ─────────────────────────────────────────────────────────────────
@@ -298,5 +291,49 @@ export function registerGameHandlers(io, socket) {
       io.to(socketId).emit('game_state', serializeGameState(getGame(roomId), slot))
     })
     console.log(`[game] ${roomId} reset for a new game`)
+  })
+
+  // ── 4th-down decision ([Special Teams][2][3][4]) ───────────────────────────
+  //
+  // The offense picks Go For It / Punt / Field Goal. Server-authoritative: only the offense, only
+  // while the menu is up; resolveDecision falls back to the default for an illegal option.
+  socket.on('special_teams_choice', ({ option } = {}) => {
+    const roomId = socket.data.roomId
+    const state  = getGame(roomId)
+    if (!state || !state.decisionPending) return
+    const room = getRoom(roomId)
+    if (!room) return
+    if (room.players.indexOf(socket.id) !== state.possession) return   // only the offense decides
+    resolveDecision(state, io, option)
+  })
+
+  // ── Special teams kick input ([Special Teams][6][7][8]) ────────────────────
+  //
+  // The kicking team aims (angle) and taps Kick. Server-authoritative: it owns the power meter and
+  // executes the kick (via the kick clock); the client only forwards intent. The FIRST input starts
+  // the kick timer (applyKickInput); `kick: true` is fired by the kick clock on the next tick.
+  socket.on('special_teams_input', (payload = {}) => {
+    const roomId = socket.data.roomId
+    const state  = getGame(roomId)
+    if (!state || !isSpecialTeamsActive(state)) return
+    const room = getRoom(roomId)
+    if (!room) return
+    const slot = room.players.indexOf(socket.id)
+    if (slot < 0) return
+
+    if (applyKickInput(state, slot, payload)) broadcastSpecialTeams(state, io)
+  })
+
+  // Dev-only: stage a special-teams scenario so the kicking engine and its UI can be exercised
+  // before the per-kick tickets wire the real entry points (after a score → kickoff, 4th down →
+  // punt/FG, post-TD → extra point). Disabled in production, like dev_quick_setup.
+  socket.on('dev_special_teams', (payload = {}) => {
+    if (process.env.NODE_ENV === 'production') return
+    const roomId = socket.data.roomId
+    const state  = getGame(roomId)
+    if (!state || !isValidKickType(payload.kickType)) return
+    beginSpecialTeams(state, payload.kickType, { kickingSlot: payload.kickingSlot ?? state.possession })
+    broadcastSpecialTeams(state, io)
+    console.log(`[dev] ${roomId} special teams staged: ${payload.kickType}`)
   })
 }

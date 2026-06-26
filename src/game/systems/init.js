@@ -1,6 +1,7 @@
 import { FIELD } from '../../constants.js'
 import { getLosY } from '../gameState.js'
 import { getRatings, ratingOf, speedFromRating } from '../../data/ratings.js'
+import { onSnapXFactors } from './xFactors.js'
 
 // Fraction of top speed the running back is already moving at when a run play begins —
 // it takes the handoff with momentum rather than from a dead stop, then accelerates up.
@@ -93,4 +94,8 @@ export function initLivePhase(state) {
 
   // Resolve press jams at the snap — stuns the loser of each press matchup ([press]).
   resolvePressJams(state)
+
+  // [294] Restore active X-Factor stars onto the fresh play entities, and tick the Team Chemistry
+  // per-snap ramp for an active QB.
+  onSnapXFactors(state)
 }

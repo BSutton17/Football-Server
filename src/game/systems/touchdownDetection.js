@@ -24,13 +24,13 @@ export function runTouchdownDetection(state, _io, _dt) {
   if (state.interceptionReturn) {
     if (rel <= 0) {
       state.tackleEnqueued = true
-      enqueue(state.roomId, EVENT.TOUCHDOWN, { scoringSlot: 1 - state.possession, x: carrier.x, y: carrier.y })
+      enqueue(state.roomId, EVENT.TOUCHDOWN, { scoringSlot: 1 - state.possession, carrierId: carrier.id, x: carrier.x, y: carrier.y })
     }
     return
   }
 
   if (rel >= 100) {
     state.tackleEnqueued = true
-    enqueue(state.roomId, EVENT.TOUCHDOWN, { scoringSlot: state.possession, x: carrier.x, y: carrier.y })
+    enqueue(state.roomId, EVENT.TOUCHDOWN, { scoringSlot: state.possession, carrierId: carrier.id, x: carrier.x, y: carrier.y })
   }
 }

@@ -80,13 +80,18 @@ function accuracyIntMod(qbAccuracy) {
 
 // Catch / interception / incomplete probabilities for a window, given the receiver's hands and the
 // QB's accuracy. catchP + intP + incompleteP === 1.
-export function passProbabilities(openness, qbAccuracy = 50, receiverCatch = 50) {
+//
+// completionBonus is an additive boost to the catch (completion) probability from an active QB
+// X-Factor ([294]) — e.g. Cannon's +10% on a deep ball. It only ever raises completions, so it
+// trims the pick/incomplete slices via the existing overflow handling below.
+export function passProbabilities(openness, qbAccuracy = 50, receiverCatch = 50, completionBonus = 0, intDelta = 0) {
   const tier = opennessTier(openness)
   const base = TIER_ODDS[tier]
 
-  let catchP = clamp01(base.catch + catchRatingMod(receiverCatch) + accuracyCatchMod(qbAccuracy))
-  // Open windows are never picked; coverage windows take the accuracy pick bump.
-  let intP   = tier === 'open' ? 0 : clamp01(base.int + accuracyIntMod(qbAccuracy))
+  let catchP = clamp01(base.catch + catchRatingMod(receiverCatch) + accuracyCatchMod(qbAccuracy) + completionBonus)
+  // Open windows are never picked; coverage windows take the accuracy pick bump plus any X-Factor
+  // INT modifier (e.g. Fast Thinking's −10% on contested throws). intDelta is typically ≤ 0.
+  let intP   = tier === 'open' ? 0 : clamp01(base.int + accuracyIntMod(qbAccuracy) + intDelta)
 
   // Catch and pick can't sum past certainty — the broken-up/drop slice absorbs the rest; if they
   // do overflow, trim the pick first, then the catch.
@@ -104,7 +109,7 @@ export function passProbabilities(openness, qbAccuracy = 50, receiverCatch = 50)
 //   interceptionEligible — ball thrown into a defender (throwaway-at-coverage): a near-certain pick.
 //   rng — injectable for tests; defaults to Math.random.
 export function resolvePass(
-  { openness, qbAccuracy = 50, receiverCatch = 50, interceptionEligible = false },
+  { openness, qbAccuracy = 50, receiverCatch = 50, interceptionEligible = false, completionBonus = 0, intDelta = 0 },
   rng = Math.random,
 ) {
   if (interceptionEligible) {
@@ -114,7 +119,7 @@ export function resolvePass(
       : { outcome: 'incomplete',  reason: 'broken_up' }
   }
 
-  const { tier, catchP, intP } = passProbabilities(openness, qbAccuracy, receiverCatch)
+  const { tier, catchP, intP } = passProbabilities(openness, qbAccuracy, receiverCatch, completionBonus, intDelta)
 
   const roll = rng()
   if (roll < catchP)        return { outcome: 'complete',    reason: 'caught' }
