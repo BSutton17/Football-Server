@@ -19,7 +19,7 @@ import {
   recordReceiverOutcome, recordTouchdownScorer, recordRun,
   recordDefenderOutcome, findGuardingDB,
   throwCompletionBonus, adjustOpennessForReceiver, applyDefenderOpenness, receiverThrowMods, defenderThrowMods,
-  findOffenseQB, resetXFactors, resetDriveProgress, DEEP_YARDS,
+  findOffenseQB, resetXFactors, resetDriveProgress, ageXFactorsOneDrive, DEEP_YARDS,
 } from './systems/xFactors.js'
 import { getRatings, ratingOf } from '../data/ratings.js'
 
@@ -28,6 +28,7 @@ import { getRatings, ratingOf } from '../data/ratings.js'
 const BETWEEN_PLAYS_MS    = 2000
 const BETWEEN_QUARTERS_MS = 3000
 const HALFTIME_MS         = 4000   // [218] a slightly longer pause between Q2 and Q3
+const HALFTIME_YARD_LINE  = 30     // second-half kickoff: receiving offense starts on its own 30
 
 // ── Event types ───────────────────────────────────────────────────────────────
 //
@@ -1014,9 +1015,19 @@ function advanceQuarter(state, io) {
   state.clockStopped = true   // [204] the new quarter's clock is stopped until the next snap
 
   if (state.quarter === 3) {
-    // Halftime: 80% stamina recovery for non-linemen, and swap ends ([217]).
+    // Halftime: 80% stamina recovery for non-linemen, and a full field reset for the second-half
+    // kickoff. The team that started the game on DEFENSE now receives — possession flips to the
+    // opening-defense slot (regardless of who had the ball when the half ended), the ball is spotted
+    // on that offense's own 30, and it's a fresh 1st & 10 drive.
     state.pendingStaminaRecovery = Math.max(state.pendingStaminaRecovery, 0.8)
-    state.direction = -state.direction
+    state.possession = 1 - state.openingPossession
+    state.direction  = state.possession === 0 ? 1 : -1
+    state.yardLine   = HALFTIME_YARD_LINE
+    state.down       = 1
+    state.distance   = RULES.FIRST_DOWN_YARDS
+    state.ballX      = FIELD_CENTER_X
+    state.newDrive   = true   // fresh drive: longer play clock + defensive adjust window
+    notifyRoleSwap(state, io)  // possession flipped — push each client its new role + update server roles
     resetXFactors(state, io)   // [294] every X-Factor and all earn progress is wiped at the half
   }
 
@@ -1057,6 +1068,7 @@ function endGame(state, io) {
 // without leaving the game.
 function notifyRoleSwap(state, io) {
   resetDriveProgress(state)   // [294] possession changed → the offense's drive ended (Serious Dedication per-drive count)
+  ageXFactorsOneDrive(state, io)   // a new drive begins — age active X-Factors, expiring any past the 3-drive cap
   state.newDrive = true       // [play-clock] a possession change begins a new drive → 40 s play clock next snap
   const room = getRoom(state.roomId)
   if (!room) return

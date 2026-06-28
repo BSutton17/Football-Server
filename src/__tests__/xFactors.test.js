@@ -7,7 +7,7 @@ import {
   recordDefenderOutcome, findGuardingDB, applyDefenderOpenness, defenderThrowMods,
   throwCompletionBonus, adjustOpennessForReceiver, receiverThrowMods,
   shakeOffSack, onSnapXFactors,
-  applyXFactorFlags, resetXFactors, resetDriveProgress, findOffenseQB,
+  applyXFactorFlags, resetXFactors, resetDriveProgress, ageXFactorsOneDrive, findOffenseQB,
 } from '../game/systems/xFactors.js'
 import { runSackDetection } from '../game/systems/sackDetection.js'
 import { ratingOf } from '../data/ratings.js'
@@ -49,6 +49,25 @@ describe('universal earn — 2 passing touchdowns', () => {
 
     recordPassingTouchdown(state, qb, noIo)
     expect(qb.xFactorActive).toBe(true)
+  })
+})
+
+// ── Duration cap: 3 drives ───────────────────────────────────────────────────────
+
+describe('X-Factor duration — expires after 3 drives', () => {
+  it('stays active across 3 drive boundaries, then drops on the 4th', () => {
+    const qb = makeQB(XF.CANNON)
+    const state = makeState(qb)
+    recordPassingTouchdown(state, qb, noIo)
+    recordPassingTouchdown(state, qb, noIo)   // active during drive 1
+    expect(qb.xFactorActive).toBe(true)
+
+    ageXFactorsOneDrive(state, noIo)   // → drive 2
+    expect(qb.xFactorActive).toBe(true)
+    ageXFactorsOneDrive(state, noIo)   // → drive 3
+    expect(qb.xFactorActive).toBe(true)
+    ageXFactorsOneDrive(state, noIo)   // → drive 4: hits the 3-drive cap
+    expect(qb.xFactorActive).toBe(false)
   })
 })
 

@@ -45,8 +45,8 @@ export const RULES = {
   KICKOFF_RESULT_YARD_LINE: 30,  // [Special Teams][5] receiving team's spot after an (automatic) kickoff
   TOUCHBACK_YARD_LINE: 20,       // [Special Teams][38] receiving offense's spot after a punt touchback
   MISSED_FG_MIN_YARD_LINE: 20,   // [Special Teams][45] missed-FG spot floor — no closer than the own 20
-  PLAY_CLOCK_SECONDS: 25,        // normal play clock
-  PLAY_CLOCK_NEW_DRIVE: 40,      // first play of a drive — extra time to set the formation
+  PLAY_CLOCK_SECONDS: 30,        // normal play clock
+  PLAY_CLOCK_NEW_DRIVE: 45,      // first play of a drive — extra time to set the formation
   DELAY_OF_GAME_YARDS: 5,        // [delay of game] play-clock expiry → 5-yard penalty, replay the down
 }
 

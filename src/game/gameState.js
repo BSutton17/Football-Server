@@ -54,6 +54,11 @@ export function initGame(roomId, offenseSlot) {
     possession: offenseSlot,
     direction: offenseSlot === 0 ? 1 : -1,
 
+    // Slot that opened the game on offense. At halftime possession is handed to the OTHER team
+    // (whoever started on defense receives the second half), so this is the source of truth for
+    // the second-half flip regardless of who had the ball when the half ended.
+    openingPossession: offenseSlot,
+
     // ── Field position (offense-relative) ───────────────────────────────────
     yardLine: RULES.KICKOFF_YARD_LINE,  // 25
     down: 1,

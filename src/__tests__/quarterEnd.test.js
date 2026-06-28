@@ -49,25 +49,36 @@ describe('quarter end ([216])', () => {
   })
 })
 
-describe('halftime ([217]/[218])', () => {
-  it('swaps field direction at Q2→Q3 while preserving score and possession', () => {
-    const io = mockIo()
-    const s = state('ht-1', { quarter: 2, direction: 1, possession: 1, score: [7, 3] })
-    enqueue('ht-1', EVENT.CLOCK_EXPIRED, {})
-    processQueue('ht-1', s, io)
+describe('halftime ([217]/[218]) — second-half kickoff reset', () => {
+  it('hands the ball to the team that opened on defense and resets to 1st & 10 on the 30', () => {
+    const roomId = 'ht-1'
+    createRoom(roomId, 'sockA'); joinRoom(roomId, 'sockB')
+    const io = mockIo(['sockA', 'sockB'])
+    // Team 0 opened the game on offense; whoever has the ball at the half, team 1 now receives.
+    const s = state(roomId, {
+      quarter: 2, direction: -1, possession: 0, openingPossession: 0,
+      yardLine: 80, down: 3, distance: 4, score: [7, 3], ballX: 40,
+    })
+    enqueue(roomId, EVENT.CLOCK_EXPIRED, {})
+    processQueue(roomId, s, io)
 
     expect(s.quarter).toBe(3)
-    expect(s.direction).toBe(-1)        // [217] ends swapped
-    expect(s.possession).toBe(1)        // roles preserved
+    expect(s.possession).toBe(1)        // opening-defense team receives the second half
+    expect(s.direction).toBe(-1)        // possession 1 → direction -1
+    expect(s.yardLine).toBe(30)         // ball spotted on the receiving team's own 30
+    expect(s.down).toBe(1)
+    expect(s.distance).toBe(10)
+    expect(s.newDrive).toBe(true)       // fresh drive
     expect(s.score).toEqual([7, 3])     // score preserved
     expect(io.emits.some(e => e.event === 'halftime')).toBe(true)   // [218]
   })
 
-  it('does not flip direction on a non-halftime quarter change', () => {
-    const s = state('ht-2', { quarter: 1, direction: 1 })
+  it('does not flip direction or possession on a non-halftime quarter change', () => {
+    const s = state('ht-2', { quarter: 1, direction: 1, possession: 0 })
     enqueue('ht-2', EVENT.CLOCK_EXPIRED, {})
     processQueue('ht-2', s, mockIo())
     expect(s.direction).toBe(1)
+    expect(s.possession).toBe(0)
   })
 })
 

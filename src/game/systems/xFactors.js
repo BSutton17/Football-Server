@@ -69,6 +69,12 @@ const SERIOUS_DED_FD_TOTAL_EARN = 7    // …or 7 first downs in the half
 // half, credited to the DB guarding the intended receiver.
 const DB_PBU_EARN = 3
 
+// ── Duration cap ─────────────────────────────────────────────────────────────────
+// An earned X-Factor lasts at most this many drives, OR until the half resets — whichever comes
+// first. Each possession change (a drive boundary) ages every active ability by one; on the 4th
+// drive since activation it expires. (The half reset in resetXFactors is the other, harder cap.)
+const XF_MAX_DRIVES = 3
+
 // ── Loss triggers (while active) ────────────────────────────────────────────────
 const LOSS_CONSEC_INCOMPLETIONS = 3   // QB: 3 incompletions in a row (runs/punts don't interrupt)
 const WR_DROPS_IN_A_ROW_LOSS    = 2   // WR: 2 dropped passes in a row
@@ -141,6 +147,7 @@ function getRecord(state, player, create = true) {
       ability:               player.xFactor,
       active:                false,
       lostThisHalf:          false,   // once lost early, can't be re-earned until the half resets
+      drivesActive:          0,       // drives elapsed since activation (expires at XF_MAX_DRIVES)
 
       // ── Universal earn flags ──
       scrambleEarned:        false,   // QB: a ≥10-yd scramble happened (Shake It Off)
@@ -191,6 +198,7 @@ function getRecord(state, player, create = true) {
 function activate(state, player, r, io) {
   if (!r || r.active) return
   r.active = true
+  r.drivesActive = 0   // start the 3-drive duration clock
   if (player) {
     player.xFactorActive = true   // star shows on the very next positions broadcast
     applyPassiveBuff(player, r)   // e.g. High Point's +4 acceleration
@@ -597,6 +605,26 @@ export function resetDriveProgress(state) {
   const m = state.xFactors
   if (!m) return
   for (const r of m.values()) r.rbFirstDownsDrive = 0
+}
+
+// Find a live play-entity by id across both sides (records hold only the id). Used to clear the star/
+// passive buff promptly on a drive-expiry; null is fine (the next snap's applyXFactorFlags cleans up).
+function findEntityById(state, id) {
+  return state.offensePlayers?.get(id) ?? state.defensePlayers?.get(id) ?? null
+}
+
+// Age every ACTIVE X-Factor by one drive and expire any that have hit the 3-drive cap. A possession
+// change is the one drive boundary, so this is called from notifyRoleSwap alongside resetDriveProgress.
+export function ageXFactorsOneDrive(state, io) {
+  const m = state.xFactors
+  if (!m) return
+  for (const [pid, r] of m) {
+    if (!r.active) continue
+    r.drivesActive += 1
+    if (r.drivesActive >= XF_MAX_DRIVES) {
+      deactivate(state, findEntityById(state, pid), r, io, '3 drives')
+    }
+  }
 }
 
 // ── Half / game reset ───────────────────────────────────────────────────────────
