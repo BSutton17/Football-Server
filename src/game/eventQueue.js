@@ -432,7 +432,13 @@ function onTouchdown({ scoringSlot, carrierId }, state, io) {
 
   // [51] The SCORING team keeps the ball to attempt the conversion; arm the XP / 2-pt menu. (For a
   // defensive-return TD the scorer was the defense, so possession flips to them for the try.)
+  const defensiveReturnTd = scoringSlot !== state.possession
   state.possession        = scoringSlot
+  // A defensive-return TD flips the attacking direction too — the returner ran the OTHER way, so the
+  // scoring team now advances toward the opposite goal. Without this, possession and direction
+  // disagree and getLosY spots the conversion (and ensuing kickoff) on the WRONG end — e.g. the 2-pt
+  // try lands on the scoring team's own 3 instead of the opponent's 3.
+  if (defensiveReturnTd) state.direction = -state.direction
   state.conversionPending = true
   state.conversionTimer   = RULES.CONVERSION_SECONDS
   state.clockStopped      = true              // a score stops the clock

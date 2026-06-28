@@ -102,6 +102,7 @@ describe('touchdown scoring ([195])', () => {
     // [51] A TD is 6 points; the scoring team keeps the ball to attempt the extra-point / 2-pt try.
     expect(state.score[0]).toBe(6)
     expect(state.possession).toBe(0)          // scorer keeps the ball for the conversion
+    expect(state.direction).toBe(1)           // offensive TD — attacking direction unchanged
     expect(state.conversionPending).toBe(true)
     expect(state.phase).toBe(PHASE.DEAD)
 
@@ -134,6 +135,9 @@ describe('touchdown scoring ([195])', () => {
 
     expect(state.score[1]).toBe(6)            // [51] intercepting team scored (6, then the try)
     expect(state.possession).toBe(1)          // the scoring team keeps the ball for the conversion
+    // The returner ran the OTHER way, so the scoring team's attacking direction flips with possession —
+    // otherwise the conversion (e.g. a 2-pt try) would line up on the wrong end of the field.
+    expect(state.direction).toBe(-1)
     expect(state.conversionPending).toBe(true)
     expect(state.interceptionReturn).toBe(false)
   })
