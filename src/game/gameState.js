@@ -257,12 +257,19 @@ export function resetPlay(state) {
 //   'continue'          — offense didn't make it but still has downs left
 //   'turnover_on_downs' — 4th down failed; caller should enqueue that event
 //                         so changePossession can run
+// Distance for a fresh set of downs: normally 10, but goal-to-go once the 10-yard marker would
+// land in/past the end zone — there the goal line IS the marker, so the distance is the yards left
+// to the goal ([1st & Goal]).
+function firstDownDistance(yardLine) {
+  return Math.min(RULES.FIRST_DOWN_YARDS, 100 - yardLine)
+}
+
 export function advanceDown(state, yardsGained) {
   state.yardLine += yardsGained
 
   if (yardsGained >= state.distance) {
     state.down     = 1
-    state.distance = RULES.FIRST_DOWN_YARDS
+    state.distance = firstDownDistance(state.yardLine)
     return 'first_down'
   }
 
@@ -319,7 +326,7 @@ export function changePossession(state, newYardLine = null) {
   state.direction  = -state.direction
   state.yardLine   = newYardLine ?? (100 - state.yardLine)
   state.down       = 1
-  state.distance   = RULES.FIRST_DOWN_YARDS
+  state.distance   = firstDownDistance(state.yardLine)
   // Both teams switch roles — non-linemen recover 50% of lost stamina next play.
   state.pendingStaminaRecovery = Math.max(state.pendingStaminaRecovery, 0.5)
 }

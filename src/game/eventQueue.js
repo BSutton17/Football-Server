@@ -860,8 +860,20 @@ function onTurnoverOnDowns(_payload, _state, _io) {
 // offense re-lines up (the formation slides back with the LOS on the next game_state).
 export function applyDelayOfGame(state, io) {
   const back = Math.min(RULES.DELAY_OF_GAME_YARDS, Math.max(0, state.yardLine - 1))
+  const oldLosY = getLosY(state)
   state.yardLine -= back
   state.distance += back
+
+  // Slide the already-placed formations back with the LOS so the next snap lines up on the new spot.
+  // (The offense re-sends its formation on Set, but the defense never re-places — without this its
+  // players would snap from the OLD line, 5 yards off. Players are stored in absolute Y, so shift by
+  // the absolute-Y change of the line.)
+  const losShift = getLosY(state) - oldLosY
+  if (losShift !== 0) {
+    for (const p of state.offensePlayers?.values() ?? []) p.y += losShift
+    for (const p of state.defensePlayers?.values() ?? []) p.y += losShift
+  }
+
   state.playClock        = RULES.PLAY_CLOCK_SECONDS
   state.playClockRunning = true
   state.newDrive         = false

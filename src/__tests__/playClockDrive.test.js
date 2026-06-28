@@ -116,6 +116,9 @@ describe('[delay of game] play-clock expiry', () => {
       roomId, phase: PHASE.PRE_SNAP, direction: 1, yardLine: 30, down: 1, distance: 10,
       possession: 0, score: [0, 0], clock: 300, quarter: 1, ballX: 26,
       playClock: 0.04, playClockRunning: true, newDrive: true,
+      // already-placed formations (absolute Y; LOS at 10+30 = 40 for direction 1)
+      offensePlayers: makeMap([{ id: 'rb1', label: 'RB', x: 24, y: 34 }]),
+      defensePlayers: makeMap([{ id: 'cb1', label: 'CB', x: 24, y: 47 }]),
     }
     runPlayClock(state, mockIo(), 0.05)   // play clock hits 0 → delay of game
     expect(state.yardLine).toBe(25)        // [1st & 10 → 1st & 15] LOS back 5
@@ -124,5 +127,9 @@ describe('[delay of game] play-clock expiry', () => {
     expect(state.playClock).toBe(RULES.PLAY_CLOCK_SECONDS)   // reset to 25
     expect(state.playClockRunning).toBe(true)
     expect(state.newDrive).toBe(false)     // no longer the fresh-drive window
+    // the stored formations slide back with the LOS (−5 yds in absolute Y) so the snap lines up
+    expect(state.offensePlayers.get('rb1').y).toBe(29)
+    expect(state.defensePlayers.get('cb1').y).toBe(42)
   })
+
 })
