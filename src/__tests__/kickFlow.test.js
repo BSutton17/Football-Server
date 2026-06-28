@@ -60,7 +60,7 @@ describe('[8] kick timer', () => {
 })
 
 describe('[9][10] power meter drains continuously once started, refilled by taps', () => {
-  it('halfway through the timer with no taps the meter is ~half full', () => {
+  it('halfway through the timer with no taps the meter is a little over half (10%-eased drain)', () => {
     const state = kickState('pm', KICK.PUNT); room('pm')
     beginSpecialTeams(state, KICK.PUNT, { kickingSlot: 0 })
     const st = state.specialTeams
@@ -68,7 +68,7 @@ describe('[9][10] power meter drains continuously once started, refilled by taps
     const half = KICK_TIMER_SECONDS / 2
     let elapsed = 0
     while (elapsed < half) { runKickClock(state, mockIo(), 0.05); elapsed += 0.05 }
-    expect(st.power).toBeCloseTo(0.5, 1)
+    expect(st.power).toBeCloseTo(0.55, 1)   // drains 0.9 over the full timer → ~0.55 at the half
     expect(st.phase).toBe(ST_PHASE.SETUP)   // not executed yet
   })
 
