@@ -80,7 +80,7 @@ describe('possession swap — roles switch for both players ([211])', () => {
     expect(r.sockB).toBe('offense')
   })
 
-  it('a touchdown swaps both players (scoring team kicks off → defense)', () => {
+  it('[51] a touchdown keeps the scoring team on offense for the conversion', () => {
     const io = room('ps-td')
     const s = liveState('ps-td', { yardLine: 98, ballCarrierId: 'rb1',
       offensePlayers: makeMap([{ id: 'rb1', label: 'RB', x: 26, y: 111 }]) })
@@ -88,9 +88,9 @@ describe('possession swap — roles switch for both players ([211])', () => {
     processQueue('ps-td', s, io)
 
     const r = rolesAfter(io)
-    expect(s.possession).toBe(1)        // receiving team
-    expect(r.sockA).toBe('defense')     // slot 0 scored, now kicks off
-    expect(r.sockB).toBe('offense')
+    expect(s.possession).toBe(0)        // scorer keeps the ball to attempt the try
+    expect(r.sockA).toBe('offense')     // slot 0 scored, attempts the conversion
+    expect(r.sockB).toBe('defense')
   })
 
   it('a safety swaps both players', () => {
@@ -117,14 +117,15 @@ describe('field flip & field position on possession change ([212]/[214])', () =>
     expect(s.yardLine).toBeCloseTo(38, 6)   // [214] spot rel 62 → 100−62
   })
 
-  it('a touchdown spots the receiving team at its own 25 with the field flipped', () => {
+  it('[51] a touchdown keeps the field with the scorer for the conversion (kickoff deferred)', () => {
     const io = room('ps-td-spot')
     const s = liveState('ps-td-spot', { direction: 1, yardLine: 98, ballCarrierId: 'rb1',
       offensePlayers: makeMap([{ id: 'rb1', label: 'RB', x: 26, y: 111 }]) })
     enqueue('ps-td-spot', EVENT.TOUCHDOWN, { scoringSlot: 0, x: 26, y: 111 })
     processQueue('ps-td-spot', s, io)
-    expect(s.direction).toBe(-1)   // receiving slot 1 → direction -1
-    expect(s.yardLine).toBe(30)    // [Special Teams][5] kickoff spot (receiving team's own 30)
+    expect(s.direction).toBe(1)    // scorer stays on offense — no kickoff until the try resolves
+    expect(s.possession).toBe(0)
+    expect(s.conversionPending).toBe(true)
   })
 })
 
@@ -136,6 +137,6 @@ describe('state preserved across a possession change ([215])', () => {
     enqueue('ps-preserve', EVENT.TOUCHDOWN, { scoringSlot: 0, x: 26, y: 111 })
     processQueue('ps-preserve', s, io)
     expect(s.clock).toBe(187.5)    // clock preserved (a TD doesn't run time off)
-    expect(s.score).toEqual([10, 10])   // only +7 to the scorer
+    expect(s.score).toEqual([9, 10])   // [51] only +6 to the scorer (the try adds the rest)
   })
 })

@@ -113,7 +113,7 @@ export function registerRoomHandlers(io, socket) {
     socket.data.role   = role;
     updatePlayer(socket.id, { roomId, role });
 
-    socket.emit('reconnect_success', { roomId, role });
+    socket.emit('reconnect_success', { roomId, role, slot });
     socket.to(roomId).emit('opponent_reconnected');
 
     // If the room is still in team selection, drop the player back onto the select screen with the
@@ -127,6 +127,11 @@ export function registerRoomHandlers(io, socket) {
     } else {
       const gameState = getGame(roomId);
       if (gameState) {
+        // Restore BOTH teams' picks so the client recovers team colors, rosters, and names after a
+        // refresh (state.teams = locked team per slot, set when both players locked in).
+        (gameState.teams ?? []).forEach((teamId, s) => {
+          if (teamId) socket.emit('team_selected', { slot: s, teamId, locked: true });
+        });
         socket.emit('game_state', serializeGameState(gameState, slot));
       }
     }

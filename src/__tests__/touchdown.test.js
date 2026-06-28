@@ -99,26 +99,22 @@ describe('touchdown scoring ([195])', () => {
     enqueue(roomId, EVENT.TOUCHDOWN, { scoringSlot: 0, x: 26, y: 111 })
     processQueue(roomId, state, io)
 
-    expect(state.score[0]).toBe(7)
-    expect(state.possession).toBe(1)          // the scored-on team receives
-    expect(state.direction).toBe(-1)
-    expect(state.yardLine).toBe(30)           // [Special Teams][5] kickoff spot (receiving team's own 30)
+    // [51] A TD is 6 points; the scoring team keeps the ball to attempt the extra-point / 2-pt try.
+    expect(state.score[0]).toBe(6)
+    expect(state.possession).toBe(0)          // scorer keeps the ball for the conversion
+    expect(state.conversionPending).toBe(true)
     expect(state.phase).toBe(PHASE.DEAD)
 
     const scores = io.emits.filter(e => e.event === 'score_update')
     expect(scores).toHaveLength(2)
-    expect(scores.find(e => e.socketId === 'sockA').payload).toEqual({ offense: 7, defense: 0 })
-    expect(scores.find(e => e.socketId === 'sockB').payload).toEqual({ offense: 0, defense: 7 })
-
-    const swaps = io.emits.filter(e => e.event === 'switch_sides')
-    expect(swaps.find(e => e.socketId === 'sockA').payload).toEqual({ role: 'defense' })   // scored, now kicks off
-    expect(swaps.find(e => e.socketId === 'sockB').payload).toEqual({ role: 'offense' })   // receives
+    expect(scores.find(e => e.socketId === 'sockA').payload).toEqual({ offense: 6, defense: 0 })
+    expect(scores.find(e => e.socketId === 'sockB').payload).toEqual({ offense: 0, defense: 6 })
 
     // [196] both clients get a viewer-relative touchdown event for celebration/audio/animation.
     const tds = io.emits.filter(e => e.event === 'touchdown')
     expect(tds).toHaveLength(2)
-    expect(tds.find(e => e.socketId === 'sockA').payload).toEqual({ scored: true,  score: { offense: 7, defense: 0 } })
-    expect(tds.find(e => e.socketId === 'sockB').payload).toEqual({ scored: false, score: { offense: 0, defense: 7 } })
+    expect(tds.find(e => e.socketId === 'sockA').payload).toEqual({ scored: true,  score: { offense: 6, defense: 0 } })
+    expect(tds.find(e => e.socketId === 'sockB').payload).toEqual({ scored: false, score: { offense: 0, defense: 6 } })
   })
 
   it('a defensive-return touchdown credits the intercepting team', () => {
@@ -136,8 +132,9 @@ describe('touchdown scoring ([195])', () => {
     enqueue(roomId, EVENT.TOUCHDOWN, { scoringSlot: 1, x: 26, y: 8 })
     processQueue(roomId, state, io)
 
-    expect(state.score[1]).toBe(7)            // intercepting team scored
-    expect(state.possession).toBe(0)          // the team that threw the pick receives the kickoff
+    expect(state.score[1]).toBe(6)            // [51] intercepting team scored (6, then the try)
+    expect(state.possession).toBe(1)          // the scoring team keeps the ball for the conversion
+    expect(state.conversionPending).toBe(true)
     expect(state.interceptionReturn).toBe(false)
   })
 })

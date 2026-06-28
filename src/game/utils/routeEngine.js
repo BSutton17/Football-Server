@@ -4,9 +4,11 @@ import { ratingOf, cutThresholdFromRating, cutSpeedRetentionFromRating } from '.
 
 // Builds the ordered waypoint list for a player's route.
 // Called lazily the first time getRouteTarget is invoked for a player.
-function buildWaypoints(route, startX, losY, dir, scale) {
+// pivotX is the lateral reference that decides which way "outward" faces — the BALL'S spot (hash),
+// not the field's geometric middle, since the ball shifts laterally through the game.
+function buildWaypoints(route, startX, losY, dir, scale, pivotX) {
   const s    = scale ?? 1
-  const near = startX > FIELD.WIDTH / 2 ? 1 : -1
+  const near = startX >= (pivotX ?? FIELD.WIDTH / 2) ? 1 : -1
   const segs = ROUTE_DEF[route] ?? [[0, 10]]
 
   return segs.map(([nearFactor, dd]) => ({
@@ -23,13 +25,13 @@ function buildWaypoints(route, startX, losY, dir, scale) {
 // routePhase is used by the stamina system to reduce drain when a player is stationary.
 //
 // Mutates several properties on the player object on first call and on transitions.
-export function getRouteTarget(player, losY, dir, dt) {
+export function getRouteTarget(player, losY, dir, dt, pivotX) {
   const route = player.route
   if (!route) return null
 
   // Lazy init — build waypoints and timing state once on the first tick of live play.
   if (!player.routeWaypoints) {
-    player.routeWaypoints   = buildWaypoints(route, player.x, losY, dir, player.routeDepthScale)
+    player.routeWaypoints   = buildWaypoints(route, player.x, losY, dir, player.routeDepthScale, pivotX)
     player.routeWaypointIdx = 0
     player.routeElapsed     = 0
     player.routePhase       = 'running'

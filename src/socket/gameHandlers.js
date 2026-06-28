@@ -15,12 +15,12 @@ import { getGame, initGame, commitThrowTarget, resolveThrowTarget } from '../gam
 import { transition, PHASE } from '../game/stateMachine.js'
 import { FIELD } from '../constants.js'
 import { initLivePhase } from '../game/systems/init.js'
-import { enqueue, EVENT, resolveDecision, broadcastSpecialTeams } from '../game/eventQueue.js'
+import { enqueue, EVENT, resolveDecision, resolveConversion, resolvePuntReturn, resolveFieldGoalBlock, broadcastSpecialTeams } from '../game/eventQueue.js'
 import { startGameLoop } from '../game/simulation.js'
 import { getRoom } from '../game/roomManager.js'
 import { serializeGameState } from '../game/serialization.js'
 import {
-  beginSpecialTeams, applyKickInput, isSpecialTeamsActive, isValidKickType,
+  beginSpecialTeams, applyKickInput, isSpecialTeamsActive, isValidKickType, canAttemptBlock,
 } from '../game/specialTeams.js'
 
 // Shared rejection helper — rejects the action and logs it without crashing.
@@ -117,9 +117,11 @@ export function registerGameHandlers(io, socket) {
     io.to(socket.data.roomId).emit('offense_set', { playClockRemaining: Math.ceil(state.playClock) })
     console.log(`[game] ${socket.data.roomId} offense locked → countdown [${payload.playType}]`)
 
-    // 5-second window for defense to adjust — emit countdown ticks; at 0 the hike button unlocks.
+    // Window for the defense to adjust — 10 s on the FIRST play of a drive (like the 40 s play clock),
+    // 5 s otherwise. Emit countdown ticks; at 0 the hike button unlocks.
     const roomId = socket.data.roomId
-    ;[5, 4, 3, 2, 1, 0].forEach((count, i) => {
+    const start  = state.newDrive ? 10 : 5
+    Array.from({ length: start + 1 }, (_, i) => start - i).forEach((count, i) => {
       setTimeout(() => {
         const s = getGame(roomId)
         if (!s || s.phase !== PHASE.COUNTDOWN) return
@@ -137,68 +139,13 @@ export function registerGameHandlers(io, socket) {
     const roomId = socket.data.roomId
     const state  = getGame(roomId)
 
+    state.newDrive = false   // [first play] the drive's opening snap is away — back to the 5 s window next time
     initLivePhase(state)
     transition(state, PHASE.LIVE)
     io.to(roomId).emit('ball_snapped')
     console.log(`[game] ${roomId} ball snapped → live`)
   })
 
-  // ── Dev mode: one-click playtest setup ────────────────────────────────────
-  //
-  // Teleports a full canned offense + defense (with routes and coverages) into place and leaves
-  // the play in PRE_SNAP — it does NOT snap; the developer starts the play with the normal
-  // Set Offense → Hike controls. Not part of the real game (disabled in production).
-  //
-  // The setup is authoritative on the server AND broadcast to BOTH clients (player_placed for
-  // each player, coverage_assigned for each assignment) — exactly like manual placement — so the
-  // server state and the other player's screen stay in sync instead of glitching. The client
-  // sends offense-relative y (like place_player); we store absolute y and echo the relative y back.
-  socket.on('dev_quick_setup', (payload) => {
-    if (process.env.NODE_ENV === 'production') return
-    const roomId = socket.data.roomId
-    const state  = getGame(roomId)
-    if (!state || !payload) return
-
-    const toAbsY = (y) => state.direction === 1
-      ? y + FIELD.END_ZONE_DEPTH
-      : FIELD.LENGTH - FIELD.END_ZONE_DEPTH - y
-
-    const place = (p, team, map) => {
-      map.set(p.id, { id: p.id, x: p.x, y: toAbsY(p.y), vx: 0, vy: 0, label: p.label })
-      io.to(roomId).emit('player_placed', { id: p.id, x: p.x, y: p.y, label: p.label, team })
-    }
-
-    state.offensePlayers  = new Map()
-    state.defensePlayers  = new Map()
-    state.defenseCoverage = new Map()
-
-    for (const p of payload.offense ?? []) place(p, 'o', state.offensePlayers)
-    for (const p of payload.defense ?? []) place(p, 'd', state.defensePlayers)
-
-    for (const c of payload.coverage ?? []) {
-      state.defenseCoverage.set(c.playerId, {
-        type:        c.type,
-        targetId:    c.targetId    ?? null,
-        zoneType:    c.zoneType    ?? null,
-        zoneCenterX: c.zoneCenterX ?? null,
-        zoneCenterY: c.zoneCenterY ?? null,
-      })
-      io.to(roomId).emit('coverage_assigned', {
-        playerId: c.playerId, type: c.type, targetId: c.targetId,
-        zoneType: c.zoneType, zoneCenterX: c.zoneCenterX, zoneCenterY: c.zoneCenterY,
-      })
-    }
-
-    state.ballCarrierId      = null
-    state.targetReceiverId   = null
-    state.deadBallSpot       = null
-    state.activeThrow        = null
-    state.qbScrambling       = false
-    state.interceptionReturn = false
-    state.phase              = PHASE.PRE_SNAP   // staged, NOT snapped — dev starts it via Set Offense → Hike
-
-    console.log(`[dev] ${roomId} quick playtest formation staged + broadcast`)
-  })
 
   // ── Live play ─────────────────────────────────────────────────────────────
 
@@ -300,11 +247,45 @@ export function registerGameHandlers(io, socket) {
   socket.on('special_teams_choice', ({ option } = {}) => {
     const roomId = socket.data.roomId
     const state  = getGame(roomId)
-    if (!state || !state.decisionPending) return
+    if (!state) return
     const room = getRoom(roomId)
     if (!room) return
-    if (room.players.indexOf(socket.id) !== state.possession) return   // only the offense decides
-    resolveDecision(state, io, option)
+    if (room.players.indexOf(socket.id) !== state.possession) return   // only the offense / scoring team
+    // [51] The same menu carries the 4th-down choice and the post-TD extra-point / 2-pt choice.
+    if (state.conversionPending)    resolveConversion(state, io, option)
+    else if (state.decisionPending) resolveDecision(state, io, option)
+  })
+
+  // ── Punt return decision ([Special Teams][28][29]) ─────────────────────────
+  //
+  // After an in-field punt the RECEIVING team picks Return / Fair Catch / Let It Bounce. Server-
+  // authoritative: only the receiving team, only while the menu is up; an invalid option falls back
+  // to the default. (An end-zone or out-of-bounds punt never arms this menu — see [29].)
+  socket.on('punt_return_choice', ({ option } = {}) => {
+    const roomId = socket.data.roomId
+    const state  = getGame(roomId)
+    if (!state || !state.specialTeams?.returnPending) return
+    const room = getRoom(roomId)
+    if (!room) return
+    const receivingSlot = 1 - state.specialTeams.kickingSlot
+    if (room.players.indexOf(socket.id) !== receivingSlot) return   // only the receiving team decides
+    resolvePuntReturn(state, io, option)
+  })
+
+  // ── Field goal block attempt ([Special Teams][46][49][50]) ─────────────────
+  //
+  // The defending team commits a block at a normalized bar position (0..1). Server-authoritative:
+  // only the defender, only on a FG/XP that's still being aimed with the kicker's timer running, and
+  // only one attempt. The server rolls the block by region and broadcasts the outcome to both.
+  socket.on('fg_block', ({ position } = {}) => {
+    const roomId = socket.data.roomId
+    const state  = getGame(roomId)
+    if (!state) return
+    const room = getRoom(roomId)
+    if (!room) return
+    const slot = room.players.indexOf(socket.id)
+    if (!canAttemptBlock(state, slot)) return
+    resolveFieldGoalBlock(state, io, typeof position === 'number' ? position : 0.5)
   })
 
   // ── Special teams kick input ([Special Teams][6][7][8]) ────────────────────

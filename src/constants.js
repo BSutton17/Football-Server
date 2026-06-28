@@ -34,12 +34,20 @@ export const RULES = {
   QUARTER_SECONDS: 300,   // 5 minutes per quarter
   TD_POINTS: 7,
   SAFETY_POINTS: 2,
-  FG_POINTS: 3,            // [Special Teams] successful field goal
+  TD_POINTS: 6,           // [Special Teams][51] touchdown — 6, then an extra-point / 2-pt try
+  TWO_POINT_POINTS: 2,    // [Special Teams][51] successful two-point conversion
+  FG_POINTS: 3,           // [Special Teams] successful field goal
   XP_POINTS: 1,           // [Special Teams] successful extra point
+  XP_YARD_LINE: 75,       // [Special Teams][52] extra point is kicked from the opponent's 25 (own 75)
+  TWO_POINT_YARD_LINE: 97,// [Special Teams][55] two-point try is snapped from the opponent's 3
+  CONVERSION_SECONDS: 5,  // [Special Teams][51] post-TD decision timer before defaulting to the XP
   KICKOFF_YARD_LINE: 25,         // opening drive / game-start spot
   KICKOFF_RESULT_YARD_LINE: 30,  // [Special Teams][5] receiving team's spot after an (automatic) kickoff
+  TOUCHBACK_YARD_LINE: 20,       // [Special Teams][38] receiving offense's spot after a punt touchback
+  MISSED_FG_MIN_YARD_LINE: 20,   // [Special Teams][45] missed-FG spot floor — no closer than the own 20
   PLAY_CLOCK_SECONDS: 25,        // normal play clock
   PLAY_CLOCK_NEW_DRIVE: 40,      // first play of a drive — extra time to set the formation
+  DELAY_OF_GAME_YARDS: 5,        // [delay of game] play-clock expiry → 5-yard penalty, replay the down
 }
 
 // Tick rate — read from TICK_RATE env variable at startup.

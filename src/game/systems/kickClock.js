@@ -1,5 +1,5 @@
-import { ST_PHASE, POWER_DRAIN_PER_SEC } from '../specialTeams.js'
-import { executeKick, broadcastSpecialTeams } from '../eventQueue.js'
+import { ST_PHASE, POWER_DRAIN_PER_SEC, puntReturnDefault } from '../specialTeams.js'
+import { executeKick, broadcastSpecialTeams, resolvePuntReturn } from '../eventQueue.js'
 
 // [Special Teams][8][9][10] Drives a player-controlled kick (punt / field goal / extra point) while
 // the kicking interface is up. The power meter is full and idle until the kick "starts" — on the
@@ -11,7 +11,17 @@ import { executeKick, broadcastSpecialTeams } from '../eventQueue.js'
 // the kick engine actually uses. Run during PRE_SNAP only while a player-controlled kick is active.
 export function runKickClock(state, io, dt) {
   const st = state.specialTeams
-  if (!st || !st.playerControlled || st.phase !== ST_PHASE.SETUP) return
+  if (!st) return
+
+  // [28] An in-field punt is awaiting the receiving team's Return / Fair Catch / Let It Bounce
+  // choice. Tick the decision timer; auto-pick the default when it expires.
+  if (st.returnPending) {
+    st.returnTimer = Math.max(0, st.returnTimer - dt)
+    if (st.returnTimer <= 0) resolvePuntReturn(state, io, puntReturnDefault())
+    return
+  }
+
+  if (!st.playerControlled || st.phase !== ST_PHASE.SETUP) return
 
   if (!st.started) {
     // [8] Idle: full power, waiting. Auto-start the kick timer after the inactivity window.

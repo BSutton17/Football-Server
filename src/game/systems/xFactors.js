@@ -461,6 +461,15 @@ export function onSnapXFactors(state) {
   }
 }
 
+// [294] Ids of every player whose X-Factor is currently ACTIVE. Sent in game_state so the client can
+// draw the gold star BEFORE the snap as well — the per-tick position updates only carry xfActive
+// during live play, so a placed pre-snap player would otherwise miss it.
+export function activeXFactorIds(state) {
+  const ids = []
+  if (state.xFactors) for (const [id, r] of state.xFactors) if (r.active) ids.push(id)
+  return ids
+}
+
 // Copy active state from records onto the live entities so the star — and any passive stat buff —
 // follows a player across plays (play entities are rebuilt each snap).
 export function applyXFactorFlags(state) {

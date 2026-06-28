@@ -2,6 +2,7 @@ import { describe, it, expect, jest, afterEach } from '@jest/globals'
 import { enqueue, processQueue, EVENT } from '../game/eventQueue.js'
 import { initGame, getGame, deleteGame } from '../game/gameState.js'
 import { createRoom, joinRoom } from '../game/roomManager.js'
+import { runPlayClock } from '../game/systems/playClock.js'
 import { PHASE } from '../game/stateMachine.js'
 import { RULES } from '../constants.js'
 
@@ -105,5 +106,23 @@ describe('play-clock reset for the next snap', () => {
     })
     expect(state.playClock).toBe(RULES.PLAY_CLOCK_NEW_DRIVE)   // 40
     deleteGame(roomId)
+  })
+})
+
+describe('[delay of game] play-clock expiry', () => {
+  it('applies a 5-yard penalty, replays the SAME down, and resets the play clock to 25', () => {
+    const roomId = 'pc-dog'; room(roomId)
+    const state = {
+      roomId, phase: PHASE.PRE_SNAP, direction: 1, yardLine: 30, down: 1, distance: 10,
+      possession: 0, score: [0, 0], clock: 300, quarter: 1, ballX: 26,
+      playClock: 0.04, playClockRunning: true, newDrive: true,
+    }
+    runPlayClock(state, mockIo(), 0.05)   // play clock hits 0 → delay of game
+    expect(state.yardLine).toBe(25)        // [1st & 10 → 1st & 15] LOS back 5
+    expect(state.distance).toBe(15)        // distance +5
+    expect(state.down).toBe(1)             // same down replayed
+    expect(state.playClock).toBe(RULES.PLAY_CLOCK_SECONDS)   // reset to 25
+    expect(state.playClockRunning).toBe(true)
+    expect(state.newDrive).toBe(false)     // no longer the fresh-drive window
   })
 })

@@ -36,6 +36,16 @@ const BEATEN_BOOST     = 0.9   // how strongly a fully-trailing (beaten) defende
 const LANE_HALF_WIDTH   = 2.5   // yards either side of the receiver's heading that counts as "the lane"
 const LANE_AHEAD_MIN    = 0.3   // dot-with-heading threshold for a defender to count as "in front"
 
+// A defender IN FRONT means different things by route ([coverage feedback]):
+//   • a route that breaks BACK toward the ball (comeback / curl) works UNDERNEATH that defender —
+//     the window opens up, the WR isn't running into them.
+//   • a go / deep route runs straight INTO that defender, who then has position on the deep ball —
+//     so it's HEAVILY contested, not merely contested.
+const BREAK_BACK_ROUTES = new Set(['comeback', 'curl', 'return'])
+const DEEP_GO_ROUTES    = new Set(['go', 'seam', 'post', 'corner', 'wheel', 'deep_cross', 'fade'])
+const BREAK_BACK_BOOST  = 0.6   // how strongly a defender-in-front opens a comeback/curl window
+const GO_FRONT_PENALTY  = 0.45  // extra cut to a go/deep window when a defender sits in the deep lane
+
 function clamp01(v) {
   return Math.max(0, Math.min(1, v))
 }
@@ -143,11 +153,17 @@ export function opennessBreakdown(receiver, defenders, qb = null) {
   const beaten = Math.max(0, -ahead)   // 0 (defender even/ahead) … 1 (defender directly behind)
   if (beaten > 0) openness = clamp01(openness + beaten * BEATEN_BOOST * (1 - openness))
 
-  // Cap by the defender in the lane ahead: beating the trailing man can't open a window that a
-  // second defender is sitting in front of (e.g. a hook-zone LB the receiver is running toward).
+  // A defender in the lane ahead — read by route. On a comeback/curl the receiver breaks BACK
+  // underneath them (the window opens); on a go/deep route the receiver runs INTO them and the deep
+  // ball is heavily contested; otherwise the window is simply capped by the separation to them.
   if (frontDist < Infinity) {
-    const frontOpen = clamp01((frontDist - SMOTHERED_DIST) / (WIDE_OPEN_DIST - SMOTHERED_DIST))
-    openness = Math.min(openness, frontOpen)
+    if (BREAK_BACK_ROUTES.has(receiver.route)) {
+      openness = clamp01(openness + BREAK_BACK_BOOST * (1 - openness))
+    } else {
+      let frontOpen = clamp01((frontDist - SMOTHERED_DIST) / (WIDE_OPEN_DIST - SMOTHERED_DIST))
+      if (DEEP_GO_ROUTES.has(receiver.route)) frontOpen *= GO_FRONT_PENALTY   // heavily contested
+      openness = Math.min(openness, frontOpen)
+    }
   }
 
   return {

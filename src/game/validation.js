@@ -139,6 +139,8 @@ export function validateSetOffense(socket, payload) {
 
   // [Special Teams][2] Normal play is paused until the 4th-down decision (Go For It) is made.
   if (state.decisionPending) return 'Make your 4th-down decision first'
+  // [Special Teams][51] …and until the post-touchdown extra-point / 2-pt choice is made.
+  if (state.conversionPending) return 'Choose your extra-point try first'
 
   const { playType, runAngle, players } = payload ?? {}
   if (playType !== 'run' && playType !== 'pass') return 'playType must be "run" or "pass"'

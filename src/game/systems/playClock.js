@@ -1,3 +1,5 @@
+import { applyDelayOfGame } from '../eventQueue.js'
+
 // Runs every tick during PRE_SNAP phase.
 // Counts down the 25-second play clock and emits play_clock_update once per
 // whole second. Paused when playClockRunning is false (offense pressed Set).
@@ -13,8 +15,7 @@ export function runPlayClock(state, io, dt) {
   }
 
   if (state.playClock <= 0) {
-    // Delay of game — offense failed to snap in time.
-    // TODO: apply 5-yard penalty and reset play.
-    io.to(state.roomId).emit('play_clock_expired')
+    // [delay of game] Offense failed to snap in time → 5-yard penalty, replay the down, reset to 25.
+    applyDelayOfGame(state, io)
   }
 }

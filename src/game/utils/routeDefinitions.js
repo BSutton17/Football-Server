@@ -19,7 +19,7 @@ export const ROUTE_DEF = {
   return:     [[0, 1], [6, 3], [-4, 3]],
   cross:      [[0, 8], [-10, 8]],
   go:         [[ 0, 30]],
-  seam:       [[ 2, 22]],
+  seam:       [[ -2, 22]],
   angle:      [[ 5,  5]],
   delay:      [[ 0,  8]],
   swing:      [[8, 1], [8, 4]],
@@ -33,7 +33,7 @@ export const ROUTE_DEF = {
   zig:        [[0, 1], [-4, 3], [6, 3]],   // stem up, break outside
   curl:       [[0, 7], [-1, 5]],   // run straight, settle (stop)
   out:        [[0, 10], [6, 10]],   // stem up, break flat to the sideline
-  comeback:   [[ 2,12], [ 4, 10]],   // go deep outside, come back (stop)
+  comeback:   [[ 0,12], [ 4, 10]],   // go deep outside, come back (stop)
   dig:        [[ 0,10], [-9,10]],   // stem up, cut flat across the field
   post:       [[0, 10], [-9, 20]],   // run upfield, break to post angle
   corner:     [[0, 10], [8, 20]],   // run upfield, break to corner

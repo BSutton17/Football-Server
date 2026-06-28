@@ -2,7 +2,8 @@ import { getScoreFor } from './gameState.js'
 import { FIELD } from '../constants.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { findBallCarrier } from './systems/movement.js'
-import { serializeSpecialTeams, serializeDecision } from './specialTeams.js'
+import { serializeSpecialTeams, serializeDecision, serializeConversion } from './specialTeams.js'
+import { activeXFactorIds } from './systems/xFactors.js'
 
 const RECEIVER_LABELS = new Set(['WR', 'TE', 'RB'])
 
@@ -43,7 +44,10 @@ export function serializeGameState(state, viewerSlot) {
     score:    getScoreFor(state, viewerSlot),
     role:     state.possession === viewerSlot ? 'offense' : 'defense',
     specialTeams: serializeSpecialTeams(state, viewerSlot),   // [Special Teams][1] null on a normal scrimmage play
-    decision: serializeDecision(state, viewerSlot),          // [Special Teams][2][3] 4th-down menu (offense only)
+    // [Special Teams][2][3] 4th-down menu, or [51] the post-TD extra-point / 2-pt menu — both render
+    // through the same client menu (scoring/offense team only).
+    decision: serializeDecision(state, viewerSlot) ?? serializeConversion(state, viewerSlot),
+    xfActiveIds: activeXFactorIds(state),   // [294] active-X-Factor players → star shows pre-snap too
     fatigue:  serializeFatigue(state, viewerSlot),   // [fatigue] own-team stamina (drives the bars)
   }
 }

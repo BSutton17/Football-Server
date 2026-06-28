@@ -76,6 +76,25 @@ export const AIM_MAX_DEGREES        = 30
 // [12] Each left/right input nudges the arrow this much (normalized); ~10 presses reach the ±30° cap.
 export const AIM_STEP               = 0.1
 
+// [28] After an in-field punt the receiving team picks one of these. (An air touchback or an out-of-
+// bounds punt is dead on arrival — no menu, see [29].)
+export const PUNT_RETURN = {
+  RETURN:        'return',         // field it and run it back
+  FAIR_CATCH:    'fair_catch',     // secure it at the catch — no roll, no return
+  LET_IT_BOUNCE: 'let_it_bounce',  // don't field it — let it roll (may roll into the end zone)
+}
+export const PUNT_RETURN_OPTIONS = [PUNT_RETURN.RETURN, PUNT_RETURN.FAIR_CATCH, PUNT_RETURN.LET_IT_BOUNCE]
+export const PUNT_RETURN_SECONDS = 5     // [28] decision window before the default is auto-picked
+
+// The auto-pick when the return menu times out: the safe choice — secure the ball at the catch.
+export function puntReturnDefault() {
+  return PUNT_RETURN.FAIR_CATCH
+}
+
+export function isValidPuntReturn(choice) {
+  return PUNT_RETURN_OPTIONS.includes(choice)
+}
+
 export function getKickConfig(kickType) {
   return KICK_CONFIG[kickType] ?? null
 }
@@ -113,6 +132,12 @@ export function beginSpecialTeams(state, kickType, { kickingSlot } = {}) {
     // [21] Punt-specific control: backspin checks the ball up (no roll) to pin the opponent deep,
     // versus a flat punt that rolls forward for distance. Only meaningful for punts.
     backspin:         false,
+    // [28] Receiving team's return decision (in-field punt only). Armed once the punt lands.
+    returnPending:    false,
+    returnTimer:      0,
+    // [46][49] Defensive FG/XP block — one timing attempt by the defending team.
+    blockAttempted:   false,
+    blocked:          false,
     // Outcome, filled at RESOLVED by the kick engine.
     result:           null,
   }
@@ -194,10 +219,59 @@ export function serializeSpecialTeams(state, viewerSlot) {
     // [18] For a FG/XP, the aim that splits the (centered) uprights from the current hash — the
     // client shows this as a target so the player knows which way to angle. 0 for punts/kickoffs.
     targetAngle:      fgTargetAngle(state),
+    // [41] Official field-goal distance (across the field + the 10-yard end zone + the holder's spot).
+    // Shown to BOTH teams during a FG/XP; null for punts/kickoffs.
+    fieldGoalDistance: (st.kickType === KICK.FIELD_GOAL || st.kickType === KICK.EXTRA_POINT)
+      ? fieldGoalDistance(state)
+      : null,
+    // [46][49] Defensive block — true once the defender has committed their one timing attempt (the
+    // client locks the bar on this).
+    blockAttempted:   !!st.blockAttempted,
+    // How far the punt actually travelled, shown to BOTH players once the kick is determined.
+    kickDistance:     (st.kickType === KICK.PUNT && st.result) ? Math.round(st.result.distance) : null,
     // [21] Punt backspin toggle state (the client shows the control only on a punt).
     backspin:         st.kickType === KICK.PUNT ? !!st.backspin : false,
-    result:           st.result,
+    // [27] Once the kick is away, what the receiving team is allowed to see. For a punt that's the
+    // PROJECTED (air) landing + hang time — the final bounce distance is withheld.
+    result:           serializeKickPreview(st),
+    // [28][29] The Return / Fair Catch / Let It Bounce menu — only for the receiving team, only while
+    // an in-field punt awaits a decision. Null otherwise (an end-zone/OOB punt never gets here).
+    returnDecision:   serializeReturnDecision(st, viewerSlot),
   }
+}
+
+// [28] The receiving team's punt-return menu. Returned only to the RECEIVING viewer while a decision
+// is pending; every listed option is legal ([29] — illegal scenarios never arm the menu).
+function serializeReturnDecision(st, viewerSlot) {
+  if (!st.returnPending) return null
+  const receivingSlot = 1 - st.kickingSlot
+  if (viewerSlot !== receivingSlot) return null
+  return {
+    secondsRemaining: Math.max(0, st.returnTimer ?? 0),
+    defaultOption:    puntReturnDefault(),
+    options: [
+      { id: PUNT_RETURN.RETURN,        label: 'Return',        legal: true },
+      { id: PUNT_RETURN.FAIR_CATCH,    label: 'Fair Catch',    legal: true },
+      { id: PUNT_RETURN.LET_IT_BOUNCE, label: 'Let It Bounce', legal: true },
+    ],
+  }
+}
+
+// [27] What's revealed about a kick in flight. A punt shows its projected (air) landing spot and
+// hang time, but NOT the roll / final downed spot. Other kicks just report their result.
+function serializeKickPreview(st) {
+  const r = st.result
+  if (!r) return null
+  if (st.kickType === KICK.PUNT) {
+    return {
+      kickType:        KICK.PUNT,
+      landingYardLine: r.previewLandingYardLine,   // projected AIR landing (receiving frame)
+      hangTime:        r.hangTime,
+      touchback:       r.touchback,
+      outOfBounds:     r.outOfBounds,
+    }
+  }
+  return r
 }
 
 // [18] Normalized aim (−1..1) that centers a field goal from where the ball sits laterally.
@@ -210,6 +284,46 @@ function fgTargetAngle(state) {
 
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v))
+}
+
+// ── Field goal block ([Special Teams][46][47][48][49]) ───────────────────────────
+//
+// On a FG/XP the defense gets a timing bar: a white indicator sweeps back and forth; the defender
+// taps to commit a block at a normalized position 0..1. [48] The bar is split into probability
+// regions, arranged symmetrically around the CENTER (the sweet spot):
+//   green  — 3% of the bar (a tiny center band) → guaranteed block
+//   yellow — 60% (30% either side of green)     → 5% chance
+//   red    — 37% (the outer ~18.5% on each end) → no chance
+// Half-widths from center: green |pos−0.5| ≤ 0.015; green+yellow ≤ 0.315; beyond = red.
+export const FG_BLOCK = {
+  GREEN_HALF:  0.015,   // 3% total band
+  YELLOW_HALF: 0.315,   // green+yellow span (yellow = 0.315−0.015 each side = 0.60 total)
+  GREEN_PROB:  1.0,     // guaranteed
+  YELLOW_PROB: 0.05,    // 5%
+  RED_PROB:    0,       // no chance
+}
+
+export function fgBlockRegion(position) {
+  const d = Math.abs(clamp(position, 0, 1) - 0.5)
+  if (d <= FG_BLOCK.GREEN_HALF)  return 'green'
+  if (d <= FG_BLOCK.YELLOW_HALF) return 'yellow'
+  return 'red'
+}
+
+export function fgBlockProbability(region) {
+  return region === 'green'  ? FG_BLOCK.GREEN_PROB
+       : region === 'yellow' ? FG_BLOCK.YELLOW_PROB
+       :                       FG_BLOCK.RED_PROB
+}
+
+// A defensive block can only be attempted on a player-kicked FG/XP that's still being aimed, once the
+// kicker's timer is running ([46]), and only one attempt per kick.
+export function canAttemptBlock(state, slot) {
+  const st = state.specialTeams
+  if (!st) return false
+  if (st.kickType !== KICK.FIELD_GOAL && st.kickType !== KICK.EXTRA_POINT) return false
+  if (st.phase !== ST_PHASE.SETUP || !st.started || st.blockAttempted) return false
+  return slot === (1 - st.kickingSlot)   // only the defending team
 }
 
 // ── Fourth-down decision ([Special Teams][2][3][4]) ──────────────────────────────
@@ -261,7 +375,7 @@ export function decisionDefault(state) {
 // Straight-line field-goal distance in yards: across the remaining field, the end zone, and the
 // holder's spot behind the line of scrimmage. Used by the kick mechanics (later tickets) and the
 // menu's distance readout.
-const FG_HOLDER_DEPTH = 7
+export const FG_HOLDER_DEPTH = 7
 export function fieldGoalDistance(state) {
   return (100 - state.yardLine) + FIELD.END_ZONE_DEPTH + FG_HOLDER_DEPTH
 }
@@ -289,5 +403,38 @@ export function decisionRequired(state) {
   return state.phase === PHASE.PRE_SNAP
     && state.down === RULES.DOWNS
     && !state.specialTeams
+}
+
+// ── Extra-point / two-point decision ([Special Teams][51]) ───────────────────────
+//
+// After a touchdown (worth 6) the SCORING team picks the try: kick an extra point or go for two.
+// Server-authoritative timer; defaults to the extra point.
+export const CONVERSION = {
+  EXTRA_POINT: 'extra_point',
+  TWO_POINT:   'two_point',
+}
+
+export function conversionDefault() {
+  return CONVERSION.EXTRA_POINT
+}
+
+export function isValidConversion(option) {
+  return option === CONVERSION.EXTRA_POINT || option === CONVERSION.TWO_POINT
+}
+
+// The post-TD menu, shown to the SCORING team (which holds possession during the try). Both options
+// are always legal. Null otherwise.
+export function serializeConversion(state, viewerSlot) {
+  if (!state.conversionPending) return null
+  if (state.possession !== viewerSlot) return null
+  return {
+    context:          'conversion',
+    secondsRemaining: Math.max(0, Math.ceil(state.conversionTimer ?? 0)),
+    defaultOption:    conversionDefault(),
+    options: [
+      { id: CONVERSION.EXTRA_POINT, label: 'Extra Point', legal: true },
+      { id: CONVERSION.TWO_POINT,   label: '2-Pt Try',    legal: true },
+    ],
+  }
 }
 

@@ -114,6 +114,12 @@ export function initGame(roomId, offenseSlot) {
     decisionPending: false,
     decisionTimer:   0,
 
+    // [Special Teams][51] Post-touchdown extra-point / 2-pt menu (scoring team), then the active 2-pt
+    // try. conversionPending pauses pre-snap like the 4th-down menu; twoPointActive flags a 2-pt play.
+    conversionPending: false,
+    conversionTimer:   0,
+    twoPointActive:    null,
+
     // ── Play design (set when offense locks formation) ───────────────────────
     // playDesign: { playType, runAngle, players: [{ id, x, y, label, team, route?, routeDepthScale? }] }
     playDesign: null,

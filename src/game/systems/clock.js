@@ -8,6 +8,10 @@ import { serializeClock } from '../serialization.js'
 // that's at most once per second instead of 20 times per second.
 export function runClock(state, io, dt) {
   if (state.clock <= 0) return   // already expired this play, guard against re-firing
+  // [Special Teams][57] A post-touchdown try (extra point or 2-pt conversion) is untimed — the game
+  // clock is stopped for it and doesn't restart until the ensuing kickoff. (Kick menus / setup never
+  // reach runClock; this covers the 2-pt try, which is a live scrimmage play.)
+  if (state.twoPointActive != null) return
 
   const prevDisplay = Math.ceil(state.clock)
 

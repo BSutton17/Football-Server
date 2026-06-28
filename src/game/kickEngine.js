@@ -59,11 +59,12 @@ export function computeKick(
 //
 // The single outcome for any kick, from the user input, kicker ratings, field position, and kick
 // type. `yardLine` is the spot (offense-relative); `requiredDistance` is the FG/XP distance to clear.
-// [21] How far a flat (no-backspin) punt rolls forward after it lands.
-const PUNT_ROLL_YARDS = 6
-// [22] Backspin pulls the downed spot BACK by a random amount in this range after it lands.
-const PUNT_BACKSPIN_MIN = 1
-const PUNT_BACKSPIN_MAX = 5
+// [33] A bounced (Let It Bounce) punt rolls forward this many yards toward the receiving goal.
+export const PUNT_BOUNCE_MIN_YARDS = 3
+export const PUNT_BOUNCE_MAX_YARDS = 10
+// [34] Backspin pulls the downed spot BACK by a random amount in this range after the bounce.
+export const PUNT_BACKSPIN_MIN = 3
+export const PUNT_BACKSPIN_MAX = 8
 // [23] A full deflection (|finalAngle| = 1) launches the punt at this angle off straight; the punt's
 // total distance then splits into a downfield (cos) and lateral (sin) component.
 const PUNT_MAX_ANGLE_RAD = (30 * Math.PI) / 180
@@ -99,48 +100,75 @@ export function calculateKickResult(
       if (t >= 0) tSide = t
     }
 
-    let outOfBounds = false
-    let touchback   = false
-    let roll        = 0
-    let landSpot    = yardLine + downfield   // initial (air) landing point, before any roll
-    let landX       = originX + lateral
-    let carry       = downfield
+    let outOfBounds  = false
+    let airTouchback = false
+    let landSpot     = yardLine + downfield   // where the ball first comes down (the AIR landing)
+    let landX        = originX + lateral
+    let carry        = downfield
 
     if (tGoal <= 1 && tGoal <= tSide) {
       // [25] The ball comes down in the end zone IN THE AIR → immediate touchback, no roll/return.
-      touchback = true
-      carry     = 100 - yardLine
-      landX     = originX + lateral * tGoal
+      airTouchback = true
+      carry        = 100 - yardLine
+      landSpot     = yardLine + carry
+      landX        = originX + lateral * tGoal
     } else if (tSide <= 1 && tSide < tGoal) {
       // [24] It crosses a sideline first → out of bounds, downed at the crossing (no roll/return).
+      // [36] This IS the coffin corner: aiming toward the sideline near the opponent's territory makes
+      // the ball cross OOB (downed at the crossing) BEFORE it can reach the end zone for a touchback —
+      // pinning the opponent deep. It's not a separate mechanic: a skilled punter angles the kick and
+      // their Accuracy (small angular error) lands it where aimed; a wild leg sprays off the corner.
       outOfBounds = true
       carry       = downfield * tSide
       landSpot    = yardLine + carry
       landX       = lateral > 0 ? fieldWidth : 0
-    } else {
-      // Lands in the field → roll applies; a roll INTO the end zone is a (bounce) touchback.
-      // [21][22] Flat rolls FORWARD; backspin pulls BACK 1–5 yards.
-      roll     = backspin ? -(PUNT_BACKSPIN_MIN + rng() * (PUNT_BACKSPIN_MAX - PUNT_BACKSPIN_MIN)) : PUNT_ROLL_YARDS
-      landSpot = yardLine + downfield + roll
-      if (landSpot >= 100) touchback = true
     }
+    // Otherwise it lands in the field of play — the AIR landing above stands. The roll/bounce and any
+    // backspin are NOT applied here: they're resolved when the receiving team chooses Let It Bounce
+    // ([33][34]). At kick time only the air touchback and out-of-bounds are decided.
 
-    result.backspin    = !!backspin
-    result.rollYards   = roll                               // + forward (flat), − backward (backspin); 0 on TB/OOB
-    result.outOfBounds = outOfBounds                        // [24] no return possible
-    result.touchback   = touchback                          // [25] no return possible (air or bounce)
+    result.backspin     = !!backspin                        // [21] kicker's setup choice, used at [34]
+    result.outOfBounds  = outOfBounds                       // [24] no return possible
+    result.airTouchback = airTouchback                      // [29] came down IN the end zone — no menu
+    result.touchback    = airTouchback                      // a bounce touchback is decided later ([33])
     result.downfieldDistance = carry
-    result.landingYardLine = touchback
+    result.landingYardLine = airTouchback
       ? 20                                                  // touchback → receiving team's own 20
-      : Math.max(1, Math.min(99, 100 - landSpot))           // receiving team's frame
+      : Math.max(1, Math.min(99, 100 - landSpot))           // air landing, receiving frame
     if (ballX != null) result.landingX = landX              // [23] absolute lateral landing
+    // [27] Projected (AIR) landing in the receiving frame — where the ball first comes down, BEFORE
+    // any roll. Shown to the receiving team as a preview; the final bounce distance is NOT revealed.
+    result.previewLandingYardLine = Math.max(0, Math.min(100, 100 - (yardLine + carry)))
   } else {
-    // [18] Field goal / extra point: the goalposts are centered, so a kick from a hash has to be
-    // pushed back toward midfield to split them — a left-hash kick angles in from the left, and vice
-    // versa. lateralOffset is how far center sits from the ball.
+    // [18][42] Field goal / extra point — the COMPLETE trajectory. Every input feeds the result:
+    //   power + kicker Power → distance (the leg);  user aim + kicker Accuracy → pushYards (the
+    //   sideways drift);  field position → requiredDistance (via fieldGoalDistance).
+    // [18] The goalposts are centered, so a kick from a hash must angle back toward midfield to split
+    // them. lateralOffset = how far center sits from the ball — the drift the kick has to "cover".
     const lateralOffset = (uprightsX != null && ballX != null) ? uprightsX - ballX : 0
     result.lateralOffset = lateralOffset
-    result.good = isKickGood({ distance, pushYards }, requiredDistance, lateralOffset)
+
+    // Two independent components of "good":
+    //   hasDistance   — the leg cleared the crossbar (distance ≥ the required distance).
+    //   lateralAtGoal — where the ball crosses the uprights plane relative to their CENTER: the
+    //                   realized push minus the offset it had to cover. 0 = dead center, ± = right/left.
+    const hasDistance    = distance >= requiredDistance
+    const lateralAtGoal  = pushYards - lateralOffset
+    const splitsUprights = Math.abs(lateralAtGoal) <= UPRIGHT_HALF_WIDTH
+
+    result.hasDistance    = hasDistance
+    result.lateralAtGoal  = lateralAtGoal
+    result.splitsUprights = splitsUprights
+    result.good           = hasDistance && splitsUprights   // ≡ isKickGood(...)
+    // Why it missed — drives the play readout and the flight render. Short is reported first (a short
+    // kick that's also off-line is fundamentally short).
+    result.missReason = result.good ? null
+      : !hasDistance      ? 'short'
+      : lateralAtGoal < 0 ? 'wide_left'
+      :                     'wide_right'
+    // Absolute X where the ball crosses the uprights plane (for rendering the flight), when we know
+    // the field geometry. = uprightsX + lateralAtGoal.
+    if (ballX != null) result.goalCrossX = ballX + pushYards
   }
   return result
 }
@@ -151,6 +179,66 @@ function computeHangTime(power, distance) {
   const distNorm = clamp01(distance / CEIL_MAX)
   const blend    = 0.6 * distNorm + 0.4 * clamp01(power)   // distance-led, power-boosted
   return HANG_MIN + blend * (HANG_MAX - HANG_MIN)
+}
+
+// [31][32] A punt return from the catch spot. Yards are shaped by the returner's ability (more =
+// farther), the hang time (a high, floaty punt lets the coverage close → fewer yards), and the
+// punter's leg (a big boot can outkick its coverage for a touch more room), plus randomness. Most
+// returns fall between 0 and PUNT_RETURN_MAX_YARDS. [32] A rare (~1%) breakaway is flagged as a
+// touchdown, with the returner's ability and a low hang nudging that small chance.
+export const PUNT_RETURN_MAX_YARDS = 20
+export const PUNT_RETURN_TD_BASE   = 0.01
+
+export function computePuntReturn(
+  { hangTime = 2.5, returnerRating = DEFAULT_KICK_ACCURACY, punterPower = DEFAULT_KICK_POWER } = {},
+  rng = Math.random,
+) {
+  const ret  = clamp01(returnerRating / 99)
+  const hang = clamp01((hangTime - HANG_MIN) / (HANG_MAX - HANG_MIN))   // 0 (line drive) … 1 (booming)
+  const leg  = clamp01(punterPower / 99)
+
+  const mean  = 6 + ret * 9 - hang * 7 + leg * 2     // expected yards before noise
+  const noise = (rng() * 2 - 1) * 6                  // ±6 variability
+  const yards = Math.max(0, Math.min(PUNT_RETURN_MAX_YARDS, Math.round(mean + noise)))
+
+  // [32] ~1% house chance, lifted by ability and a low (line-drive) hang, kept small.
+  const tdChance  = PUNT_RETURN_TD_BASE * (0.5 + ret) * (1.4 - hang)
+  const touchdown = rng() < tdChance
+
+  return { yards, touchdown, tdChance }
+}
+
+// [33][34][35] How far a Let-It-Bounce punt rolls forward (toward the receiving goal) after it lands.
+// Two independent effects combine into one net displacement:
+//   [33] forwardRoll  — the live ball rolls 3–10 yards forward (toward the receiving goal).
+//   [34] backspinPull — if the punt had backspin, it then checks the ball back 3–8 yards.
+// [35] The final spot reflects BOTH: net = forwardRoll − backspinPull. The two are drawn separately
+// (independent under Math.random), so a big roll can outrun a small bite of backspin, or a strong
+// backspin can overcome a short roll and leave the ball BEHIND the landing (net < 0). Backspin can
+// only ever subtract — it never adds forward distance.
+export function computePuntBounce({ backspin = false } = {}, rng = Math.random) {
+  const forwardRoll  = PUNT_BOUNCE_MIN_YARDS + rng() * (PUNT_BOUNCE_MAX_YARDS - PUNT_BOUNCE_MIN_YARDS)
+  const backspinPull = backspin ? PUNT_BACKSPIN_MIN + rng() * (PUNT_BACKSPIN_MAX - PUNT_BACKSPIN_MIN) : 0
+  return forwardRoll - backspinPull                  // net forward roll, in yards toward the receiving goal
+}
+
+// [37] A rolling punt that comes to rest at or inside this line (the receiving team's own N) without
+// backspin is treated as having carried into the end zone → touchback. Backspin keeps it out, so a
+// backspin punt can legitimately be downed this deep.
+export const PUNT_BOUNCE_TOUCHBACK_LINE = 8
+
+// [33][34][35][37] Resolve where a Let-It-Bounce punt comes to rest, in the RECEIVING frame (0 = their
+// goal line, 100 = the opponent's). The ball rolls from `airLanding` by the net bounce ([33][34][35]).
+//   • rolls past the goal line (≤ 0)                          → touchback (own 20)
+//   • [37] stops inside PUNT_BOUNCE_TOUCHBACK_LINE, no backspin → touchback (a no-backspin roll that
+//     close would realistically trickle into the end zone)
+//   • otherwise (incl. backspin keeping it out of the EZ)      → downed where it stops
+// Returns { touchback, yardLine }.
+export function resolvePuntBounce({ airLanding = 50, backspin = false } = {}, rng = Math.random) {
+  const rest = airLanding - computePuntBounce({ backspin }, rng)
+  if (rest <= 0) return { touchback: true, yardLine: 20 }
+  if (!backspin && rest < PUNT_BOUNCE_TOUCHBACK_LINE) return { touchback: true, yardLine: 20 }
+  return { touchback: false, yardLine: Math.max(1, Math.min(99, Math.round(rest))) }
 }
 
 // Field goal / extra point: good with the distance AND when the ball splits the uprights — i.e. the

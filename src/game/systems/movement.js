@@ -236,9 +236,9 @@ function assignRunBlockers(state, losY, dir) {
   }
 
   // 2. EVERYONE BLOCKED FIRST: give every still-uncovered front defender the nearest free blocker,
-  //    most dangerous (interior, nearest the center) first. With blockers ≥ front this leaves no
-  //    defender unaccounted for before anyone helps or climbs.
-  const center    = FIELD.WIDTH / 2
+  //    most dangerous (interior, nearest the formation center = the ball's hash) first. With blockers
+  //    ≥ front this leaves no defender unaccounted for before anyone helps or climbs.
+  const center    = state.ballX ?? FIELD.WIDTH / 2
   const uncovered = front
     .filter(d => !coveredDef.has(d.id))
     .sort((a, b) => Math.abs(a.x - center) - Math.abs(b.x - center))
@@ -319,7 +319,10 @@ function findNearbyFrontDefender(blocker, state, losY, dir) {
 // everything on it — rather than aiming at a single hole point.
 function runLine(state, losY, dir) {
   const angle = ((state.playDesign?.runAngle ?? 0) * Math.PI) / 180
-  return { ox: FIELD.WIDTH / 2, oy: losY, dx: Math.sin(angle), dy: Math.cos(angle) * dir }
+  // The line runs from the FORMATION's center — i.e. the hash the ball is spotted on (state.ballX),
+  // not the field middle — so blockers clear the lane on the ball's side and the back doesn't get
+  // pulled toward the middle when the ball is on a hash (e.g. after a turnover / interception).
+  return { ox: state.ballX ?? FIELD.WIDTH / 2, oy: losY, dx: Math.sin(angle), dy: Math.cos(angle) * dir }
 }
 
 // Drive target: shove the defender perpendicular-AWAY from the run line (to whichever side it's
@@ -671,7 +674,8 @@ function moveOffense(state, dt) {
       steer(p, target.x, target.y, topSpd * 0.85, dt, accel)
 
     } else if (p.route) {
-      const rt = getRouteTarget(p, losY, dir, dt)
+      // Mirror routes around the BALL'S lateral spot (hash), not the field middle ([route flip]).
+      const rt = getRouteTarget(p, losY, dir, dt, state.ballX ?? FIELD.WIDTH / 2)
       if (rt) steer(p, rt.x, rt.y, topSpd, dt, accel)
 
     } else {

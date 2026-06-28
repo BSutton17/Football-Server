@@ -61,7 +61,7 @@ describe('Shake It Off', () => {
 
     recordScramble(state, qb, 9, noIo)
     expect(qb.xFactorActive).toBeFalsy()
-
+ 
     recordScramble(state, qb, 10, noIo)
     expect(qb.xFactorActive).toBe(true)
   })

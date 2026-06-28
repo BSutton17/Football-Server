@@ -58,14 +58,14 @@ describe('turnover on downs ([199]/[200])', () => {
 })
 
 describe('touchdowns ([194]/[195])', () => {
-  it('crossing the goal line scores 7 and gives the ball to the other team', () => {
+  it('[51] crossing the goal line scores 6 and arms the extra-point try', () => {
     const s = liveState('gr-td', { yardLine: 98, ballCarrierId: 'rb1',
       offensePlayers: makeMap([{ id: 'rb1', label: 'RB', x: 26, y: 111 }]) })
     enqueue('gr-td', EVENT.TOUCHDOWN, { scoringSlot: 0, x: 26, y: 111 })
     processQueue('gr-td', s, noIo)
-    expect(s.score[0]).toBe(7)
-    expect(s.possession).toBe(1)
-    expect(s.yardLine).toBe(30)   // [Special Teams][5] receiving team's own 30 after the kickoff
+    expect(s.score[0]).toBe(6)
+    expect(s.possession).toBe(0)            // scorer keeps the ball for the try
+    expect(s.conversionPending).toBe(true)
   })
 })
 
