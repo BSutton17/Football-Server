@@ -474,14 +474,20 @@ function getBlockerTarget(blocker, state, losY, dir) {
 
   if (!rusher) {
     const claimed = claimedRushers(blocker, state, losY)
+    // A blitzing defender is the back/TE's first responsibility — the line accounts for the DL, so a
+    // free blitzer is the man the protection didn't otherwise have. Pick the nearest unclaimed blitzer
+    // to the QB; only when none is free does the back fall back to the nearest unclaimed DL rusher.
+    let bestBlitz = null, bestBlitzDist = PROTECTION_SCAN_RADIUS
     let best = null, bestDist = PROTECTION_SCAN_RADIUS
     for (const d of state.defensePlayers.values()) {
       if (!isRusher(state, d) || claimed.has(d.id)) continue
       const dist = Math.hypot(d.x - qb.x, d.y - qb.y)
-      if (dist < bestDist) { bestDist = dist; best = d }
+      if (state.defenseCoverage.get(d.id)?.type === 'blitz') {
+        if (dist < bestBlitzDist) { bestBlitzDist = dist; bestBlitz = d }
+      } else if (dist < bestDist) { bestDist = dist; best = d }
     }
-    rusher = best
-    blocker.blockTargetId = best?.id ?? null
+    rusher = bestBlitz ?? best
+    blocker.blockTargetId = rusher?.id ?? null
   }
 
   if (!rusher) return holdTarget   // no free rusher — hold in front of the QB

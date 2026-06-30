@@ -351,6 +351,21 @@ describe('blitz pickup — kept-in back', () => {
     expect(rb.vx).toBeGreaterThan(0)
   })
 
+  it('prioritizes a free blitzer over a closer unblocked DL', () => {
+    const qb = { id: 'qb', label: 'QB', x: 26, y: 29, vx: 0, vy: 0 }
+    const rb = { id: 'rb', label: 'RB', x: 26, y: 31, vx: 0, vy: 0, route: 'block' }
+    const dl_ = dl('dl', 24, 36)                                    // unblocked DL auto-rush (left)
+    const lb  = { id: 'lb', label: 'LB', x: 33, y: 36, vx: 0, vy: 0 } // free blitzer (right), farther from QB
+    const state = makeState({ offense: [qb, rb], defense: [dl_, lb], playType: 'pass', yardLine: 25 })
+    state.defenseCoverage.set('lb', { type: 'blitz' })
+
+    runMovement(state, null, DT)
+
+    // The back commits to the blitzer on the RIGHT even though the DL on the left is nearer the QB.
+    expect(rb.blockTargetId).toBe('lb')
+    expect(rb.vx).toBeGreaterThan(0)
+  })
+
   it('holds in front of the QB when every rusher is already blocked', () => {
     const qb = { id: 'qb', label: 'QB', x: 26, y: 29, vx: 0, vy: 0 }
     const lg = ol('lg', 24, 35)
