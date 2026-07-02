@@ -10,10 +10,12 @@ import {
   validateThrowAtDefender,
   validateScramble,
   validateThrowaway,
+  validateCallTimeout,
 } from '../game/validation.js'
 import { getGame, initGame, commitThrowTarget, resolveThrowTarget } from '../game/gameState.js'
 import { transition, PHASE } from '../game/stateMachine.js'
-import { FIELD } from '../constants.js'
+import { beginStoppage, STOPPAGE } from '../game/pause.js'
+import { FIELD, RULES } from '../constants.js'
 import { initLivePhase } from '../game/systems/init.js'
 import { enqueue, EVENT, resolveDecision, resolveConversion, resolvePuntReturn, resolveFieldGoalBlock, broadcastSpecialTeams } from '../game/eventQueue.js'
 import { startGameLoop } from '../game/simulation.js'
@@ -113,6 +115,9 @@ export function registerGameHandlers(io, socket) {
     }
 
     state.playClockRunning = false
+    // [70] Pausing on Set: freeze the GAME clock too (not just the play clock) so no time bleeds off
+    // during the defensive-adjustment countdown. It resumes on the snap (see snap_ball).
+    state.clockStopped = true
     transition(state, PHASE.COUNTDOWN)
     io.to(socket.data.roomId).emit('offense_set', { playClockRemaining: Math.ceil(state.playClock) })
     console.log(`[game] ${socket.data.roomId} offense locked → countdown [${payload.playType}]`)
@@ -130,6 +135,40 @@ export function registerGameHandlers(io, socket) {
     })
   })
 
+  // ── Timeout ([69][70]) ─────────────────────────────────────────────────────
+
+  socket.on('call_timeout', () => {
+    const err = validateCallTimeout(socket)
+    if (err) return reject(socket, 'call_timeout', err)
+
+    const roomId = socket.data.roomId
+    const state  = getGame(roomId)
+    const room   = getRoom(roomId)
+    const slot   = room ? room.players.indexOf(socket.id) : -1
+    if (slot < 0) return reject(socket, 'call_timeout', 'You are not seated in this game')
+    if ((state.timeouts?.[slot] ?? 0) <= 0) return reject(socket, 'call_timeout', 'No timeouts remaining')
+
+    // Spend the timeout and stop the game clock (its strategic value). Re-arm a fresh play clock so
+    // whoever snaps next isn't rushed by the pre-timeout count, then freeze play via the stoppage
+    // framework for TIMEOUT_SECONDS — the sim tick auto-resumes and emits timeout_ended.
+    state.timeouts[slot]  -= 1
+    state.clockStopped     = true
+    state.playClock        = state.newDrive ? RULES.PLAY_CLOCK_NEW_DRIVE : RULES.PLAY_CLOCK_SECONDS
+    state.playClockRunning = true
+    beginStoppage(state, STOPPAGE.TIMEOUT, RULES.TIMEOUT_SECONDS)
+
+    // Notify each client viewer-relatively: who called it + the updated counts, so both stay synced.
+    room?.players.forEach((socketId, s) => {
+      if (!socketId) return
+      io.to(socketId).emit('timeout_started', {
+        byYou:    s === slot,
+        seconds:  RULES.TIMEOUT_SECONDS,
+        timeouts: { own: state.timeouts[s], opp: state.timeouts[1 - s] },
+      })
+    })
+    console.log(`[game] ${roomId} timeout by slot ${slot} — ${state.timeouts[slot]} left; clock stopped`)
+  })
+
   // ── Snap ─────────────────────────────────────────────────────────────────
 
   socket.on('snap_ball', () => {
@@ -140,6 +179,7 @@ export function registerGameHandlers(io, socket) {
     const state  = getGame(roomId)
 
     state.newDrive = false   // [first play] the drive's opening snap is away — back to the 5 s window next time
+    state.clockStopped = false   // [70] the snap restarts the game clock (paused since the offense set)
     initLivePhase(state)
     transition(state, PHASE.LIVE)
     io.to(roomId).emit('ball_snapped')

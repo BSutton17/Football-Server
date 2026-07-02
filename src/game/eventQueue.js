@@ -10,8 +10,9 @@ import {
 import { calculateKickResult, computePuntReturn, resolvePuntBounce, DEFAULT_KICK_POWER, DEFAULT_KICK_ACCURACY } from './kickEngine.js'
 import { getSpecialist } from '../data/specialists.js'
 import { getRoom } from './roomManager.js'
-import { serializeClock, serializeScore, serializeGameState, serializeGameOver, serializePlayResult } from './serialization.js'
-import { recoverStamina } from './systems/stamina.js'
+import { serializeClock, serializeScore, serializeGameState, serializeGameOver, serializePlayResult, isReceiverReady } from './serialization.js'
+import { recoverStamina, applyTackleStamina } from './systems/stamina.js'
+import { CATCH_MOMENTUM_TIME } from './systems/movement.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { resolvePass, opennessTier } from './utils/passOutcome.js'
 import {
@@ -26,9 +27,12 @@ import { getRatings, ratingOf } from '../data/ratings.js'
 // How long to pause (ms) before the next play begins.
 // Quarter transitions get a slightly longer pause so players can see the scoreboard.
 const BETWEEN_PLAYS_MS    = 2000
-const BETWEEN_QUARTERS_MS = 3000
-const HALFTIME_MS         = 4000   // [218] a slightly longer pause between Q2 and Q3
 const HALFTIME_YARD_LINE  = 30     // second-half kickoff: receiving offense starts on its own 30
+// [transition screens] Full-screen "End of Quarter" / "Halftime" interstitial shown to both players
+// when a period ends (event-queue driven, in advanceQuarter). The next play lines up after this, so
+// the client overlay and the server's next-play delay stay in step.
+const TRANSITION_SECONDS  = 5
+const TRANSITION_MS       = TRANSITION_SECONDS * 1000
 
 // ── Event types ───────────────────────────────────────────────────────────────
 //
@@ -132,6 +136,13 @@ function onSnap(_payload, _state, _io) {
   // Transition phase to LIVE, set ballCarrierId to QB.
 }
 
+// [68] Catch chance for a pass thrown BEFORE the receiver is "ready" (its route light hasn't turned
+// on yet). It's almost always a drop; only elite hands occasionally reel it in. Scales linearly with
+// the catching rating: 50 → 1%, 70 → ~5%, 99 → 10%. Floored at 0 for very poor hands.
+export function earlyThrowCatchChance(catching) {
+  return Math.max(0, 1 + (catching - 50) * (9 / 49))
+}
+
 // payload: { receiverId, x, y } — the catch location snapshotted at release ([167])
 function onThrow({ receiverId, x, y }, state, io) {
   state.activeThrow   = { receiverId, x, y }
@@ -146,6 +157,19 @@ function onThrow({ receiverId, x, y }, state, io) {
   // ([176]); an interception is only possible on a tight (red) window ([178]).
   const receiver = state.offensePlayers.get(receiverId)
   if (!receiver) { enqueue(state.roomId, EVENT.PASS_INCOMPLETE, {}); return }
+
+  // [68] Thrown too early: the receiver hasn't declared its route yet (client light still off), so
+  // it isn't a real target. Almost always a drop — only a small hands-scaled chance to hang on.
+  // No defender break-up / interception here; the receiver simply isn't in position.
+  if (!isReceiverReady(receiver)) {
+    const caught = Math.random() * 100 < earlyThrowCatchChance(ratingOf(receiver, 'catching'))
+    if (caught) {
+      enqueue(state.roomId, EVENT.PASS_COMPLETE, { receiverId, x: receiver.x, y: receiver.y })
+    } else {
+      enqueue(state.roomId, EVENT.PASS_INCOMPLETE, { reason: 'drop' })
+    }
+    return
+  }
 
   const defenders = [...state.defensePlayers.values()]
   let qb = null
@@ -215,6 +239,15 @@ function onPassComplete({ receiverId, x, y }, state, _io) {
   state.ballCarrierId    = receiverId
   state.targetReceiverId = null
   state.activeThrow      = null
+
+  // [post-catch] Give the fresh ball carrier a brief momentum window so it keeps its route heading
+  // (across the field on a dig / out, back on a curl) before the vision model turns it upfield —
+  // no instant snap north the moment it secures the ball. See moveBallCarrier in movement.js.
+  const catcher = state.offensePlayers.get(receiverId)
+  if (catcher) {
+    catcher.catchMomentum = CATCH_MOMENTUM_TIME
+    catcher.caughtPass    = true   // [73] cap this carrier at its true top speed (no run breakaway gear)
+  }
 
   // [294] Mark that this play featured a completed pass — onTouchdown reads this to credit a
   // PASSING touchdown (vs a QB scramble TD) toward the QB's X-Factor progress.
@@ -315,6 +348,10 @@ function onTackle({ carrierId, x, y, interceptionReturn }, state, io) {
   if (interceptionReturn) { settleInterception(state, io, x, y); return }
 
   state.prevPlayIncompletePass = false   // [294] this play wasn't an incomplete pass
+
+  // [fatigue effort] Contact tires both players: the carrier absorbing the hit and the nearest
+  // defender making the tackle. Charged now, while the play's offense/defense maps are still populated.
+  applyTackleStamina(state, carrierId, x, y)
 
   // Record the exact spot the runner was brought down ([162]) — the authoritative dead-ball
   // location that the next LOS, the first-down measurement, and scoring all derive from.
@@ -961,6 +998,10 @@ function onSack({ qbY, losY, dir, qbX }, state, io) {
   state.prevPlayIncompletePass = false   // [294] a sack isn't an incomplete pass
   if (qbX != null) state.ballX = clampToHash(qbX)   // [hash] spot the ball laterally where the QB was downed
 
+  // [fatigue effort] A sack is a hard hit — tire the QB and the nearest rusher (the sacker).
+  const sackedQb = findOffenseQB(state)
+  applyTackleStamina(state, sackedQb?.id, qbX ?? sackedQb?.x ?? state.ballX, qbY)
+
   const yardsGained = Math.round((qbY - losY) * dir)
 
   const result = advanceDown(state, yardsGained)
@@ -1004,10 +1045,10 @@ function onClockExpired(_payload, state, io) {
     return
   }
 
-  const enteringHalftime = state.quarter === 2   // Q2 → Q3
   advanceQuarter(state, io)
-  // [218] Halftime gets a slightly longer pause than a normal quarter break.
-  beginNextPlay(state.roomId, io, enteringHalftime ? HALFTIME_MS : BETWEEN_QUARTERS_MS)
+  // [transition screens] Hold on the full-screen End-of-Quarter / Halftime interstitial before the
+  // next play lines up, so both stay in step with the client's 5-second overlay.
+  beginNextPlay(state.roomId, io, TRANSITION_MS)
 }
 
 // [216] Advance to the next quarter, preserving possession, field position, down & distance.
@@ -1026,6 +1067,7 @@ function advanceQuarter(state, io) {
     // opening-defense slot (regardless of who had the ball when the half ended), the ball is spotted
     // on that offense's own 30, and it's a fresh 1st & 10 drive.
     state.pendingStaminaRecovery = Math.max(state.pendingStaminaRecovery, 0.8)
+    state.timeouts = [RULES.TIMEOUTS_PER_HALF, RULES.TIMEOUTS_PER_HALF]   // [70] fresh 3 timeouts each for the second half
     state.possession = 1 - state.openingPossession
     state.direction  = state.possession === 0 ? 1 : -1
     state.yardLine   = HALFTIME_YARD_LINE
@@ -1038,7 +1080,13 @@ function advanceQuarter(state, io) {
   }
 
   io.to(state.roomId).emit('clock_update', serializeClock(state))
-  if (state.quarter === 3) io.to(state.roomId).emit('halftime')   // [218] foundation hook
+
+  // [transition screens] Send BOTH players to a full-screen interstitial (event-queue driven — this
+  // runs whenever a period ends, whether the clock expired between plays or when the play that ran it
+  // to zero finished). Halftime keeps its own field reset above; a normal quarter break preserves the
+  // formation. The client auto-returns after ~5 s (its own timer), by which point the next play is set.
+  const kind = state.quarter === 3 ? 'halftime' : 'quarter'
+  io.to(state.roomId).emit('period_transition', { kind, endedQuarter: prev, seconds: TRANSITION_SECONDS })
 
   console.log(`[game] ${state.roomId} end of Q${prev} → Q${state.quarter} begins`)
 }

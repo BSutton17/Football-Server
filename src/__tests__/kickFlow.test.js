@@ -100,6 +100,7 @@ function firePunt(state, choice = PUNT_RETURN.LET_IT_BOUNCE, rng = () => 0.5) {
 describe('[6][8] kick execution', () => {
   it('a short field goal at full power is good → +3 and kickoff', () => {
     const state = kickState('ex-fg-make', KICK.FIELD_GOAL, { yardLine: 90 }); room('ex-fg-make')
+    state.teams = ['DAL', 'DAL']   // real kicker (Brandon Aubrey, 99 Power) — reaches the FG's [max range]
     beginSpecialTeams(state, KICK.FIELD_GOAL, { kickingSlot: 0 })
     state.specialTeams.angle = 0; state.specialTeams.power = 1   // full power, dead center → made
     fireKick(state)
@@ -367,6 +368,7 @@ describe('[51][52] extra point & two-point conversion outcomes', () => {
       roomId, phase: PHASE.LIVE, direction: 1, yardLine: 98, down: 1, distance: 2,
       possession: 0, score: [0, 0], pendingStaminaRecovery: 0, specialTeams: null,
       interceptionReturn: false, tackleEnqueued: false, ballX: 26,
+      teams: ['DAL', 'DAL'],   // real kicker so the extra point reaches its [max range]
       conversionPending: false, conversionTimer: 0, twoPointActive: null,
       offensePlayers: new Map([['rb1', { id: 'rb1', label: 'RB', x: 26, y: 111 }]]),
       defensePlayers: new Map(),

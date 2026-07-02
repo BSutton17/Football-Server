@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@jest/globals'
 import {
-  computeKick, calculateKickResult, isKickGood, UPRIGHT_HALF_WIDTH,
+  computeKick, calculateKickResult, isKickGood, UPRIGHT_HALF_WIDTH, maxKickDistance,
   computePuntReturn, computePuntBounce, resolvePuntBounce,
   PUNT_RETURN_MAX_YARDS, PUNT_BOUNCE_MIN_YARDS, PUNT_BOUNCE_MAX_YARDS, PUNT_BOUNCE_TOUCHBACK_LINE,
 } from '../game/kickEngine.js'
@@ -26,6 +26,29 @@ describe('[15] distance — power meter × kicker Power rating', () => {
   it('clamps out-of-range power', () => {
     expect(computeKick({ power: 2, kickerPower: 99 }, noNoise).distance).toBeCloseTo(75)
     expect(computeKick({ power: -1, kickerPower: 99 }, noNoise).distance).toBeCloseTo(40)
+  })
+})
+
+describe('[max range] full-meter distance caps by kick type + Power', () => {
+  it('punt: 99 Power → 70 yds, −1 yd per point below 99', () => {
+    expect(maxKickDistance('punt', 99)).toBeCloseTo(70)
+    expect(maxKickDistance('punt', 90)).toBeCloseTo(61)   // 70 − 9
+    expect(maxKickDistance('punt', 95)).toBeCloseTo(66)
+  })
+
+  it('field goal / XP: 99 Power → 60 yds, −1.5 yds per point below 99', () => {
+    expect(maxKickDistance('field_goal',  99)).toBeCloseTo(60)
+    expect(maxKickDistance('field_goal',  89)).toBeCloseTo(45)   // 60 − 10·1.5
+    expect(maxKickDistance('extra_point', 99)).toBeCloseTo(60)
+  })
+
+  it('a full-meter kick actually reaches the cap', () => {
+    expect(calculateKickResult({ kickType: 'punt', power: 1, kickerPower: 99, yardLine: 20 }, noNoise).distance).toBeCloseTo(70)
+    expect(calculateKickResult({ kickType: 'field_goal', power: 1, kickerPower: 90, requiredDistance: 10 }, noNoise).distance).toBeCloseTo(46.5)
+  })
+
+  it('kickoffs keep the default ceiling (no per-type cap)', () => {
+    expect(maxKickDistance('kickoff', 99)).toBeNull()
   })
 })
 
@@ -56,7 +79,7 @@ describe('isKickGood', () => {
 describe('[17] calculateKickResult — full outcome', () => {
   it('reports distance, trajectory, and hang time for every kick', () => {
     const r = calculateKickResult({ kickType: 'field_goal', power: 1, angle: 0, kickerPower: 99, requiredDistance: 30 }, noNoise)
-    expect(r.distance).toBeCloseTo(75)
+    expect(r.distance).toBeCloseTo(60)   // [max range] a 99-Power kicker tops out at 60 yds
     expect(r.pushYards).toBeCloseTo(0)
     expect(r.hangTime).toBeGreaterThan(0)
     expect(r.good).toBe(true)
@@ -392,11 +415,11 @@ describe('[19] hang time — from power and distance', () => {
   })
 
   it('at equal distance, more power means more hang time', () => {
-    // a mid leg at full meter vs a strong leg at a low meter — tuned to the same ~60-yd distance, so
-    // the only difference is how hard it was struck (power), which breaks the tie.
-    const a = calculateKickResult({ kickType: 'punt', power: 1.0,   kickerPower: 50, yardLine: 30 }, noNoise)
-    const b = calculateKickResult({ kickType: 'punt', power: 0.575, kickerPower: 99, yardLine: 30 }, noNoise)
-    expect(a.distance).toBeCloseTo(b.distance, 0)
+    // a mid leg at full meter vs a strong leg at a low meter — tuned to the same ~55-yd distance, so
+    // the only difference is how hard it was struck (power meter), which breaks the tie.
+    const a = calculateKickResult({ kickType: 'punt', power: 1.0, kickerPower: 84, yardLine: 30 }, noNoise)
+    const b = calculateKickResult({ kickType: 'punt', power: 0.5, kickerPower: 99, yardLine: 30 }, noNoise)
+    expect(a.distance).toBeCloseTo(b.distance, 0)   // both ~55 yds
     expect(a.hangTime).toBeGreaterThan(b.hangTime)
   })
 

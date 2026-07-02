@@ -141,6 +141,8 @@ export function validateSetOffense(socket, payload) {
   if (state.decisionPending) return 'Make your 4th-down decision first'
   // [Special Teams][51] …and until the post-touchdown extra-point / 2-pt choice is made.
   if (state.conversionPending) return 'Choose your extra-point try first'
+  // [69] …and while a timeout (or other stoppage) is freezing play.
+  if (state.stoppage) return 'Play is paused for a timeout'
 
   const { playType, runAngle, players } = payload ?? {}
   if (playType !== 'run' && playType !== 'pass') return 'playType must be "run" or "pass"'
@@ -335,6 +337,24 @@ export function validateThrowaway(socket) {
   if (state.sackEnqueued)     return 'Cannot throw the ball away — the QB was sacked'
   if (state.qbScrambling)     return 'Cannot throw the ball away while scrambling'
   if (state.targetReceiverId) return 'The ball has already been thrown'
+
+  return null
+}
+
+// call_timeout — [70] either team may call a timeout, but only while the ball is dead (pre-snap) and
+// no other stoppage / kick / decision menu is already in progress. The caller's remaining-count check
+// happens in the handler (it needs the caller's slot). Returns null when the timeout may proceed.
+export function validateCallTimeout(socket) {
+  const state = resolveState(socket)
+  if (!state) return 'No active game found for this room'
+
+  const phaseErr = checkPhase(state, PHASE.PRE_SNAP)
+  if (phaseErr) return phaseErr
+
+  if (state.stoppage)          return 'A stoppage is already in progress'
+  if (state.specialTeams)      return 'Cannot call a timeout during a kick'
+  if (state.decisionPending)   return 'Cannot call a timeout during the 4th-down decision'
+  if (state.conversionPending) return 'Cannot call a timeout during the conversion decision'
 
   return null
 }

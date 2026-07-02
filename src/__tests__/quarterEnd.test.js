@@ -28,8 +28,13 @@ function state(roomId, over = {}) {
 describe('quarter end ([216])', () => {
   it('advances to the next quarter and preserves possession, field, down & distance', () => {
     const s = state('q-1')
+    const io = mockIo()
     enqueue('q-1', EVENT.CLOCK_EXPIRED, {})
-    processQueue('q-1', s, mockIo())
+    processQueue('q-1', s, io)
+
+    // [transition screens] a normal quarter break sends both players the End-of-Quarter interstitial
+    const pt = io.emits.find(e => e.event === 'period_transition')
+    expect(pt?.payload).toMatchObject({ kind: 'quarter', endedQuarter: 1 })
 
     expect(s.quarter).toBe(2)
     expect(s.clock).toBe(RULES.QUARTER_SECONDS)
@@ -70,7 +75,9 @@ describe('halftime ([217]/[218]) — second-half kickoff reset', () => {
     expect(s.distance).toBe(10)
     expect(s.newDrive).toBe(true)       // fresh drive
     expect(s.score).toEqual([7, 3])     // score preserved
-    expect(io.emits.some(e => e.event === 'halftime')).toBe(true)   // [218]
+    // [transition screens] Halftime now drives the full-screen interstitial via period_transition.
+    const pt = io.emits.find(e => e.event === 'period_transition')
+    expect(pt?.payload).toMatchObject({ kind: 'halftime', endedQuarter: 2 })
   })
 
   it('does not flip direction or possession on a non-halftime quarter change', () => {

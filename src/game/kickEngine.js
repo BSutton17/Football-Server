@@ -11,9 +11,24 @@
 //   kickerPower    — [15] longer leg → more distance AND a higher floor (forgiving of a weak meter).
 //   kickerAccuracy — [16] less angular error → the kick goes where it's aimed.
 
-// [15] Distance floor (empty meter) and ceiling (full meter), each rising with the Power rating.
+// [15] Distance floor (empty meter) and ceiling (full meter), each rising with the Power rating. The
+// ceiling here is the fallback for kickoffs (automatic); punts and field goals cap their full-meter
+// distance per kick type via maxKickDistance below.
 const FLOOR_MIN = 10, FLOOR_MAX = 40   // distance at power 0, for rating 0 → 99
 const CEIL_MIN  = 45, CEIL_MAX  = 75   // distance at power 1, for rating 0 → 99
+
+// [max range] Full-meter distance cap by kick type, scaling with the Power rating:
+//   punt  — 99 Power → 70 yds; −1 yd per point of Power below 99.
+//   FG/XP — 99 Power → 60 yds; −1.5 yds per point of Power below 99.
+// Kickoffs (automatic) return null → the default CEIL model above. Floored so even a weak leg gets a
+// short chip rather than a zero/negative distance.
+const MIN_MAX_DISTANCE = 15
+export function maxKickDistance(kickType, kickerPower = DEFAULT_KICK_POWER) {
+  const below = Math.max(0, 99 - (kickerPower ?? DEFAULT_KICK_POWER))
+  if (kickType === 'punt')                                          return Math.max(MIN_MAX_DISTANCE, 70 - below)
+  if (kickType === 'field_goal' || kickType === 'extra_point')      return Math.max(MIN_MAX_DISTANCE, 60 - below * 1.5)
+  return null
+}
 
 // [16] Worst-case angular error (normalized) at Accuracy 0; shrinks to ~0 at Accuracy 99.
 const MAX_ANGULAR_ERROR = 0.4
@@ -35,16 +50,18 @@ export const DEFAULT_KICK_ACCURACY = 75
 // [15][16] Raw shot: distance from (meter power × Power rating), lateral push from (aim ± an
 // Accuracy-scaled error). Returns the realized trajectory too.
 export function computeKick(
-  { power = 0, angle = 0, kickerPower = DEFAULT_KICK_POWER, kickerAccuracy = DEFAULT_KICK_ACCURACY } = {},
+  { power = 0, angle = 0, kickerPower = DEFAULT_KICK_POWER, kickerAccuracy = DEFAULT_KICK_ACCURACY, maxDistance = null } = {},
   rng = Math.random,
 ) {
   const p   = clamp01(power)
   const r   = clamp01((kickerPower ?? DEFAULT_KICK_POWER) / 99)
   const acc = clamp01((kickerAccuracy ?? DEFAULT_KICK_ACCURACY) / 99)
 
-  // [15] A better leg raises both ends of the range, so even a poorly-timed meter still travels.
-  const floor    = FLOOR_MIN + r * (FLOOR_MAX - FLOOR_MIN)
-  const ceil     = CEIL_MIN  + r * (CEIL_MAX  - CEIL_MIN)
+  // [15][max range] A better leg raises both ends of the range, so even a poorly-timed meter still
+  // travels. The full-meter ceiling is the per-type cap when provided (punt / FG), else the default
+  // rating-scaled ceiling (kickoffs). The floor can't exceed the ceiling.
+  const ceil     = maxDistance != null ? maxDistance : CEIL_MIN + r * (CEIL_MAX - CEIL_MIN)
+  const floor    = Math.min(FLOOR_MIN + r * (FLOOR_MAX - FLOOR_MIN), ceil)
   const distance = floor + p * (ceil - floor)
 
   // [16] The aim is nudged by an error that high Accuracy all but eliminates.
@@ -76,7 +93,8 @@ export function calculateKickResult(
     ballX = null, uprightsX = null, backspin = false, fieldWidth = null } = {},
   rng = Math.random,
 ) {
-  const { distance, pushYards, finalAngle } = computeKick({ power, angle, kickerPower, kickerAccuracy }, rng)
+  const maxDistance = maxKickDistance(kickType, kickerPower)   // [max range] per-type full-meter cap
+  const { distance, pushYards, finalAngle } = computeKick({ power, angle, kickerPower, kickerAccuracy, maxDistance }, rng)
   const hangTime = computeHangTime(clamp01(power), distance)
 
   const result = { kickType, distance, pushYards, finalAngle, hangTime }

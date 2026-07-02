@@ -9,7 +9,7 @@ import { TEAMS } from '../data/teams.js';
 
 const TEAM_IDS = TEAMS.map(t => t.id);
 
-const CODE_RE = /^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{6}$/;
+const CODE_RE = /^\d{4}$/;   // 4-digit numeric room code
 
 function isValidCode(roomId) {
   return typeof roomId === 'string' && CODE_RE.test(roomId);

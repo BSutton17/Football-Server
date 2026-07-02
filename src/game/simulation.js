@@ -1,6 +1,7 @@
 import { SIM } from '../constants.js'
 import { PHASE } from './stateMachine.js'
 import { getGame } from './gameState.js'
+import { isStopped, tickStoppage, endStoppage, stoppageReason, STOPPAGE } from './pause.js'
 import { runEngagement }        from './systems/engagement.js'
 import { runMovement }          from './systems/movement.js'
 import { runPushForce }         from './systems/pushForce.js'
@@ -87,6 +88,20 @@ function tick(roomId, io) {
   if (!state) {
     // Game was deleted externally (abandon / cleanup) — stop the orphaned loop
     stopGameLoop(roomId)
+    return
+  }
+
+  // [69] A stoppage (timeout, and later injuries / challenges / halftime) freezes EVERYTHING: no
+  // clock advances and the live sim is held, so the exact state is preserved until it resumes. A
+  // timed stoppage counts down here and auto-resumes when it elapses.
+  if (isStopped(state)) {
+    if (!tickStoppage(state, DT)) {
+      const reason = stoppageReason(state)
+      endStoppage(state)
+      // [70] After a timeout the game clock stays stopped until the next snap; the play clock was
+      // reset + re-armed when the timeout was called, so pre-snap simply continues from here.
+      if (reason === STOPPAGE.TIMEOUT) io.to(roomId).emit('timeout_ended')
+    }
     return
   }
 

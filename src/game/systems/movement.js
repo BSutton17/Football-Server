@@ -44,6 +44,15 @@ function isLineman(label) {
   return LINEMAN_LABELS.has(label)
 }
 
+// A pass protector for assignment purposes: the offensive line PLUS a kept-in TE (route === 'block').
+// Folding the blocking TE into the line's coordination lets the OL SHIFT their gap assignments around
+// it — the closest blocker (OL or TE) owns each rusher, so the nearest lineman picks up a blitzer and
+// everyone else slides ([te pass-pro]). A kept-in RB is NOT included: it stays home by the QB as a
+// free-rusher/blitz spy (see getBlockerTarget), rather than taking a fixed gap.
+function isPassProtector(p) {
+  return isLineman(p.label) || (p.label === 'TE' && p.route === 'block')
+}
+
 // The coordinated run-block unit: the offensive line plus an in-line tight end. They share the
 // pre-snap blocking assignment so every front defender is accounted for ([run feedback]).
 const RUN_BLOCKER_LABELS = new Set(['OL', 'C', 'G', 'T', 'TE'])
@@ -69,7 +78,7 @@ function initPassBlockAnchor(blocker, losY, dir) {
 // check keeps two blockers from collapsing onto the same rusher and stacking up —
 // the unassigned lineman holds its anchor and protects its area instead.
 function findGapRusher(blocker, state, losY) {
-  const ax = blocker.passBlockAnchorX
+  const ax = blocker.passBlockAnchorX ?? blocker.x   // TE folded in before its anchor is set: use its spot
   let nearest = null, nearestDist = BLOCKER_SCAN_RADIUS
 
   for (const d of state.defensePlayers.values()) {
@@ -94,7 +103,7 @@ function isNearestLinemanTo(blocker, rusher, state, losY) {
   const myDist = Math.hypot(ax - rusher.x, losY - rusher.y)
 
   for (const o of state.offensePlayers.values()) {
-    if (o.id === blocker.id || !isLineman(o.label)) continue
+    if (o.id === blocker.id || !isPassProtector(o)) continue
     const ox = o.passBlockAnchorX ?? o.x
     if (Math.hypot(ox - rusher.x, losY - rusher.y) < myDist) return false
   }
@@ -445,8 +454,16 @@ function claimedRushers(blocker, state, losY) {
   const claimed = new Set()
   for (const o of state.offensePlayers.values()) {
     if (o.id === blocker.id) continue
-    if (o.blockTargetId) { claimed.add(o.blockTargetId); continue }
-    if (isLineman(o.label)) {
+    if (o.blockTargetId) {
+      // A rusher that has SHED its blocker is no longer accounted for — the beaten lineman
+      // stays latched to it but can't recover, so leave it UNCLAIMED and let a kept-in back
+      // step up and pick up the now-free threat.
+      const tgt = state.defensePlayers.get(o.blockTargetId)
+      if (tgt && tgt.shedBlock) continue
+      claimed.add(o.blockTargetId)
+      continue
+    }
+    if (isPassProtector(o)) {
       const r = findGapRusher(o, state, losY)
       if (r) claimed.add(r.id)
     }
@@ -493,12 +510,18 @@ function getBlockerTarget(blocker, state, losY, dir) {
   if (!rusher) return holdTarget   // no free rusher — hold in front of the QB
 
   // [pass-pro] Step squarely into the rusher's path — a point ~1 yd on the QB side of the rusher,
-  // along the rusher→QB line — so the back/TE meets it head-on (not chasing from behind). Getting
+  // along the rusher→QB line — so the back meets it head-on (not chasing from behind). Getting
   // body-to-body triggers the engagement, and the pass-rush ramp then holds the rusher up.
   const dx = qb.x - rusher.x, dy = qb.y - rusher.y
   const len = Math.hypot(dx, dy) || 1
   const STEP = 1.0
-  return { x: rusher.x + (dx / len) * STEP, y: rusher.y + (dy / len) * STEP }
+  const tx = rusher.x + (dx / len) * STEP
+  const ty = rusher.y + (dy / len) * STEP
+  // [rb pass-pro] Keep the back HOME by the QB: never chase a rusher upfield past the LOS. If the
+  // step point is on the defense's side of the line, hold at the line and let the rusher come to it,
+  // so the RB stays in the pocket instead of charging across the LOS.
+  const cappedY = (ty - losY) * dir > 0 ? losY : ty
+  return { x: tx, y: cappedY }
 }
 
 // ── Ball-carrier movement ([157]) ───────────────────────────────────────────────
@@ -534,6 +557,13 @@ const CUT_TURN_THRESHOLD = Math.cos(Math.PI / 4)   // 45° — gentler course co
 const RUN_COMMIT_TIME = 0.35   // seconds
 const RUN_COMMIT_LOOK = 8      // yards ahead the committed runner aims while bursting
 
+// [route transition] Post-catch momentum ([post-catch]): for a brief window after the catch the
+// receiver keeps running the way its route was going — across the field on a dig / out, or back on a
+// curl — before the ball-carrier vision model turns it upfield. Prevents the jarring instant snap to
+// straight-north the moment the ball arrives. A receiver caught in stride downfield simply keeps that
+// heading (same as before), so only the breaking routes visibly change.
+export const CATCH_MOMENTUM_TIME = 0.35   // seconds to hold the catch heading before reading the field
+
 // Seed the lane heading for an improvised carrier's FIRST vision read ([183]/[186]). A receiver
 // who catches in stride is already running downfield — keep that heading so the transition to
 // ball carrier is seamless (no snap-to-straight redirect). But a back-pedaling scramble QB (or a
@@ -552,7 +582,11 @@ function seedCarrierHeading(p, dir) {
 function moveBallCarrier(p, state, dir, dt, accel, topSpd, biasAngle = 0, forceCommit = false, sets = null) {
   const opponents = sets?.opponents ?? state.defensePlayers
   const teammates = sets?.teammates ?? state.offensePlayers
-  const maxCarrySpeed = topSpd * 1.1
+  // [post-catch speed] A designed runner gets a small breakaway gear (+10% over its listed top
+  // speed). A receiver who just CAUGHT the ball does NOT — it's capped at its true top speed, so it
+  // isn't suddenly faster the instant it turns into a ball carrier (the transition otherwise carries
+  // its exact velocity, accel and fatigue over unchanged). Investigation [73].
+  const maxCarrySpeed = topSpd * (p.caughtPass ? 1.0 : 1.1)
 
   // Seed the achievable-speed cap from the carrier's current speed the first tick it has
   // the ball: an RB taking a handoff at half speed ([159]) ramps up from there; a receiver
@@ -569,6 +603,21 @@ function moveBallCarrier(p, state, dir, dt, accel, topSpd, biasAngle = 0, forceC
     const look = Math.max(3, p.runLane.clear)
     steer(p, p.x + p.runLane.dirX * look, p.y + p.runLane.dirY * look, p.runSpeedCap, dt, accel)
     return
+  }
+
+  // [post-catch] Just caught: ride the route's momentum briefly before reading the field, so a dig /
+  // out / curl doesn't cut straight upfield the instant the ball arrives. We follow the carrier's
+  // actual heading (its catch velocity) and don't commit a runLane yet — the first vision read fires
+  // as soon as this window closes.
+  if ((p.catchMomentum ?? 0) > 0) {
+    p.catchMomentum -= dt
+    const speed = Math.hypot(p.vx, p.vy)
+    if (speed > 0.5) {
+      const hx = p.vx / speed, hy = p.vy / speed
+      p.runSpeedCap = Math.min(maxCarrySpeed, p.runSpeedCap + accel * dt)
+      steer(p, p.x + hx * 5, p.y + hy * 5, p.runSpeedCap, dt, accel)
+      return
+    }
   }
 
   // Re-read the field for the most open lane on an interval set by the carrier's vision
@@ -664,8 +713,9 @@ function moveOffense(state, dt) {
       const target = getRunBlockTarget(p, state, losY, dir)
       steer(p, target.x, target.y, topSpd * 0.75, dt, accel)
 
-    } else if (isLineman(label)) {
-      // Pass play: pass protection.
+    } else if (isPassProtector(p)) {
+      // Pass play: pass protection — the OL, plus any kept-in TE folded into the slide so the line
+      // shifts its gap assignments around the TE ([te pass-pro]).
       const target = getPassBlockTarget(p, state, losY, dir)
       steer(p, target.x, target.y, topSpd * 0.6, dt, accel)
 
@@ -927,6 +977,11 @@ const ZONE_LEAD_BASE       = 0.15   // seconds of threat velocity a zone defende
 const ZONE_COVERAGE_LEAD   = 0.25   // extra anticipation seconds at 99 coverage skill
 const ZONE_PATROL_SPEED    = 0.6    // fraction of top speed sinking back to the landmark
 const ZONE_REACT_SPEED     = 0.95   // fraction of top speed breaking on a threat
+// [zone urgency] A zone defender SPRINTS to its spot before it settles in. While it's still more than
+// ZONE_SETTLE_DIST yards from its target it runs nearly full-out (ZONE_SPRINT_SPEED); once it arrives
+// it drops to the patrol / react pace so it can read and break under control — not drift into place.
+const ZONE_SPRINT_SPEED    = 0.98
+const ZONE_SETTLE_DIST     = 2.5    // yards from the spot at which it stops sprinting and settles
 
 const RECEIVER_LABELS = new Set(['WR', 'TE', 'RB'])
 
@@ -1571,7 +1626,11 @@ function moveDefense(state, dt) {
           const declared = rawThreat && ((rawThreat.routeWaypointIdx ?? 0) >= 1 || rawThreat.routePhase === 'settled')
           const threat    = declared ? rawThreat : null
           const t         = getZoneTarget(center, threat, coverage)
-          const zoneSpd   = topSpd * (t.reacting ? ZONE_REACT_SPEED : ZONE_PATROL_SPEED)
+          // Sprint into position first, then settle: far from the spot → hustle at ZONE_SPRINT_SPEED;
+          // once within ZONE_SETTLE_DIST → normal patrol / react pace ([zone urgency]).
+          const distToSpot = Math.hypot(t.x - p.x, t.y - p.y)
+          const settledSpd = t.reacting ? ZONE_REACT_SPEED : ZONE_PATROL_SPEED
+          const zoneSpd    = topSpd * (distToSpot > ZONE_SETTLE_DIST ? ZONE_SPRINT_SPEED : settledSpd)
 
           // Underneath zones work AROUND a receiver/blocker that's shoving them off their spot
           // so they can get back to their zone, rather than being bulldozed out of it. Deep

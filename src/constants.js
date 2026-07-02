@@ -48,6 +48,8 @@ export const RULES = {
   PLAY_CLOCK_SECONDS: 30,        // normal play clock
   PLAY_CLOCK_NEW_DRIVE: 45,      // first play of a drive — extra time to set the formation
   DELAY_OF_GAME_YARDS: 5,        // [delay of game] play-clock expiry → 5-yard penalty, replay the down
+  TIMEOUTS_PER_HALF: 3,          // [70] timeouts each team gets per half (reset at halftime)
+  TIMEOUT_SECONDS: 6,            // [69] how long a called timeout freezes play before auto-resuming
 }
 
 // Tick rate — read from TICK_RATE env variable at startup.

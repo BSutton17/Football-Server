@@ -50,6 +50,14 @@ export function initGame(roomId, offenseSlot) {
     // possession, quarter end). Starts stopped — the clock doesn't move until the first snap.
     clockStopped: true,
 
+    // [70] Timeouts remaining per slot (index = player slot). Three per half; reset to 3 at the
+    // start of the second half (advanceQuarter → Q3). Synced to both clients via serializeGameState.
+    timeouts: [RULES.TIMEOUTS_PER_HALF, RULES.TIMEOUTS_PER_HALF],
+
+    // [69] Active gameplay stoppage ({ reason, remaining }) or null. While set, the sim tick freezes
+    // every clock and holds play (see game/pause.js). Timeouts are the first consumer.
+    stoppage: null,
+
     // ── Possession & direction ───────────────────────────────────────────────
     possession: offenseSlot,
     direction: offenseSlot === 0 ? 1 : -1,

@@ -12,6 +12,13 @@ const RECEIVER_LABELS = new Set(['WR', 'TE', 'RB'])
 // many seconds. Before that the coverage hasn't shown its hand, so the receiver keeps its base color.
 const OPENNESS_REVEAL_DELAY = 1.3   // seconds since snap for a no-cut route
 
+// A receiver has "declared" — the client light turns on and it becomes a viable throw target — once
+// it has made its first cut (cleared the first waypoint) or, on a no-cut route, held long enough for
+// the read to develop. Single source of truth for the ready gate (openness reveal + throw-early check).
+export function isReceiverReady(p) {
+  return (p.routeWaypointIdx ?? 0) >= 1 || (p.routeElapsed ?? 0) >= OPENNESS_REVEAL_DELAY
+}
+
 // ── Coordinate rounding ───────────────────────────────────────────────────────
 //
 // Player positions are floats from continuous simulation (e.g. 26.667341...).
@@ -42,6 +49,9 @@ export function serializeGameState(state, viewerSlot) {
     ballX:    roundCoord(state.ballX ?? FIELD.WIDTH / 2),   // [hash] lateral spot the next formation lines up on
     playClock: Math.ceil(state.playClock ?? 25),           // [play-clock] starting value for this snap (40 on a drive start)
     score:    getScoreFor(state, viewerSlot),
+    // [70] Timeouts remaining, viewer-relative (own = this player's team). Both counts sync to both
+    // clients. Follows the TEAM (slot), not the current offense/defense role, so it survives turnovers.
+    timeouts: { own: state.timeouts?.[viewerSlot] ?? 0, opp: state.timeouts?.[1 - viewerSlot] ?? 0 },
     role:     state.possession === viewerSlot ? 'offense' : 'defense',
     specialTeams: serializeSpecialTeams(state, viewerSlot),   // [Special Teams][1] null on a normal scrimmage play
     // [Special Teams][2][3] 4th-down menu, or [51] the post-TD extra-point / 2-pt menu — both render
@@ -101,10 +111,8 @@ export function serializePositions(state) {
     // Pass catchers carry an openness score so the client can color them ([169]) — but only once
     // the receiver has declared: after its first cut (routeWaypointIdx ≥ 1) or, on a no-cut route,
     // after OPENNESS_REVEAL_DELAY. Until then it keeps its base color (the read hasn't developed).
-    if (RECEIVER_LABELS.has(p.label)) {
-      const cut      = (p.routeWaypointIdx ?? 0) >= 1
-      const declared = (p.routeElapsed ?? 0) >= OPENNESS_REVEAL_DELAY
-      if (cut || declared) pos.openness = roundCoord(computeReceiverOpenness(p, defenders, qb))
+    if (RECEIVER_LABELS.has(p.label) && isReceiverReady(p)) {
+      pos.openness = roundCoord(computeReceiverOpenness(p, defenders, qb))
     }
     positions.push(pos)
   }

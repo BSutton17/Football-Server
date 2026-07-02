@@ -378,6 +378,22 @@ describe('blitz pickup — kept-in back', () => {
     // No free rusher → the back doesn't chase the blocked DL across the formation.
     expect(rb.blockTargetId ?? null).toBeNull()
   })
+
+  it('steps up on a rusher that has SHED its blocker (now unblocked)', () => {
+    const qb = { id: 'qb', label: 'QB', x: 26, y: 29, vx: 0, vy: 0 }
+    const lg = ol('lg', 24, 35)
+    const rb = { id: 'rb', label: 'RB', x: 26, y: 31, vx: 0, vy: 0, route: 'block' }
+    const dt_ = dl('dt', 24, 36)   // the LG's man — but it has beaten the block
+    dt_.shedBlock = true
+    lg.blockTargetId = 'dt'        // LG stays latched but can't recover
+    const state = makeState({ offense: [qb, lg, rb], defense: [dt_], playType: 'pass', yardLine: 25 })
+
+    runMovement(state, null, DT)
+
+    // The shed DL is no longer "claimed" by the beaten LG → the back picks it up and steps into it.
+    expect(rb.blockTargetId).toBe('dt')
+    expect(rb.vy).toBeGreaterThan(0)   // stepping up toward the LOS to meet it
+  })
 })
 
 // ── Run-block: drive block ────────────────────────────────────────────────────
@@ -681,17 +697,84 @@ describe('double-team — secondary blocker release to second level', () => {
   })
 })
 
-// ── route='block' non-linemen are unaffected ─────────────────────────────────
+// ── kept-in blocker routing: RB stays home, TE folds into the line ([te pass-pro]) ────────────
 
-describe('route=block (RB/TE) uses old blocker logic, not pass-block', () => {
-  it('TE with route=block does not get a passBlockAnchor', () => {
-    const te = { id: 'te1', label: 'TE', route: 'block', x: 32, y: 35, vx: 0, vy: 0, isEngaged: false }
+describe('kept-in blocker routing', () => {
+  it('RB with route=block stays a free blocker near the QB — no passBlockAnchor', () => {
+    const rb = { id: 'rb1', label: 'RB', route: 'block', x: 26, y: 31, vx: 0, vy: 0, isEngaged: false }
     const qb = { id: 'qb1', label: 'QB', x: 26, y: 27, vx: 0, vy: 0, isEngaged: false }
-    const state = makeState({ offense: [te, qb] })
+    const state = makeState({ offense: [rb, qb] })
 
     runMovement(state, null, DT)
 
-    expect(te.passBlockAnchorX).toBeUndefined()
+    expect(rb.passBlockAnchorX).toBeUndefined()
+  })
+
+  it('RB does not chase a rusher upfield past the LOS (stays home)', () => {
+    // dir=1, yardLine=25 → losY=35. A rusher sitting ON the defensive side of the line.
+    const qb = { id: 'qb', label: 'QB', x: 26, y: 29, vx: 0, vy: 0 }
+    const rb = { id: 'rb', label: 'RB', x: 26, y: 31, vx: 0, vy: 0, route: 'block' }
+    const lb = { id: 'lb', label: 'LB', x: 26, y: 38, vx: 0, vy: 0 }   // 3 yds upfield of the LOS
+    const state = makeState({ offense: [qb, rb], defense: [lb], playType: 'pass', yardLine: 25 })
+    state.defenseCoverage.set('lb', { type: 'blitz' })
+
+    runMovement(state, null, DT)
+
+    // The back steps up toward the LOS but not past it — it never crosses into the defense's side.
+    expect(rb.y + rb.vy * DT).toBeLessThanOrEqual(35 + 1e-6)
+  })
+
+  it('TE with route=block folds into pass protection — gets a passBlockAnchor and picks up its man', () => {
+    const te = ol('te', 36, 35); te.label = 'TE'; te.route = 'block'
+    const de = dl('de', 39, 37)   // edge rusher just outside the TE
+    const qb = { id: 'qb1', label: 'QB', x: 26, y: 27, vx: 0, vy: 0, isEngaged: false }
+    const state = makeState({ offense: [te, qb], defense: [de], playType: 'pass' })
+
+    runMovement(state, null, DT)
+
+    expect(te.passBlockAnchorX).toBe(36)   // folded into the line → anchored like an OL
+    expect(te.blockTargetId).toBe('de')    // owns the edge rusher on its side
+  })
+})
+
+// ── Post-catch momentum ([route transition]) ─────────────────────────────────
+
+describe('post-catch momentum', () => {
+  // dir=1. A receiver that just caught a dig/out — running ACROSS the field (east), not upfield.
+  function caughtDig() {
+    const wr = { id: 'wr', label: 'WR', x: 26, y: 50, vx: 6, vy: 0, catchMomentum: 0.35 }
+    const state = makeState({ offense: [wr], defense: [], playType: 'pass', yardLine: 25 })
+    state.ballCarrierId = 'wr'
+    return { wr, state }
+  }
+
+  it('keeps the catch heading briefly instead of snapping straight upfield', () => {
+    const { wr, state } = caughtDig()
+    runMovement(state, null, DT)
+    // Still carrying its lateral momentum east; it has NOT cut to a straight-upfield run.
+    expect(wr.vx).toBeGreaterThan(0)
+    expect(Math.abs(wr.vy)).toBeLessThan(Math.abs(wr.vx))
+  })
+
+  it('turns upfield once the momentum window lapses', () => {
+    const { wr, state } = caughtDig()
+    for (let i = 0; i < 20; i++) runMovement(state, null, DT)   // ~1s: the 0.35s window elapses
+    expect(wr.vy).toBeGreaterThan(0)   // vision has taken over → running upfield (north)
+  })
+
+  it('a caught receiver does not exceed its true top speed (no run breakaway gear) [73]', () => {
+    // Two identical carriers running straight upfield in the open; one caught a pass, one didn't.
+    function carrier(caughtPass) {
+      const p = { id: 'c', label: 'WR', x: 26, y: 40, vx: 0, vy: 8, ratings: { speed: 99, acceleration: 99 }, caughtPass }
+      const state = makeState({ offense: [p], defense: [], playType: 'pass', yardLine: 25 })
+      state.ballCarrierId = 'c'
+      for (let i = 0; i < 40; i++) runMovement(state, null, DT)   // ramp to steady state
+      return Math.hypot(p.vx, p.vy)
+    }
+    const caught   = carrier(true)
+    const uncaught = carrier(false)
+    expect(caught).toBeLessThan(uncaught)            // the +10% breakaway gear is withheld after a catch
+    expect(caught).toBeLessThanOrEqual(9.5 + 0.01)   // capped at true top speed (rating 99 → 9.5)
   })
 })
 
@@ -1493,6 +1576,18 @@ describe('zone coverage movement (integration)', () => {
 
     expect(def.vy).toBeLessThan(0)            // moving south toward the landmark at y=50
     expect(Math.abs(def.vx)).toBeLessThan(0.1)
+  })
+
+  it('sprints to its landmark when far, then settles once it arrives ([zone urgency])', () => {
+    const qb   = { id: 'qb', label: 'QB', x: 26, y: 27, vx: 0, vy: 0 }
+    const far   = { id: 'far',  label: 'S', x: 26, y: 62, vx: 0, vy: 0, isEngaged: false }  // 12 yds from landmark(50)
+    const at    = { id: 'at',   label: 'S', x: 26, y: 50, vx: 0, vy: 0, isEngaged: false }  // already on the spot
+    const sFar = zoneState({ offense: [qb], defender: far })
+    const sAt  = zoneState({ offense: [{ ...qb }], defender: at })
+    for (let i = 0; i < 6; i++) { runMovement(sFar, null, DT); runMovement(sAt, null, DT) }
+
+    // The distant defender is hustling into position; the one already home is settled/near-idle.
+    expect(Math.hypot(far.vx, far.vy)).toBeGreaterThan(Math.hypot(at.vx, at.vy) + 1)
   })
 
   it('a zone defender breaks toward a receiver that has cut into its area', () => {
