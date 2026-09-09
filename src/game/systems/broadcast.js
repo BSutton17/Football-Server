@@ -1,6 +1,6 @@
 import { serializePositions, serializeCarrierVision } from '../serialization.js'
 import { getRoom } from '../roomManager.js'
-import { DIFFICULTY } from '../../constants.js'
+import { HIDES_OPENNESS } from '../../constants.js'
 
 // Sends the current field positions of all active players to both clients.
 // Runs last each tick so clients always receive post-movement coordinates.
@@ -11,7 +11,7 @@ import { DIFFICULTY } from '../../constants.js'
 // game builds a single shared payload and broadcasts it, exactly as before — the per-viewer path
 // costs a second serialization pass at 20 Hz, so it is taken only when it actually changes anything.
 export function runBroadcast(state, io, _dt) {
-  if (state.difficulty === DIFFICULTY.HARD) {
+  if (HIDES_OPENNESS.has(state.difficulty)) {
     const room = getRoom(state.roomId)
     if (room) {
       room.players.forEach((socketId, slot) => {

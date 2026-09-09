@@ -1,4 +1,4 @@
-import { FIELD, ROUTE_TYPES, COVERAGE_TYPES, ZONE_TYPES } from '../constants.js'
+import { FIELD, ROUTE_TYPES, COVERAGE_TYPES, ZONE_TYPES, MAN_COMMITS } from '../constants.js'
 import { PHASE } from './stateMachine.js'
 import { getGame } from './gameState.js'
 import { isManualPlay, isManualFrozen } from './manual.js'
@@ -187,7 +187,7 @@ export function validateAssignCoverage(socket, payload) {
   const state = resolveState(socket)
   if (!state) return 'No active game found for this room'
 
-  const { playerId, type, targetId, zoneType, zoneCenterX, zoneCenterY } = payload ?? {}
+  const { playerId, type, targetId, zoneType, zoneCenterX, zoneCenterY, manCommit } = payload ?? {}
 
   const baseErr = first(
     checkPhase(state, PHASE.PRE_SNAP, PHASE.COUNTDOWN),
@@ -202,6 +202,8 @@ export function validateAssignCoverage(socket, payload) {
     if (targetId === undefined) return 'man coverage requires targetId'
     const targetErr = checkString(targetId, 'targetId')
     if (targetErr) return targetErr
+    // [man commit] Optional. Absent (or null) means play it honestly off the alignment.
+    if (manCommit != null && !MAN_COMMITS.has(manCommit)) return `Unknown man commit: "${manCommit}"`
   }
 
   if (type === 'zone') {
@@ -212,7 +214,14 @@ export function validateAssignCoverage(socket, payload) {
       if (xErr) return xErr
     }
     if (zoneCenterY !== undefined) {
-      const yErr = checkNumber(zoneCenterY, 'zoneCenterY', 0, FIELD.LENGTH)
+      // [red zone] Zone landmarks are in OFFENSE-RELATIVE yards, where 0 is the offense's own goal
+      // line and 100 the one they're attacking — so the end zones are −10 and 110. Allowing only
+      // 0..LENGTH here rejected any landmark inside an end zone, which is exactly where a deep zone
+      // belongs once the ball is on the 5.
+      const yErr = checkNumber(
+        zoneCenterY, 'zoneCenterY',
+        -FIELD.END_ZONE_DEPTH, FIELD.PLAY_LENGTH + FIELD.END_ZONE_DEPTH,
+      )
       if (yErr) return yErr
     }
   }

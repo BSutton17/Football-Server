@@ -19,6 +19,7 @@ import { runSackDetection }     from './systems/sackDetection.js'
 import { runTouchdownDetection } from './systems/touchdownDetection.js'
 import { runTackleDetection }   from './systems/tackleDetection.js'
 import { runCoverageDebug }     from './systems/coverageDebug.js'
+import { runThrowawayWindow }   from './systems/throwawayWindow.js'
 import { runManualHold, revealPassOutcome, takePendingOutcome } from './manual.js'
 import { enqueue }               from './eventQueue.js'
 
@@ -50,6 +51,9 @@ const LIVE_SYSTEMS = [
   runTouchdownDetection, // enqueue TOUCHDOWN when the ball carrier crosses a goal line
   runTackleDetection,   // enqueue TACKLE when a defender overlaps the ball carrier
   runClock,
+  // [187] Counts LIVE play time so the throwaway offer is measured in game time, not wall time —
+  // which matters in manual mode, where the play only advances while GO is held.
+  runThrowawayWindow,
   runCoverageDebug,     // [debug] log each receiver's openness, color, and justification (pass plays)
   runEventQueue,
   runBroadcast,

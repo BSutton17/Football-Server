@@ -1423,18 +1423,43 @@ export function anticipateRouteBreak(receiver, awareness = 55) {
   return { react, dirX: (next.x - cur.x) / segLen, dirY: (next.y - cur.y) / segLen }
 }
 
+// [man commit] How far a COMMITTED defender exaggerates his position. These are deliberately much
+// larger than the honest-leverage numbers above: the defender is selling out, so he is genuinely
+// out of position for whatever he chose not to take away.
+const COMMIT_SIDE_OFFSET  = 1.8   // yards to the chosen side (vs MAN_INSIDE_OFFSET's 0.75)
+const COMMIT_OVER_CUSHION = 2.5   // yards kept OVER THE TOP downfield
+const COMMIT_UNDER_DEPTH  = 2.0   // yards sat UNDERNEATH, toward the line
+
 // leverageSign: which side of the receiver the defender aligned to (+1 = the defender
 // is to the receiver's right, -1 = its left). 0 falls back to inside (toward midfield).
-export function getManTarget(receiver, dir, awareness = 55, leverageSign = 0) {
+// commit: 'in' | 'out' | 'over' | 'under' | null — see MAN_COMMITS. ballX is the ball's lateral
+// spot, which is what "inside" actually means; without it inside falls back to the field middle.
+export function getManTarget(receiver, dir, awareness = 55, leverageSign = 0, commit = null, ballX = null) {
   // Mirror — track the receiver, leading only by its CURRENT velocity (reaction).
   const leadX = receiver.x + (receiver.vx ?? 0) * MAN_LEAD_TIME
   const leadY = receiver.y + (receiver.vy ?? 0) * MAN_LEAD_TIME
 
   // Hold leverage on the side the defender aligned to (fallback: inside / toward midfield).
-  const side = leverageSign !== 0 ? leverageSign : (receiver.x > FIELD.WIDTH / 2 ? -1 : 1)
+  let side       = leverageSign !== 0 ? leverageSign : (receiver.x > FIELD.WIDTH / 2 ? -1 : 1)
+  let sideOffset = MAN_INSIDE_OFFSET
+  // Positive trails UNDERNEATH (toward the line); negative sits OVER THE TOP.
+  let trail      = MAN_TRAIL_DEPTH
 
-  let x = leadX + side * MAN_INSIDE_OFFSET
-  let y = leadY - dir * MAN_TRAIL_DEPTH
+  // [man commit] A committed defender overrides his alignment leverage entirely — that is the
+  // point. "Inside" is toward the BALL, not toward the geometric middle, so it stays correct when
+  // the ball is on a hash.
+  if (commit === 'in' || commit === 'out') {
+    const inward = Math.sign((ballX ?? FIELD.WIDTH / 2) - receiver.x) || 1
+    side       = commit === 'in' ? inward : -inward
+    sideOffset = COMMIT_SIDE_OFFSET
+  } else if (commit === 'over') {
+    trail = -COMMIT_OVER_CUSHION
+  } else if (commit === 'under') {
+    trail = COMMIT_UNDER_DEPTH
+  }
+
+  let x = leadX + side * sideOffset
+  let y = leadY - dir * trail
 
   // Prediction only helps on breaks the defender is leveraged to defend: a cut toward
   // its leverage side that keeps developing downfield. It can NOT pre-jump a break away
@@ -1764,7 +1789,7 @@ function moveDefense(state, dt) {
             p.coverLeverage   = Math.sign(p.x - receiver.x) || 1
           }
 
-          const t = getManTarget(receiver, dir, awareness, p.coverLeverage)
+          const t = getManTarget(receiver, dir, awareness, p.coverLeverage, cov.manCommit, state.ballX)
 
           // Off-man / on-top discipline ([coverage feedback]): when the defender has a cushion (it's
           // on top of the receiver) and the receiver is releasing VERTICALLY, don't drive down to
@@ -1772,9 +1797,15 @@ function moveDefense(state, dt) {
           // run with him and stay on top: never come shallower than the defender's own depth, and
           // gain depth to keep a cushion over a fast vertical. Once the receiver closes the cushion
           // (even/underneath), this no longer applies and it trails normally.
+          // [man commit] A defender who committed UNDERNEATH does not get this rescue. Sitting in
+          // front of the receiver is precisely the bet that he will not go deep, so when he does,
+          // the defender has to lose — otherwise the aggressive call would carry no risk and there
+          // would be no reason ever to play man honestly. Committing OVER the top skips it for the
+          // opposite reason: he is already holding a bigger cushion than this would give him.
           const cushion     = (p.y - receiver.y) * dir
           const recVertical = (receiver.vy ?? 0) * dir
-          if (cushion > MAN_TRAIL_DEPTH && recVertical > 1) {
+          const autoOnTop   = cov.manCommit !== 'under' && cov.manCommit !== 'over'
+          if (autoOnTop && cushion > MAN_TRAIL_DEPTH && recVertical > 1) {
             const onTopY = receiver.y + (receiver.vy ?? 0) * MAN_RUN_LEAD + dir * MAN_ONTOP_CUSHION
             t.y = dir === 1 ? Math.max(p.y, onTopY) : Math.min(p.y, onTopY)
           }

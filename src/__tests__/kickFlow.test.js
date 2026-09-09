@@ -68,16 +68,16 @@ describe('[9][10] power meter drains continuously once started, refilled by taps
     const half = KICK_TIMER_SECONDS / 2
     let elapsed = 0
     while (elapsed < half) { runKickClock(state, mockIo(), 0.05); elapsed += 0.05 }
-    // Drain is eased 10% and then slowed a further 30% ([kick feel]): 0.9 / 1.3 ≈ 0.69 of the meter
-    // over the full timer, so a little under a third is gone by the halfway point.
-    expect(st.power).toBeCloseTo(0.65, 1)
+    // Drain is eased 10%, then slowed 30% twice over ([kick feel]): 0.9 / 1.69 ≈ 0.53 of the meter
+    // over the full timer, so only about a quarter is gone by the halfway point.
+    expect(st.power).toBeCloseTo(0.73, 1)
     expect(st.phase).toBe(ST_PHASE.SETUP)   // not executed yet
   })
 
-  it('the meter takes 30% longer to drain than the un-slowed rate ([kick feel])', () => {
-    // Pinned explicitly so the 30% easing can't be tuned away by accident.
-    expect(POWER_DRAIN_PER_SEC).toBeCloseTo((1 / KICK_TIMER_SECONDS) * 0.9 / 1.3, 6)
-    expect(POWER_DRAIN_SLOWDOWN).toBe(1.3)
+  it('the meter drains far slower than the un-slowed rate ([kick feel])', () => {
+    // Pinned explicitly so the easing can't be tuned away by accident. Two successive 30% eases.
+    expect(POWER_DRAIN_SLOWDOWN).toBeCloseTo(1.69, 6)
+    expect(POWER_DRAIN_PER_SEC).toBeCloseTo((1 / KICK_TIMER_SECONDS) * 0.9 / 1.69, 6)
   })
 
   it('a directional tap fights the drain back up (+2%)', () => {

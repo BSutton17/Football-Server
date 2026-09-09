@@ -1,6 +1,7 @@
 import { FIELD } from '../../constants.js'
 import { sanitizeDrawnRoute, drawnRouteWaypoints, routeTraits } from '../utils/routeGeometry.js'
 import { buildWaypoints } from '../utils/routeEngine.js'
+import { resetThrowawayWindow } from './throwawayWindow.js'
 import { getLosY } from '../gameState.js'
 import { getRatings, ratingOf, speedFromRating } from '../../data/ratings.js'
 import { onSnapXFactors } from './xFactors.js'
@@ -49,6 +50,9 @@ function resolvePressJams(state) {
 // so the movement system doesn't have to search playDesign every tick.
 export function initLivePhase(state) {
   if (!state.playDesign) return
+
+  // [187] Fresh play — the QB must hold the ball again before he may throw it away.
+  resetThrowawayWindow(state)
 
   const dir   = state.direction
   const isRun = state.playDesign.playType === 'run'

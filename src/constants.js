@@ -88,16 +88,25 @@ export const GAME_MODE = {
 // Chosen by the room creator and applied to whichever team currently has the ball. It ONLY ever
 // hides information from the offense — the defense always sees the true openness colors.
 //
-// 'easy' — pass catchers are colored by openness ([169]) exactly as in automatic mode.
-// 'hard' — pass catchers keep their normal team color all the way through the play. Openness is
+// 'easy'   — pass catchers are colored by openness ([169]) exactly as in automatic mode.
+// 'medium' — as hard, except that while the play is FROZEN the offense is shown the route art in
+//            faded yellow, so it can see where its receivers are heading without being told how
+//            open they are.
+// 'hard'   — pass catchers keep their normal team color all the way through the play. Openness is
 //          never sent to the offense, so the read has to come from watching the field. Readiness
 //          is still signalled, but only as a brightness change: a receiver that hasn't declared its
 //          route yet renders faded, and lights up to full color once it is throwable ([68]).
 
 export const DIFFICULTY = {
-  EASY: 'easy',
-  HARD: 'hard',
+  EASY:   'easy',
+  MEDIUM: 'medium',
+  HARD:   'hard',
 }
+
+// [medium] Difficulties that withhold the openness read from the offense. Medium hides it exactly
+// as hard does — the difference is purely that medium draws the route art back in while the play is
+// frozen, which is a client-side courtesy and changes nothing the server sends.
+export const HIDES_OPENNESS = new Set([DIFFICULTY.MEDIUM, DIFFICULTY.HARD])
 
 // ── Manual-mode timing ([manual]) ────────────────────────────────────────────
 
@@ -138,6 +147,22 @@ export function clampQuarterMinutes(minutes) {
 // interrupting a game, so while it is up a disconnected player's seat is held far longer than the
 // usual reconnect window — a locked phone must not end the match.
 export const PAUSE_RECONNECT_WINDOW_MS = 10 * 60 * 1000
+
+// ── Committed man coverage ([man commit]) ────────────────────────────────────
+//
+// A man defender normally holds whatever leverage he happened to align with and plays it honestly.
+// These let the defence COMMIT: tell him to take away one thing and fully sell out to it.
+//
+//   in    — sit to the receiver's inside (ball side), taking away slants, digs and posts
+//   out   — sit to his outside, taking away outs, corners and comebacks
+//   over  — play over the top, taking away everything deep
+//   under — sit underneath in front of him, taking away the short and intermediate stuff
+//
+// The point is that each is a real bet. Committing inside leaves the out wide open; committing over
+// the top leaves the hitch uncovered; committing underneath means a go route runs straight past.
+// Guess right and the route is dead, guess wrong and it is a big play — which is the whole appeal
+// of playing man aggressively.
+export const MAN_COMMITS = new Set(['in', 'out', 'over', 'under'])
 
 // Valid values for route and coverage assignments.
 // Must stay in sync with Client/src/types/routes.ts.

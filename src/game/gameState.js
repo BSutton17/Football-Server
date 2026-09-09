@@ -43,7 +43,7 @@ export function initGame(roomId, offenseSlot, { mode, difficulty, quarterSeconds
 
     // ── Game mode ([manual]) ─────────────────────────────────────────────────
     mode:       mode === GAME_MODE.MANUAL ? GAME_MODE.MANUAL : GAME_MODE.AUTOMATIC,
-    difficulty: difficulty === DIFFICULTY.HARD ? DIFFICULTY.HARD : DIFFICULTY.EASY,
+    difficulty: Object.values(DIFFICULTY).includes(difficulty) ? difficulty : DIFFICULTY.EASY,
 
     // [manual] Live hold state for the GO button. Null outside a manual live play.
     //   holding   — is the offense currently holding GO (players moving)?

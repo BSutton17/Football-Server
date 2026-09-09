@@ -1,6 +1,6 @@
 import { getScoreFor, getLosY } from './gameState.js'
 import { isPlayerPaused } from './pause.js'
-import { FIELD, DIFFICULTY } from '../constants.js'
+import { FIELD, HIDES_OPENNESS } from '../constants.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { findBallCarrier } from './systems/movement.js'
 import { serializeSpecialTeams, serializeDecision, serializeConversion } from './specialTeams.js'
@@ -119,7 +119,7 @@ export function laneContext(state) {
 
 export function serializePositions(state, viewerSlot = null) {
   const positions = []
-  const hideOpenness = state.difficulty === DIFFICULTY.HARD &&
+  const hideOpenness = HIDES_OPENNESS.has(state.difficulty) &&
                        viewerSlot != null && viewerSlot === state.possession
 
   const toRelY = state.direction === 1

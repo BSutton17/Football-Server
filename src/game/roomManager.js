@@ -1,5 +1,7 @@
 import { GAME_MODE, DIFFICULTY } from '../constants.js';
 
+const VALID_DIFFICULTIES = new Set(Object.values(DIFFICULTY));
+
 // rooms: Map<roomId, { players, offenseSlot, createdAt, mode, difficulty }>
 // offenseSlot: which index in players[] is currently offense (null until both players join)
 // mode/difficulty: [manual] fixed by the creator; the room is authoritative for both (see joinRoom)
@@ -30,7 +32,7 @@ export function createRoom(roomId, socketId, { mode, difficulty } = {}) {
   const resolvedMode = mode === GAME_MODE.MANUAL ? GAME_MODE.MANUAL : GAME_MODE.AUTOMATIC;
   // Difficulty only means anything in manual mode; an automatic room is always 'easy' (colors on).
   const resolvedDifficulty =
-    resolvedMode === GAME_MODE.MANUAL && difficulty === DIFFICULTY.HARD ? DIFFICULTY.HARD : DIFFICULTY.EASY;
+    resolvedMode === GAME_MODE.MANUAL && VALID_DIFFICULTIES.has(difficulty) ? difficulty : DIFFICULTY.EASY;
 
   rooms.set(roomId, {
     players: [socketId, null],

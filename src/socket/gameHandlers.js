@@ -85,13 +85,15 @@ export function registerGameHandlers(io, socket) {
     if (err) return reject(socket, 'assign_coverage', err)
 
     const state = getGame(socket.data.roomId)
-    const { playerId, type, targetId, zoneType, zoneCenterX, zoneCenterY } = payload
+    const { playerId, type, targetId, zoneType, zoneCenterX, zoneCenterY, manCommit } = payload
     state.defenseCoverage.set(playerId, {
       type,
       targetId:    targetId    ?? null,
       zoneType:    zoneType    ?? null,
       zoneCenterX: zoneCenterX ?? null,
       zoneCenterY: zoneCenterY ?? null,
+      // [man commit] Which single thing this man defender is selling out to take away, if any.
+      manCommit:   manCommit   ?? null,
     })
     socket.emit('coverage_assigned', payload)
   })
