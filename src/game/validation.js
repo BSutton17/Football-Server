@@ -149,7 +149,18 @@ export function validateSetOffense(socket, payload) {
   // [69] …and while a timeout (or other stoppage) is freezing play.
   if (state.stoppage) return 'Play is paused for a timeout'
 
-  const { playType, runAngle, players } = payload ?? {}
+  const { playType, runAngle, players, playSerial } = payload ?? {}
+
+  // [stale set] Locking the formation and the play clock expiring can cross in flight: the clock
+  // runs out, a delay-of-game penalty moves the line back, and the set_offense that was already on
+  // its way then arrives into a PRE_SNAP that looks perfectly valid. Accepting it would commit a
+  // formation designed for a line of scrimmage five yards away, leaving the server in COUNTDOWN
+  // with players the client has already redrawn somewhere else. The serial the client echoes says
+  // which situation it was actually looking at, so a superseded one is refused and the offense
+  // simply sets again on the new spot.
+  if (playSerial != null && playSerial !== (state.playSerial ?? 0)) {
+    return 'The play changed before your formation arrived — set again'
+  }
   if (playType !== 'run' && playType !== 'pass') return 'playType must be "run" or "pass"'
 
   const angleErr = checkNumber(runAngle, 'runAngle', -60, 60)

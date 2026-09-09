@@ -67,6 +67,12 @@ export function initGame(roomId, offenseSlot, { mode, difficulty } = {}) {
     // start of the second half (advanceQuarter → Q3). Synced to both clients via serializeGameState.
     timeouts: [RULES.TIMEOUTS_PER_HALF, RULES.TIMEOUTS_PER_HALF],
 
+    // [stale set] Identifies the pre-snap situation a formation is being designed against. It is
+    // bumped every time that situation is replaced — a new play, or a delay-of-game penalty moving
+    // the line back — so a `set_offense` composed for the previous one can be recognized as stale
+    // and refused instead of being applied to a field that has since moved underneath it.
+    playSerial: 0,
+
     // [69] Active gameplay stoppage ({ reason, remaining }) or null. While set, the sim tick freezes
     // every clock and holds play (see game/pause.js). Timeouts are the first consumer.
     stoppage: null,

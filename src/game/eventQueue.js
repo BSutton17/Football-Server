@@ -956,6 +956,8 @@ export function applyDelayOfGame(state, io) {
   state.playClock        = RULES.PLAY_CLOCK_SECONDS
   state.playClockRunning = true
   state.newDrive         = false
+  // [stale set] The line has moved; any formation still in flight was drawn for the old spot.
+  state.playSerial       = (state.playSerial ?? 0) + 1
 
   const room = getRoom(state.roomId)
   if (room) {
@@ -1234,6 +1236,8 @@ function beginNextPlay(roomId, io, delayMs = BETWEEN_PLAYS_MS) {
     // drive) and is cleared at the snap.
     state.playClock        = state.newDrive ? RULES.PLAY_CLOCK_NEW_DRIVE : RULES.PLAY_CLOCK_SECONDS
     state.playClockRunning = true
+    // [stale set] A new play — formations designed for the previous one no longer apply.
+    state.playSerial       = (state.playSerial ?? 0) + 1
 
     transition(state, PHASE.PRE_SNAP)
 

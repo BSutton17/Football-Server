@@ -48,6 +48,8 @@ export function serializeGameState(state, viewerSlot) {
     yardLine: state.yardLine,
     ballX:    roundCoord(state.ballX ?? FIELD.WIDTH / 2),   // [hash] lateral spot the next formation lines up on
     playClock: Math.ceil(state.playClock ?? 25),           // [play-clock] starting value for this snap (40 on a drive start)
+    playSerial: state.playSerial ?? 0,                     // [stale set] which pre-snap situation this is
+
     score:    getScoreFor(state, viewerSlot),
     // [70] Timeouts remaining, viewer-relative (own = this player's team). Both counts sync to both
     // clients. Follows the TEAM (slot), not the current offense/defense role, so it survives turnovers.
