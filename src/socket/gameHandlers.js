@@ -13,6 +13,10 @@ import {
   validateCallTimeout,
 } from '../game/validation.js'
 import { getGame, initGame, commitThrowTarget, resolveThrowTarget } from '../game/gameState.js'
+import {
+  beginManualPlay, pressGo, releaseGo, endManualControl, armThrowResolution,
+  isManualPlay, isManualFrozen,
+} from '../game/manual.js'
 import { transition, PHASE } from '../game/stateMachine.js'
 import { beginStoppage, STOPPAGE } from '../game/pause.js'
 import { FIELD, RULES } from '../constants.js'
@@ -182,10 +186,36 @@ export function registerGameHandlers(io, socket) {
     state.clockStopped = false   // [70] the snap restarts the game clock (paused since the offense set)
     initLivePhase(state)
     transition(state, PHASE.LIVE)
-    io.to(roomId).emit('ball_snapped')
+    // [manual] On a manual pass play the snap IS the first GO press — the play opens with the button
+    // already down and the anti-jitter minimum running. Run plays are left alone (no-op here).
+    beginManualPlay(state)
+    io.to(roomId).emit('ball_snapped', { manual: isManualPlay(state) })
     console.log(`[game] ${roomId} ball snapped → live`)
   })
 
+
+  // ── Manual mode: the GO button ([manual]) ─────────────────────────────────
+  //
+  // The offense holds GO to make the board move and releases it to freeze the play. Both are
+  // offense-only and only mean anything during a live manual PASS play; anything else is ignored
+  // silently rather than rejected, because these fire from a held button and a stray edge (a
+  // release arriving after the play has already ended) is normal, not an error worth surfacing.
+
+  socket.on('go_press', () => {
+    const state = getGame(socket.data.roomId)
+    if (!state || state.phase !== PHASE.LIVE) return
+    if (!isManualPlay(state)) return
+    if (socket.data.role !== 'offense') return
+    pressGo(state, io)
+  })
+
+  socket.on('go_release', () => {
+    const state = getGame(socket.data.roomId)
+    if (!state || state.phase !== PHASE.LIVE) return
+    if (!isManualPlay(state)) return
+    if (socket.data.role !== 'offense') return
+    releaseGo(state, io)
+  })
 
   // ── Live play ─────────────────────────────────────────────────────────────
 
@@ -206,6 +236,10 @@ export function registerGameHandlers(io, socket) {
 
     state.qbScrambling  = true
     state.ballCarrierId = qb.id
+    // [manual] Committing to a scramble ends the hold loop: there is nothing left to decide (the QB
+    // can no longer throw), so the run plays itself out exactly like a called run. This also lifts
+    // the freeze the scramble was called from.
+    endManualControl(state, io)
     io.to(socket.data.roomId).emit('qb_scrambling')
     console.log(`[game] ${socket.data.roomId} QB scrambling — throwing locked`)
   })
@@ -219,6 +253,9 @@ export function registerGameHandlers(io, socket) {
     const roomId = socket.data.roomId
     const state  = getGame(roomId)
     state.targetReceiverId = null
+    // [manual] A throwaway has no outcome to reveal — the QB chose the incompletion — so it skips
+    // the "It is…" beat and simply ends the hold loop so the dead-ball resolution can run.
+    endManualControl(state, io)
     enqueue(roomId, EVENT.PASS_INCOMPLETE, {})
     console.log(`[game] ${roomId} QB threw the ball away — incomplete`)
   })
@@ -234,6 +271,10 @@ export function registerGameHandlers(io, socket) {
     if (commitThrowTarget(state, receiverId)) {
       // Aim the ball at the receiver's position at this instant — the moment of release ([167]).
       const target = resolveThrowTarget(state, receiverId)
+      // [manual] The throw was picked off a frozen picture. Arm the tick to resolve it before
+      // anything moves, then end the hold loop so the play can run out after the reveal.
+      armThrowResolution(state)
+      endManualControl(state, io)
       enqueue(state.roomId, EVENT.THROW, target)
       console.log(`[game] ${state.roomId} throw committed to ${receiverId} at (${target.x.toFixed(1)}, ${target.y.toFixed(1)})`)
     }
@@ -248,6 +289,9 @@ export function registerGameHandlers(io, socket) {
     const state = getGame(socket.data.roomId)
     if (commitThrowTarget(state, defenderId)) {
       const d = state.defensePlayers.get(defenderId)
+      // [manual] Like a throwaway, the outcome is chosen rather than rolled, so there is nothing to
+      // build suspense over — end the hold loop and let the return run.
+      endManualControl(state, io)
       io.to(socket.data.roomId).emit('pass_thrown', { receiverId: defenderId })   // brief line to the defender
       enqueue(state.roomId, EVENT.INTERCEPTION, { catcherId: defenderId, x: d.x, y: d.y })
       console.log(`[game] ${state.roomId} thrown at defender ${defenderId} — interception`)
@@ -264,7 +308,8 @@ export function registerGameHandlers(io, socket) {
     const state = getGame(roomId)
     if (!state || state.phase !== PHASE.GAME_OVER) return
 
-    initGame(roomId, 0)
+    // [manual] A rematch keeps the room's mode and difficulty — they were fixed when it was created.
+    initGame(roomId, 0, { mode: state.mode, difficulty: state.difficulty })
     startGameLoop(roomId, io)   // idempotent — re-arms the loop that stopped at game over
 
     const room = getRoom(roomId)

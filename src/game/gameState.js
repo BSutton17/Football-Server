@@ -1,4 +1,4 @@
-import { RULES, FIELD, HASH, FIELD_CENTER_X } from '../constants.js'
+import { RULES, FIELD, HASH, FIELD_CENTER_X, GAME_MODE, DIFFICULTY } from '../constants.js'
 import { PHASE } from './stateMachine.js'
 
 // ── Coordinate system ────────────────────────────────────────────────────────
@@ -35,9 +35,22 @@ import { PHASE } from './stateMachine.js'
 // gameStates: Map<roomId, GameState>
 const gameStates = new Map()
 
-export function initGame(roomId, offenseSlot) {
+// [manual] `mode` / `difficulty` come from the room (fixed by its creator) and are constant for the
+// whole game. They default to the original automatic/easy behaviour when not supplied.
+export function initGame(roomId, offenseSlot, { mode, difficulty } = {}) {
   const state = {
     roomId,
+
+    // ── Game mode ([manual]) ─────────────────────────────────────────────────
+    mode:       mode === GAME_MODE.MANUAL ? GAME_MODE.MANUAL : GAME_MODE.AUTOMATIC,
+    difficulty: difficulty === DIFFICULTY.HARD ? DIFFICULTY.HARD : DIFFICULTY.EASY,
+
+    // [manual] Live hold state for the GO button. Null outside a manual live play.
+    //   holding   — is the offense currently holding GO (players moving)?
+    //   heldFor   — seconds the current press has run, for the anti-jitter minimum hold
+    //   released  — a release arrived before the minimum hold elapsed; freeze as soon as it does
+    //   threw     — the ball has been thrown, so the hold loop is over and the play auto-runs
+    manual: null,
 
     // ── Phase & clock ────────────────────────────────────────────────────────
     phase: PHASE.PRE_SNAP,

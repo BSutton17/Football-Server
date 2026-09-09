@@ -1601,16 +1601,27 @@ describe('zone coverage movement (integration)', () => {
     expect(def.vx).toBeGreaterThan(0)         // reacting toward the threat on the right
   })
 
-  it('a zone defender HOLDS its landmark on a receiver still running its stem (no cut yet)', () => {
-    // Same receiver in the area but mid-stem (no waypoint cleared, not settled): the defender stays
-    // home until the route declares ([zone feedback]).
-    const wr  = { id: 'wr1', label: 'WR', x: 32, y: 50, vx: 0, vy: 6 }   // running through, uncut
-    const def = { id: 's1',  label: 'S',  x: 26, y: 50, vx: 0, vy: 0, isEngaged: false }
-    const state = zoneState({ offense: [wr], defender: def })
+  it('SHADES, rather than breaks, on a receiver still running its stem ([zone strength])', () => {
+    // A receiver mid-stem (no waypoint cleared, not settled) used to be ignored outright. That was
+    // safe when a pass had flight time to react to; with the pass resolving instantly an ignored
+    // receiver is simply an open one. So the defender now shades toward him at partial commitment —
+    // markedly less than the full break a declared route earns, but no longer nothing.
+    // Compared over several ticks, not one: from a standstill both cases are acceleration-limited
+    // to the same velocity on the first tick, so it's the DISTANCE travelled that separates a
+    // shade from a break.
+    function run(receiver) {
+      const wr  = { id: 'wr1', label: 'WR', x: 32, y: 50, vx: 0, vy: 6, ...receiver }
+      const def = { id: 's1',  label: 'S',  x: 26, y: 50, vx: 0, vy: 0, isEngaged: false }
+      const state = zoneState({ offense: [wr], defender: def })
+      for (let i = 0; i < 15; i++) runMovement(state, null, DT)
+      return def
+    }
 
-    runMovement(state, null, DT)
+    const shading  = run({})                          // mid-stem, undeclared
+    const breaking = run({ routePhase: 'settled' })   // declared its cut
 
-    expect(Math.abs(def.vx)).toBeLessThan(0.1)   // does not break toward the uncut receiver
+    expect(shading.x).toBeGreaterThan(26)             // it does come off the spot toward him…
+    expect(shading.x).toBeLessThan(breaking.x)        // …but stays nearer its zone than a full break
   })
 
   it('an underneath zone defender works AROUND a player blocking its path back to its zone', () => {
@@ -1757,14 +1768,29 @@ describe('computeSafetyRotation', () => {
     expect(computeSafetyRotation(state, LOS, dir).get('fs')).toBe(wide)
   })
 
-  it('reads a known vertical (go) early — before it reaches the deep-threat depth', () => {
-    // A tagged go route only 7 yds deep and still climbing: recognized as a vertical immediately so
-    // the deep defender starts working over the top in time, rather than waiting until 12 yds.
+  it('reads a vertical early — before it reaches the deep-threat depth', () => {
+    // A route only 7 yds deep and still climbing, but whose SHAPE is a vertical: recognized
+    // immediately so the deep defender starts working over the top in time, rather than waiting
+    // until 12 yds. [route geometry] The read comes from routeTraits, not the route's name — which
+    // is what lets a hand-drawn go be recognized exactly as early as a called one.
     const safety = { id: 'fs', label: 'S',  x: 26, y: 50 }
-    const go     = { id: 'wr', label: 'WR', x: 22, y: 42, vx: 0, vy: 6, route: 'go' }   // 7 yds deep
+    const go     = {
+      id: 'wr', label: 'WR', x: 22, y: 42, vx: 0, vy: 6,
+      route: 'go', routeTraits: { deepVertical: true, breaksBack: false, settles: false, maxDepth: 30 },
+    }
     const state  = rotationState({ safeties: [safety], verticals: [go] })
 
     expect(computeSafetyRotation(state, LOS, dir).get('fs')).toBe(go)
+  })
+
+  it('does NOT read a shallow-shaped route as an early vertical, whatever it is called', () => {
+    const safety = { id: 'fs', label: 'S',  x: 26, y: 50 }
+    const shallow = {
+      id: 'wr', label: 'WR', x: 22, y: 42, vx: 0, vy: 6,
+      route: 'go', routeTraits: { deepVertical: false, breaksBack: false, settles: false, maxDepth: 6 },
+    }
+    const state = rotationState({ safeties: [safety], verticals: [shallow] })
+    expect(computeSafetyRotation(state, LOS, dir).size).toBe(0)
   })
 
   it('stays home on a vertical the corner already has on top ([zone feedback])', () => {

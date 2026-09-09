@@ -67,6 +67,56 @@ export const SIM = {
   TICK_MS:   Math.round(1000 / _rate),  // e.g. 20 Hz → 50 ms, 30 Hz → 33 ms
 }
 
+// ── Game mode ([manual]) ──────────────────────────────────────────────────────
+//
+// 'automatic' — the original game: the offense hits HIKE and the play runs itself to the whistle.
+// 'manual'    — traditional electric football: after the defensive window the offense holds a GO
+//               button. Players move only while it is held; releasing freezes the whole play
+//               (including the game clock) so the offense can read the field and pick a receiver.
+//               Throws are legal ONLY while frozen — you cannot throw into moving traffic.
+//
+// The mode is fixed by whoever CREATES the room and is authoritative for it: a player who tries to
+// join with the other mode selected is rejected rather than silently switched.
+
+export const GAME_MODE = {
+  AUTOMATIC: 'automatic',
+  MANUAL:    'manual',
+}
+
+// ── Manual-mode difficulty ([manual]) ────────────────────────────────────────
+//
+// Chosen by the room creator and applied to whichever team currently has the ball. It ONLY ever
+// hides information from the offense — the defense always sees the true openness colors.
+//
+// 'easy' — pass catchers are colored by openness ([169]) exactly as in automatic mode.
+// 'hard' — pass catchers keep their normal team color all the way through the play. Openness is
+//          never sent to the offense, so the read has to come from watching the field. Readiness
+//          is still signalled, but only as a brightness change: a receiver that hasn't declared its
+//          route yet renders faded, and lights up to full color once it is throwable ([68]).
+
+export const DIFFICULTY = {
+  EASY: 'easy',
+  HARD: 'hard',
+}
+
+// ── Manual-mode timing ([manual]) ────────────────────────────────────────────
+
+export const MANUAL = {
+  // Real electric football bans "jittering" — flicking the switch on and off to nudge players a few
+  // inches at a time. Every GO press therefore commits to at least this many seconds of movement,
+  // so a tap costs the same as a short hold and rapid tapping buys nothing.
+  MIN_HOLD_SECONDS: 0.75,
+
+  // After a pass is released the outcome is already decided, but it is withheld behind an "It is…"
+  // banner for a random spell in this range to build suspense. The whole sim is frozen for it.
+  SUSPENSE_MIN_SECONDS: 1,
+  SUSPENSE_MAX_SECONDS: 3,
+
+  // Once the result is revealed, a catch or an interception holds on screen this long before the
+  // run-after-catch / return resumes. An incompletion ends the play, so it needs no hold.
+  RESULT_HOLD_SECONDS: 2,
+}
+
 // Valid values for route and coverage assignments.
 // Must stay in sync with Client/src/types/routes.ts.
 export const ROUTE_TYPES = new Set([
@@ -76,6 +126,9 @@ export const ROUTE_TYPES = new Set([
   'angle', 'delay',
   'swing', 'check_down', 'flare', 'texas', 'screen',
   'block',
+  // [route draw] A route the player drew by hand. It carries its own waypoints rather than being
+  // looked up in ROUTE_DEF, so the name is only a marker that geometry — not a template — governs it.
+  'custom',
 ])
 
 export const COVERAGE_TYPES = new Set(['man', 'zone', 'blitz', 'spy'])

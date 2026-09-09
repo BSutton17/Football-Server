@@ -19,6 +19,8 @@ import { runSackDetection }     from './systems/sackDetection.js'
 import { runTouchdownDetection } from './systems/touchdownDetection.js'
 import { runTackleDetection }   from './systems/tackleDetection.js'
 import { runCoverageDebug }     from './systems/coverageDebug.js'
+import { runManualHold, revealPassOutcome, takePendingOutcome } from './manual.js'
+import { enqueue }               from './eventQueue.js'
 
 // ── Fixed timestep ────────────────────────────────────────────────────────────
 //
@@ -51,6 +53,9 @@ const LIVE_SYSTEMS = [
   runCoverageDebug,     // [debug] log each receiver's openness, color, and justification (pass plays)
   runEventQueue,
   runBroadcast,
+  // [manual] LAST on purpose: when this freezes the play, runBroadcast has already sent this tick's
+  // positions, so the frame the clients hold on screen is exactly the frame the freeze captured.
+  runManualHold,
 ]
 
 // ── Per-room loop registry ────────────────────────────────────────────────────
@@ -82,7 +87,9 @@ export function stopGameLoop(roomId) {
 
 // ── Tick ──────────────────────────────────────────────────────────────────────
 
-function tick(roomId, io) {
+// Exported so tests can drive the loop one deterministic step at a time. Production code should
+// always go through startGameLoop / stopGameLoop rather than calling this directly.
+export function tick(roomId, io) {
   const state = getGame(roomId)
 
   if (!state) {
@@ -101,6 +108,18 @@ function tick(roomId, io) {
       // [70] After a timeout the game clock stays stopped until the next snap; the play clock was
       // reset + re-armed when the timeout was called, so pre-snap simply continues from here.
       if (reason === STOPPAGE.TIMEOUT) io.to(roomId).emit('timeout_ended')
+
+      // [manual] The pass-reveal chain. A manual-mode pass is decided at the instant of release but
+      // withheld: PASS_SUSPENSE runs the "It is…" beat, then the result is announced. A catch or an
+      // interception leaves the ball live, so it takes a further RESULT_HOLD beat before everyone
+      // starts moving again; an incompletion has already ended the play and resolves right away.
+      if (reason === STOPPAGE.PASS_SUSPENSE) {
+        const now = revealPassOutcome(state, io)
+        if (now) enqueue(roomId, now.event, now.payload)
+      } else if (reason === STOPPAGE.RESULT_HOLD) {
+        const next = takePendingOutcome(state)
+        if (next) enqueue(roomId, next.event, next.payload)
+      }
     }
     return
   }
@@ -143,6 +162,14 @@ function tick(roomId, io) {
 
     case PHASE.LIVE:
       state.tick++
+      // [manual] A pass committed during a freeze is resolved against the EXACT frame the offense
+      // was reading: drain it before any system moves anybody. Resolving it parks the outcome and
+      // re-freezes for the "It is…" beat, so the tick stops here rather than running the sim on.
+      if (state.manual?.resolveThrowFirst) {
+        state.manual.resolveThrowFirst = false
+        runEventQueue(state, io, DT)
+        if (isStopped(state)) break
+      }
       for (const system of LIVE_SYSTEMS) system(state, io, DT)
       break
 

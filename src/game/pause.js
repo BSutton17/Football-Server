@@ -15,6 +15,13 @@ export const STOPPAGE = {
   INJURY:    'injury',
   CHALLENGE: 'challenge',
   HALFTIME:  'halftime',
+
+  // [manual] The three freezes that make up manual (electric-football) mode. All three reuse this
+  // framework precisely because it preserves state EXACTLY — velocities included, which is what
+  // lets the openness read stay honest while the field is frozen (see manual.js).
+  MANUAL_HOLD:   'manual_hold',    // open-ended: the offense let go of GO; play resumes on the next press
+  PASS_SUSPENSE: 'pass_suspense',  // timed: the "It is…" beat before the already-decided result is shown
+  RESULT_HOLD:   'result_hold',    // timed: the beat after "Caught!"/"Intercepted!" before play resumes
 }
 
 // Begin a stoppage. `durationSec` auto-resumes after that many seconds of sim time (counted down by

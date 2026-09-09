@@ -1,5 +1,5 @@
-import { getScoreFor } from './gameState.js'
-import { FIELD } from '../constants.js'
+import { getScoreFor, getLosY } from './gameState.js'
+import { FIELD, DIFFICULTY } from '../constants.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { findBallCarrier } from './systems/movement.js'
 import { serializeSpecialTeams, serializeDecision, serializeConversion } from './specialTeams.js'
@@ -59,6 +59,10 @@ export function serializeGameState(state, viewerSlot) {
     decision: serializeDecision(state, viewerSlot) ?? serializeConversion(state, viewerSlot),
     xfActiveIds: activeXFactorIds(state),   // [294] active-X-Factor players → star shows pre-snap too
     fatigue:  serializeFatigue(state, viewerSlot),   // [fatigue] own-team stamina (drives the bars)
+    // [manual] Fixed for the game. The client needs both: mode switches HIKE for GO, and difficulty
+    // tells it whether openness colors will arrive at all (hard sends none to the offense).
+    mode:       state.mode ?? 'automatic',
+    difficulty: state.difficulty ?? 'easy',
   }
 }
 
@@ -85,8 +89,31 @@ function serializeFatigue(state, viewerSlot) {
 // which direction they're advancing on the absolute field.
 // team: 'o' (offense) | 'd' (defense) — tells the renderer which color to use.
 
-export function serializePositions(state) {
+// [manual] `viewerSlot` decides how much of the passing read this payload is allowed to carry.
+// On HARD difficulty the offense is never sent openness at all — the colors it would drive simply
+// don't exist client-side, so there is nothing to recover from devtools. The defense always gets
+// the true read, and easy / automatic games are unchanged. Pass null for the full payload.
+//
+// Receivers always carry `ready`: whether the route has declared ([68]). Easy mode signals that
+// implicitly (openness only appears once ready), but hard mode has no color to lean on, so the
+// client fades an undeclared receiver and lights it up on `ready` instead.
+// [lane block] The context the short-pass lane check needs: where the LOS is, which way the offense
+// is going, and who is actually playing zone (a man defender with his back turned gets no play on
+// the ball). Exported so the throw resolution settles the pass on the identical read.
+export function laneContext(state) {
+  const zoneIds = new Set()
+  if (state.defenseCoverage) {
+    for (const [id, cov] of state.defenseCoverage) {
+      if (cov?.type === 'zone') zoneIds.add(id)
+    }
+  }
+  return { losY: getLosY(state), direction: state.direction, zoneIds }
+}
+
+export function serializePositions(state, viewerSlot = null) {
   const positions = []
+  const hideOpenness = state.difficulty === DIFFICULTY.HARD &&
+                       viewerSlot != null && viewerSlot === state.possession
 
   const toRelY = state.direction === 1
     ? (absY) => absY - FIELD.END_ZONE_DEPTH           // northbound: shift by south end zone
@@ -98,6 +125,10 @@ export function serializePositions(state) {
   for (const p of state.offensePlayers.values()) {
     if (p.label === 'QB') { qb = p; break }
   }
+  // [lane block] Everything the short-pass throwing-lane check needs. Computed once per tick rather
+  // than per receiver, and shared with the throw resolution so the color the offense reads is the
+  // same read the pass is actually settled on.
+  const lane = laneContext(state)
 
   // Whoever currently has the ball is tagged so the client can render the football on them and
   // follow them with the camera ([193]). findBallCarrier covers the designed runner, a scrambling
@@ -111,8 +142,10 @@ export function serializePositions(state) {
     // Pass catchers carry an openness score so the client can color them ([169]) — but only once
     // the receiver has declared: after its first cut (routeWaypointIdx ≥ 1) or, on a no-cut route,
     // after OPENNESS_REVEAL_DELAY. Until then it keeps its base color (the read hasn't developed).
-    if (RECEIVER_LABELS.has(p.label) && isReceiverReady(p)) {
-      pos.openness = roundCoord(computeReceiverOpenness(p, defenders, qb))
+    if (RECEIVER_LABELS.has(p.label)) {
+      const ready = isReceiverReady(p)
+      pos.ready = ready
+      if (ready && !hideOpenness) pos.openness = roundCoord(computeReceiverOpenness(p, defenders, qb, lane))
     }
     positions.push(pos)
   }

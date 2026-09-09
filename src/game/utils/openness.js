@@ -41,10 +41,59 @@ const LANE_AHEAD_MIN    = 0.3   // dot-with-heading threshold for a defender to 
 //     the window opens up, the WR isn't running into them.
 //   • a go / deep route runs straight INTO that defender, who then has position on the deep ball —
 //     so it's HEAVILY contested, not merely contested.
-const BREAK_BACK_ROUTES = new Set(['comeback', 'curl', 'return'])
-const DEEP_GO_ROUTES    = new Set(['go', 'seam', 'post', 'corner', 'wheel', 'deep_cross', 'fade'])
+//
+// [route geometry] Which of those a route is comes from its SHAPE (`receiver.routeTraits`), not
+// from a list of route names. Named and hand-drawn routes are therefore read identically, and a
+// route shortened with the depth handle is judged as the route it actually became.
 const BREAK_BACK_BOOST  = 0.6   // how strongly a defender-in-front opens a comeback/curl window
 const GO_FRONT_PENALTY  = 0.45  // extra cut to a go/deep window when a defender sits in the deep lane
+
+// ── Short-pass throwing lanes ([lane block]) ─────────────────────────────────
+//
+// On a genuinely short throw the ball travels flat and fast, and a zone defender standing in the
+// line between the passer and the target gets a hand on it — realistically a swat or a pick, not a
+// completion. Depth is what makes this specific to short routes: on anything deeper the QB can put
+// air under the ball and drop it over an underneath defender, so the lane simply doesn't apply.
+//
+// Restricted to defenders playing ZONE. A zone defender is facing the quarterback and reading his
+// eyes, which is what lets him break on a ball thrown into his area; a man defender has his back
+// turned running with a receiver and doesn't get that same play on it.
+const LANE_SHORT_MAX_AIR    = 5     // air yards past the LOS; at or beyond this the QB floats it over
+const LANE_BLOCK_RADIUS     = 1.2   // yards either side of the line a defender's body + arms cover
+const LANE_BLOCKED_OPENNESS = 0.15  // forced well into the smothered band (10% catch / 20% INT)
+// Ignore defenders bunched at either end of the line: one on the passer is a rusher, and one on the
+// receiver is ordinary tight coverage that the separation model already accounts for.
+const LANE_MIN_T = 0.12
+const LANE_MAX_T = 0.85
+
+// Is a zone defender standing in the throwing line on a short pass?
+//   receiver / qb — { x, y }
+//   defenders     — full defender objects
+//   losY, direction — to measure air yards past the line of scrimmage
+//   zoneIds       — Set of defender ids currently playing zone; required (no zone read, no block)
+export function shortPassLaneBlocked(receiver, defenders, qb, { losY, direction, zoneIds } = {}) {
+  if (!qb || !defenders || !zoneIds || zoneIds.size === 0) return false
+  if (losY == null || !direction) return false
+
+  // Depth of the target past the LOS. Screens and swing passes behind the line count as short too.
+  const airYards = (receiver.y - losY) * direction
+  if (airYards >= LANE_SHORT_MAX_AIR) return false
+
+  const ax = qb.x, ay = qb.y
+  const dx = receiver.x - ax, dy = receiver.y - ay
+  const len2 = dx * dx + dy * dy
+  if (len2 < 1e-6) return false
+
+  for (const d of defenders) {
+    if (!zoneIds.has(d.id)) continue
+    // Project the defender onto the passer→receiver segment.
+    const t = ((d.x - ax) * dx + (d.y - ay) * dy) / len2
+    if (t < LANE_MIN_T || t > LANE_MAX_T) continue
+    const px = ax + dx * t, py = ay + dy * t
+    if (Math.hypot(d.x - px, d.y - py) <= LANE_BLOCK_RADIUS) return true
+  }
+  return false
+}
 
 function clamp01(v) {
   return Math.max(0, Math.min(1, v))
@@ -68,8 +117,10 @@ function closingSpeed(d, receiver) {
 // receiver  — { x, y }
 // defenders — array of full defender objects ({ x, y, vx, vy, label })
 // qb        — { x, y } | null (the passer, for the leverage read)
-export function computeReceiverOpenness(receiver, defenders, qb = null) {
-  return opennessBreakdown(receiver, defenders, qb).openness
+// opts ([lane block]) — { losY, direction, zoneIds }. Optional: without it the short-pass lane
+// check is skipped entirely and openness is the pure separation/leverage read it always was.
+export function computeReceiverOpenness(receiver, defenders, qb = null, opts = {}) {
+  return opennessBreakdown(receiver, defenders, qb, opts).openness
 }
 
 // Same computation as computeReceiverOpenness, but also returns the per-factor contributions so the
@@ -78,7 +129,7 @@ export function computeReceiverOpenness(receiver, defenders, qb = null) {
 //   align    — leverage: >0 the nearest defender is inside the throwing lane (ball-side), <0 trailing/beaten ([171])
 //   closing  — closing speed of the nearest defender toward the receiver, yd/s ([172])
 //   safeties — helping safeties over the top ([173]); bracket — other crowding defenders
-export function opennessBreakdown(receiver, defenders, qb = null) {
+export function opennessBreakdown(receiver, defenders, qb = null, opts = {}) {
   if (!defenders || defenders.length === 0) {
     return { openness: 1, nearestId: null, nearestLabel: null, nearestDist: Infinity, align: 0, closing: 0, safeties: 0, bracket: 0 }
   }
@@ -157,19 +208,29 @@ export function opennessBreakdown(receiver, defenders, qb = null) {
   // underneath them (the window opens); on a go/deep route the receiver runs INTO them and the deep
   // ball is heavily contested; otherwise the window is simply capped by the separation to them.
   if (frontDist < Infinity) {
-    if (BREAK_BACK_ROUTES.has(receiver.route)) {
+    const breaksBack = receiver.routeTraits?.breaksBack ?? false
+    const deepGo     = receiver.routeTraits?.deepVertical ?? false
+
+    if (breaksBack) {
       openness = clamp01(openness + BREAK_BACK_BOOST * (1 - openness))
     } else {
       let frontOpen = clamp01((frontDist - SMOTHERED_DIST) / (WIDE_OPEN_DIST - SMOTHERED_DIST))
-      if (DEEP_GO_ROUTES.has(receiver.route)) frontOpen *= GO_FRONT_PENALTY   // heavily contested
+      if (deepGo) frontOpen *= GO_FRONT_PENALTY   // heavily contested
       openness = Math.min(openness, frontOpen)
     }
   }
+
+  // [lane block] A zone defender in the throwing line on a short pass overrides everything above:
+  // however much separation the receiver has, the ball has to get past the man standing in front of
+  // him. Applied last so it caps the final read rather than being diluted by the other factors.
+  const laneBlocked = shortPassLaneBlocked(receiver, defenders, qb, opts)
+  if (laneBlocked) openness = Math.min(openness, LANE_BLOCKED_OPENNESS)
 
   return {
     openness: clamp01(openness),
     nearestId: nearest.id ?? null, nearestLabel: nearest.label ?? null, nearestDist,
     align, closing, safeties, bracket, ahead, beaten,
     frontDist: Number.isFinite(frontDist) ? frontDist : null,
+    laneBlocked,
   }
 }

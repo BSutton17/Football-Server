@@ -10,10 +10,11 @@ import {
 import { calculateKickResult, computePuntReturn, resolvePuntBounce, DEFAULT_KICK_POWER, DEFAULT_KICK_ACCURACY } from './kickEngine.js'
 import { getSpecialist } from '../data/specialists.js'
 import { getRoom } from './roomManager.js'
-import { serializeClock, serializeScore, serializeGameState, serializeGameOver, serializePlayResult, isReceiverReady } from './serialization.js'
+import { serializeClock, serializeScore, serializeGameState, serializeGameOver, serializePlayResult, isReceiverReady, laneContext } from './serialization.js'
 import { recoverStamina, applyTackleStamina } from './systems/stamina.js'
 import { CATCH_MOMENTUM_TIME } from './systems/movement.js'
 import { computeReceiverOpenness } from './utils/openness.js'
+import { isManualPlay, beginPassSuspense } from './manual.js'
 import { resolvePass, opennessTier } from './utils/passOutcome.js'
 import {
   recordPassOutcome, recordScramble, recordPassingTouchdown,
@@ -143,6 +144,24 @@ export function earlyThrowCatchChance(catching) {
   return Math.max(0, 1 + (catching - 50) * (9 / 49))
 }
 
+// Routes an already-resolved pass outcome to its follow-up event.
+//
+// In AUTOMATIC mode that means straight onto the queue — the result lands on the next tick, as it
+// always has. In MANUAL mode ([manual]) the outcome is decided here, at the instant of release and
+// against the exact frozen picture the offense was reading, but it is PARKED behind an "It is…"
+// suspense beat and replayed by the tick's stoppage chain once that elapses. Deciding now and
+// revealing later is what keeps the suspense honest: the delay never changes the answer.
+//
+// `settles` marks an outcome that leaves the ball live (a catch or a pick) and so earns an extra
+// beat on screen before play resumes; an incompletion has already ended the play.
+function deliverPassOutcome(state, io, { event, payload, outcome, reason = null, settles = false }) {
+  if (isManualPlay(state)) {
+    beginPassSuspense(state, io, { event, payload, outcome, reason, settles })
+    return
+  }
+  enqueue(state.roomId, event, payload)
+}
+
 // payload: { receiverId, x, y } — the catch location snapshotted at release ([167])
 function onThrow({ receiverId, x, y }, state, io) {
   state.activeThrow   = { receiverId, x, y }
@@ -164,9 +183,15 @@ function onThrow({ receiverId, x, y }, state, io) {
   if (!isReceiverReady(receiver)) {
     const caught = Math.random() * 100 < earlyThrowCatchChance(ratingOf(receiver, 'catching'))
     if (caught) {
-      enqueue(state.roomId, EVENT.PASS_COMPLETE, { receiverId, x: receiver.x, y: receiver.y })
+      deliverPassOutcome(state, io, {
+        event: EVENT.PASS_COMPLETE, payload: { receiverId, x: receiver.x, y: receiver.y },
+        outcome: 'complete', settles: true,
+      })
     } else {
-      enqueue(state.roomId, EVENT.PASS_INCOMPLETE, { reason: 'drop' })
+      deliverPassOutcome(state, io, {
+        event: EVENT.PASS_INCOMPLETE, payload: { reason: 'drop' },
+        outcome: 'incomplete', reason: 'drop',
+      })
     }
     return
   }
@@ -177,7 +202,9 @@ function onThrow({ receiverId, x, y }, state, io) {
     if (p.label === 'QB') { qb = p; break }
   }
 
-  const openness      = computeReceiverOpenness(receiver, defenders, qb)
+  // [lane block] Same context the client's color was computed from, so a receiver shown as smothered
+  // because a zone defender is standing in the throwing line resolves that way too.
+  const openness      = computeReceiverOpenness(receiver, defenders, qb, laneContext(state))
   const qbAccuracy    = qb ? ratingOf(qb, 'accuracy') : getRatings('QB').accuracy
   const receiverCatch = ratingOf(receiver, 'catching')
 
@@ -211,7 +238,10 @@ function onThrow({ receiverId, x, y }, state, io) {
   recordDefenderOutcome(state, guardingDB, { outcome, reason, tier }, io)
 
   if (outcome === 'complete') {
-    enqueue(state.roomId, EVENT.PASS_COMPLETE, { receiverId, x: receiver.x, y: receiver.y })
+    deliverPassOutcome(state, io, {
+      event: EVENT.PASS_COMPLETE, payload: { receiverId, x: receiver.x, y: receiver.y },
+      outcome, settles: true,
+    })
   } else if (outcome === 'intercepted') {
     // Nearest defender to the target makes the pick.
     let catcher = null, best = Infinity
@@ -219,10 +249,15 @@ function onThrow({ receiverId, x, y }, state, io) {
       const dist = Math.hypot(d.x - receiver.x, d.y - receiver.y)
       if (dist < best) { best = dist; catcher = d }
     }
-    enqueue(state.roomId, EVENT.INTERCEPTION, { catcherId: catcher?.id ?? null, x: receiver.x, y: receiver.y })
+    deliverPassOutcome(state, io, {
+      event: EVENT.INTERCEPTION, payload: { catcherId: catcher?.id ?? null, x: receiver.x, y: receiver.y },
+      outcome, settles: true,
+    })
   } else {
     // reason distinguishes a drop (open window) from a defended break-up so the notice matches.
-    enqueue(state.roomId, EVENT.PASS_INCOMPLETE, { reason })
+    deliverPassOutcome(state, io, {
+      event: EVENT.PASS_INCOMPLETE, payload: { reason }, outcome, reason,
+    })
   }
 }
 

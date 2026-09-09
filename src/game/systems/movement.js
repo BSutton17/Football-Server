@@ -973,15 +973,72 @@ export function isQbScrambling(qb, center, losY, dir) {
 
 const ZONE_RADIUS          = 7      // yards — the area a zone defender patrols and defends
 const ZONE_AWARENESS_RANGE = 4      // extra detection yards beyond the zone at 99 awareness
-const ZONE_LEAD_BASE       = 0.15   // seconds of threat velocity a zone defender anticipates
-const ZONE_COVERAGE_LEAD   = 0.25   // extra anticipation seconds at 99 coverage skill
+// [zone strength] Anticipation raised across the board. With no ball flight to read, a zone
+// defender only ever gets to the throw if he was already moving to the right spot — so he leads
+// the receiver's motion further than before rather than tracking where the receiver already was.
+const ZONE_LEAD_BASE       = 0.22   // seconds of threat velocity a zone defender anticipates
+const ZONE_COVERAGE_LEAD   = 0.35   // extra anticipation seconds at 99 coverage skill
 const ZONE_PATROL_SPEED    = 0.6    // fraction of top speed sinking back to the landmark
-const ZONE_REACT_SPEED     = 0.95   // fraction of top speed breaking on a threat
+// A declared break is now driven at full speed: the old 0.95 meant a zone defender was permanently
+// a step slower than the receiver he was closing on, which an instant pass punishes every time.
+const ZONE_REACT_SPEED     = 1.0    // fraction of top speed breaking on a threat
 // [zone urgency] A zone defender SPRINTS to its spot before it settles in. While it's still more than
 // ZONE_SETTLE_DIST yards from its target it runs nearly full-out (ZONE_SPRINT_SPEED); once it arrives
 // it drops to the patrol / react pace so it can read and break under control — not drift into place.
 const ZONE_SPRINT_SPEED    = 0.98
 const ZONE_SETTLE_DIST     = 2.5    // yards from the spot at which it stops sprinting and settles
+
+// ── Zone strength ([zone strength]) ──────────────────────────────────────────
+//
+// Zone was being pulled apart, for two reasons that compound each other. The pass resolves the
+// instant it is released, so there is no ball in the air for a zone defender to break on — the
+// only thing that saves a zone is where it was ALREADY standing. And in manual mode the offense
+// can freeze the play and pick the exact frame it throws from, which turns any momentary hole into
+// a guaranteed completion. Zone therefore has to be right on position rather than on reaction.
+//
+// Three changes, all of which apply in automatic mode too:
+//   • the shell is resolved together (computeZoneCoordination) instead of each defender reading
+//     the field alone, so two defenders never vacate adjacent zones for the same receiver;
+//   • a defender whose area nothing else threatens stretches it and CARRIES his man instead of
+//     releasing him at a line on the grass — the Cover-2 flat corner staying with a vertical when
+//     no one is coming to the flat;
+//   • defenders sit in the throwing lane rather than on the receiver's exact spot, which is what
+//     actually contests a pass that has no flight time.
+
+// How far a zone can stretch when nothing else is threatening it. Well beyond ZONE_RADIUS, so a
+// defender with a quiet area can genuinely run with a receiver instead of waving him through.
+const ZONE_CARRY_RADIUS    = 12
+// Seconds of receiver velocity used to project who is ABOUT to arrive. This is the whole basis of
+// the "nobody is coming" read, and it is pure kinematics — see the note in computeZoneCoordination.
+const ZONE_CARRY_LOOKAHEAD = 1.2
+// A receiver within this of the landmark now (or after the look-ahead) makes the area contested,
+// which collapses the zone back to its normal radius and forces the pass-off.
+const ZONE_CROWD_RADIUS    = 9
+// How far toward the QB a zone defender plays, as a fraction of the way from the receiver to the
+// passer. Being in the throwing lane is what shrinks the window on an instant pass — the openness
+// engine reads a defender between passer and target as real coverage, a trailing one as beaten.
+const ZONE_LANE_BIAS       = 0.22
+// Commitment to a receiver whose route has not declared yet. Full commitment would let a double
+// move drag the defender out of his area; ignoring him entirely (the old behaviour) left him
+// wide open to an instant throw. Shading splits the difference.
+const ZONE_SHADE_COMMIT    = 0.5
+
+// ── Who a zone defender is actually covering ([zone decisiveness]) ───────────
+//
+// The threat a defender claims is chosen on where receivers ARE, not where they are heading. An
+// earlier version scored each receiver by whichever was smaller — his current distance to the
+// landmark or his projected one — which meant a receiver nine yards away running hard projected
+// closer than one standing three yards away, so defenders abandoned the man in front of them to go
+// meet someone who had not arrived yet. Closing speed still counts, but only as a small discount on
+// a real present distance, never as a replacement for it.
+const ZONE_CLOSING_CREDIT = 0.35   // fraction of the ground a receiver will make up that counts
+const ZONE_CLOSING_MAX    = 2.5    // yards — cap on that credit, so it can never outweigh presence
+
+// Yards of advantage a defender's CURRENT man keeps over any challenger. Without this the claim is
+// recomputed from nothing 20 times a second and flips whenever two receivers are similarly placed,
+// which reads on the field as a defender twitching between them and covering neither. A challenger
+// has to be clearly better, not marginally better, to take the assignment over.
+const ZONE_CLAIM_STICKINESS = 2.0
 
 const RECEIVER_LABELS = new Set(['WR', 'TE', 'RB'])
 
@@ -1005,23 +1062,46 @@ export function findZoneThreat(zoneCenter, offensePlayers, awareness = 55) {
 // otherwise leads the threat (lead scales with coverage skill) but clamps the target
 // to the zone radius so the defender never vacates its area ([146]/[147]).
 // Returns { x, y, reacting } — `reacting` lets the caller drive harder on a threat.
-export function getZoneTarget(zoneCenter, threat, coverage = 55) {
+// opts ([zone strength], all optional so the original 3-argument call is unchanged):
+//   radius     — this tick's effective zone size, stretched by computeZoneCoordination when the
+//                area is uncontested so the defender can carry rather than release at the boundary
+//   qb         — the passer; when given, the target is pulled ZONE_LANE_BIAS of the way toward him
+//                so the defender plays the throwing lane instead of the receiver's exact spot
+//   commitment — 0..1 how far to actually chase (1 = full break, ZONE_SHADE_COMMIT = shade only)
+export function getZoneTarget(zoneCenter, threat, coverage = 55, opts = {}) {
+  const radius     = opts.radius ?? ZONE_RADIUS
+  const qb         = opts.qb ?? null
+  const commitment = opts.commitment ?? 1
+
   if (!threat) return { x: zoneCenter.x, y: zoneCenter.y, reacting: false }
 
   const lead = ZONE_LEAD_BASE + (coverage / 99) * ZONE_COVERAGE_LEAD
-  const tx   = threat.x + (threat.vx ?? 0) * lead
-  const ty   = threat.y + (threat.vy ?? 0) * lead
+  let tx = threat.x + (threat.vx ?? 0) * lead
+  let ty = threat.y + (threat.vy ?? 0) * lead
+
+  // Undercut toward the passer: on a pass with no flight time, the defender who is IN the lane is
+  // the one who contests it. Trailing the receiver by a step reads as beaten no matter how close.
+  if (qb) {
+    tx += (qb.x - tx) * ZONE_LANE_BIAS
+    ty += (qb.y - ty) * ZONE_LANE_BIAS
+  }
+
+  // Partial commitment shades from the landmark toward the threat rather than chasing it outright.
+  if (commitment < 1) {
+    tx = zoneCenter.x + (tx - zoneCenter.x) * commitment
+    ty = zoneCenter.y + (ty - zoneCenter.y) * commitment
+  }
 
   const ox   = tx - zoneCenter.x
   const oy   = ty - zoneCenter.y
   const dist = Math.hypot(ox, oy)
 
-  if (dist <= ZONE_RADIUS) return { x: tx, y: ty, reacting: true }
+  if (dist <= radius) return { x: tx, y: ty, reacting: true }
 
   // Threat is beyond the boundary — break to the edge toward it, but hold the zone.
   return {
-    x: zoneCenter.x + (ox / dist) * ZONE_RADIUS,
-    y: zoneCenter.y + (oy / dist) * ZONE_RADIUS,
+    x: zoneCenter.x + (ox / dist) * radius,
+    y: zoneCenter.y + (oy / dist) * radius,
     reacting: true,
   }
 }
@@ -1064,7 +1144,9 @@ const DEEP_THREAT_VY_MIN = 1.5    // yards/sec downfield to still count as "pres
 // A recognizable vertical (go/seam/post/corner/deep cross/wheel) is a deep concern as soon as it
 // clears its stem and is still climbing — the deep defender reads the vertical release and starts
 // working over the top EARLY, instead of waiting until the route is already 12 yards deep.
-const VERTICAL_ROUTES          = new Set(['go', 'seam', 'post', 'corner', 'deep_cross', 'wheel'])
+// [route geometry] What counts as a vertical is read from the route's shape (routeTraits), not from
+// a list of names — so a hand-drawn go is recognized as early as a called one, and the defense is
+// never handed the play call to look it up in.
 const VERTICAL_RECOGNIZE_DEPTH = 6   // yards past the LOS a known vertical is picked up
 
 // "Cheat over the instant a corner is beaten" ([safety feedback]): once the receiver has climbed
@@ -1115,7 +1197,8 @@ export function computeSafetyRotation(state, losY, dir) {
     const depth    = (r.y - losY) * dir
     const climbing = (r.vy ?? 0) * dir
     const pressingDeep  = depth >= DEEP_THREAT_DEPTH && climbing >= DEEP_THREAT_VY_MIN
-    const earlyVertical = VERTICAL_ROUTES.has(r.route ?? '') && depth >= VERTICAL_RECOGNIZE_DEPTH && climbing >= 0.5
+    const isVertical    = r.routeTraits?.deepVertical ?? false
+    const earlyVertical = isVertical && depth >= VERTICAL_RECOGNIZE_DEPTH && climbing >= 0.5
 
     // Beaten the corner: the nearest CB is now trailing (shallower downfield) while the receiver
     // keeps climbing. Triggers the rotation early — the instant the corner is passed.
@@ -1159,6 +1242,115 @@ export function computeSafetyRotation(state, losY, dir) {
     used.add(c.r.id)
   }
   return assignment
+}
+
+// ── Zone coordination ([zone strength]) ──────────────────────────────────────
+//
+// Resolves the whole zone shell together, once per tick, instead of letting each defender read the
+// field in isolation. Returns Map<defenderId, { threat, radius, contested }>:
+//
+//   threat     — the one receiver this defender is responsible for, deduplicated across the shell
+//                so two defenders never abandon adjacent zones for the same man
+//   radius     — his effective zone this tick: normal when someone else is threatening the area,
+//                stretched to ZONE_CARRY_RADIUS when nothing is, so he can carry his man
+//   contested  — whether anyone else is in or arriving at his area (drives the above)
+//
+// WHAT THE DEFENSE IS ALLOWED TO KNOW. This reads only what a defender could actually see on the
+// field: where every receiver is, which way each is moving, and where his own teammates are. It
+// never touches state.playDesign or r.route, so the defense is never handed the play call. The
+// Cover-2 corner who hangs with a vertical because "nothing is coming to the flat" reaches that
+// conclusion the way a real defender does — by looking at the receivers near him and seeing that
+// none of them are heading his way — not by being told everyone ran a go route. The read is honest
+// but fallible: a receiver who breaks back late will beat it, exactly as he should.
+export function computeZoneCoordination(state, losY, dir) {
+  const zoners = []
+  for (const d of state.defensePlayers.values()) {
+    const cov = state.defenseCoverage.get(d.id)
+    if (cov?.type !== 'zone' || cov.zoneCenterX == null || cov.zoneCenterY == null) continue
+    zoners.push({ d, cov, cx: cov.zoneCenterX, cy: zoneLandmarkY(cov, dir) })
+  }
+  if (zoners.length === 0) return new Map()
+
+  const receivers = []
+  for (const r of state.offensePlayers.values()) {
+    if (RECEIVER_LABELS.has(r.label ?? '')) receivers.push(r)
+  }
+
+  // Where each receiver will be shortly, from current velocity alone — the "who is coming" read.
+  const soonPos = new Map()
+  for (const r of receivers) {
+    soonPos.set(r.id, {
+      x: r.x + (r.vx ?? 0) * ZONE_CARRY_LOOKAHEAD,
+      y: r.y + (r.vy ?? 0) * ZONE_CARRY_LOOKAHEAD,
+    })
+  }
+
+  // How close a receiver is to a landmark RIGHT NOW.
+  const distOf = (r, cx, cy) => Math.hypot(r.x - cx, r.y - cy)
+
+  // How close he will be after the look-ahead — the predictive read, used for the carry decision.
+  const soonDistOf = (r, cx, cy) => {
+    const soon = soonPos.get(r.id)
+    return Math.hypot(soon.x - cx, soon.y - cy)
+  }
+
+  // Threat score: present distance, discounted a little for a receiver genuinely closing on the
+  // area. The discount is capped so presence always dominates arrival.
+  const threatScore = (r, cx, cy) => {
+    const now     = distOf(r, cx, cy)
+    const closing = Math.max(0, now - soonDistOf(r, cx, cy))
+    return now - Math.min(ZONE_CLOSING_MAX, closing * ZONE_CLOSING_CREDIT)
+  }
+
+  // Score every plausible (defender, receiver) pairing. Detection is on PRESENT distance: a
+  // defender reacts to who is in his area, not to who might be in a second from now.
+  const candidates = []
+  for (const z of zoners) {
+    const awareness = ratingOf(z.d, 'awareness') ?? 55
+    const detect    = ZONE_RADIUS + (awareness / 99) * ZONE_AWARENESS_RANGE
+    for (const r of receivers) {
+      if (distOf(r, z.cx, z.cy) > detect) continue
+      // The man he already has stays his unless someone is clearly more urgent.
+      const sticky = z.d.zoneClaimId === r.id ? ZONE_CLAIM_STICKINESS : 0
+      candidates.push({ zId: z.d.id, r, score: threatScore(r, z.cx, z.cy) - sticky })
+    }
+  }
+  candidates.sort((a, b) => a.score - b.score)
+
+  // One receiver per defender, one defender per receiver: the most urgent pairing wins, and
+  // everyone else passes off rather than piling on. This is what stops two zones emptying for one
+  // route. Ties are broken by whoever was already covering him, via the stickiness above.
+  const primary = new Map()
+  const claimed = new Set()
+  for (const c of candidates) {
+    if (primary.has(c.zId) || claimed.has(c.r.id)) continue
+    primary.set(c.zId, c.r)
+    claimed.add(c.r.id)
+  }
+
+  const out = new Map()
+  for (const z of zoners) {
+    const mine = primary.get(z.d.id) ?? null
+    // Remember the claim so it carries the stickiness bonus into the next tick.
+    z.d.zoneClaimId = mine?.id ?? null
+
+    // Is anybody OTHER than my man in my area, or on his way into it? If not, there is nothing to
+    // pass my man off to and no reason to release him at the boundary — stretch the zone instead.
+    // This one IS predictive on purpose: "nobody is coming" is a statement about the near future.
+    let contested = false
+    for (const r of receivers) {
+      if (mine && r.id === mine.id) continue
+      const reach = Math.min(distOf(r, z.cx, z.cy), soonDistOf(r, z.cx, z.cy))
+      if (reach <= ZONE_CROWD_RADIUS) { contested = true; break }
+    }
+
+    out.set(z.d.id, {
+      threat: mine,
+      radius: contested ? ZONE_RADIUS : ZONE_CARRY_RADIUS,
+      contested,
+    })
+  }
+  return out
 }
 
 // ── Man coverage ──────────────────────────────────────────────────────────────
@@ -1418,6 +1610,10 @@ function moveDefense(state, dt) {
   // each carries one over the top and nothing gets behind (computed from the whole field).
   const safetyRotation = computeSafetyRotation(state, losY, dir)
 
+  // [zone strength] Resolve the underneath/zone shell as a unit: who each zone defender owns, and
+  // whether his area is quiet enough to carry that man past its normal boundary.
+  const zoneCoord = computeZoneCoordination(state, losY, dir)
+
   for (const p of state.defensePlayers.values()) {
     // Press jam ([press]): a corner/safety beaten off the press is frozen until the stun wears off.
     if ((p.stunTimer ?? 0) > 0) { p.stunTimer -= dt; p.vx = 0; p.vy = 0; continue }
@@ -1611,25 +1807,59 @@ function moveDefense(state, dt) {
               : Math.min(center.y, projY - SAFETY_OVER_TOP_CUSHION)
             const carrySpd = getMaxSpeed(p) * fm
             steerCoverage(p, overTopX, overTopY, carrySpd, dt, accel, coverageTurnRate(p))
+            if (state.zoneTrace) {
+              p.zt = {
+                threatId: carry.id, declared: true, commitment: 1,
+                radius: null, contested: null,
+                landmarkX: center.x, landmarkY: center.y,
+                targetX: overTopX, targetY: overTopY,
+                mode: 'deep-carry',
+              }
+            }
             break
           }
 
           // Otherwise play the zone: patrol the landmark, react to threats entering the area.
           const awareness = ratingOf(p, 'awareness') ?? 55
           const coverage  = ratingOf(p, 'coverage') ?? 55
-          const rawThreat = findZoneThreat(center, state.offensePlayers, awareness)
-          // Hold the zone until a route DECLARES with its cut ([zone feedback]): a zone defender
-          // shouldn't break on a receiver still running its stem through the area — only once the
-          // route has made a cut (cleared a waypoint) or settled in the zone. A receiver running a
-          // pure vertical never "cuts", so the underneath zone correctly stays home and lets the
-          // deep shell carry it.
-          const declared = rawThreat && ((rawThreat.routeWaypointIdx ?? 0) >= 1 || rawThreat.routePhase === 'settled')
-          const threat    = declared ? rawThreat : null
-          const t         = getZoneTarget(center, threat, coverage)
+          // [zone strength] The shell-wide pass owns the read now — it deduplicates threats across
+          // defenders and decides whether this area is quiet enough to carry. Fall back to the solo
+          // read if this defender somehow wasn't in it.
+          const zc        = zoneCoord.get(p.id)
+          const rawThreat = zc ? zc.threat : findZoneThreat(center, state.offensePlayers, awareness)
+
+          // A route that has DECLARED with its cut earns a full break ([zone feedback]). One still
+          // running its stem used to be ignored outright, which was safe when a pass had flight
+          // time to react to — but an instant pass makes an ignored receiver simply open. So he is
+          // now SHADED at partial commitment: enough to be in his throwing lane, not so much that a
+          // double move drags the defender out of his zone ([zone strength]).
+          const declared   = !!rawThreat && ((rawThreat.routeWaypointIdx ?? 0) >= 1 || rawThreat.routePhase === 'settled')
+          const commitment = declared ? 1 : ZONE_SHADE_COMMIT
+          const t = getZoneTarget(center, rawThreat, coverage, {
+            radius: zc?.radius ?? ZONE_RADIUS,
+            qb,
+            commitment,
+          })
+          // [zone trace] Record what this defender decided this tick so the coverage lab can show
+          // WHY it moved where it did. Off in normal play — one null check per zone defender.
+          if (state.zoneTrace) {
+            p.zt = {
+              threatId:  rawThreat?.id ?? null,
+              declared,
+              commitment,
+              radius:    zc?.radius ?? ZONE_RADIUS,
+              contested: zc?.contested ?? null,
+              landmarkX: center.x, landmarkY: center.y,
+              targetX:   t.x, targetY: t.y,
+              mode:      'zone',
+            }
+          }
+
           // Sprint into position first, then settle: far from the spot → hustle at ZONE_SPRINT_SPEED;
-          // once within ZONE_SETTLE_DIST → normal patrol / react pace ([zone urgency]).
+          // once within ZONE_SETTLE_DIST → normal patrol / react pace ([zone urgency]). Only a
+          // declared threat is worth breaking on at full speed; shading is done under control.
           const distToSpot = Math.hypot(t.x - p.x, t.y - p.y)
-          const settledSpd = t.reacting ? ZONE_REACT_SPEED : ZONE_PATROL_SPEED
+          const settledSpd = (t.reacting && declared) ? ZONE_REACT_SPEED : ZONE_PATROL_SPEED
           const zoneSpd    = topSpd * (distToSpot > ZONE_SETTLE_DIST ? ZONE_SPRINT_SPEED : settledSpd)
 
           // Underneath zones work AROUND a receiver/blocker that's shoving them off their spot

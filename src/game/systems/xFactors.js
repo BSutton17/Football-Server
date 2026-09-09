@@ -52,7 +52,7 @@ const DB_LABELS = new Set(['CB', 'S'])
 const PASS_TD_EARN          = 2    // universal: 2 passing TDs earns ANY QB ability
 const SCRAMBLE_EARN_YARDS   = 10   // Shake It Off: one scramble of ≥10 yds
 const STM_STREAK_EARN       = 5    // Short Term Memory: 5 completions in a row
-const TIGHT_CONTESTED_EARN  = 2    // Tight Window: 2 contested completions (1 heavily is enough)
+const TIGHT_CONTESTED_EARN  = 3    // Tight Window: 3 contested completions (1 heavily is enough)
 const CANNON_DEEP_EARN      = 2    // Cannon: 2 deep completions
 const CHEM_RECEIVERS_EARN   = 4    // Team Chemistry: completions to 4 different receivers
 
@@ -115,7 +115,7 @@ const BALL_HAWK_INT_BONUS       = 0.05   // Ball Hawk: +5% INT on contested/heav
 const INTIMIDATOR_OPEN_BAR      = OPENNESS_OPEN + 0.19   // 0.85 — must be THIS open to still read open
 
 export const SHAKE_OFF_CHANCE  = 0.5    // Shake It Off: 50% to escape a sack (RNG 1–2)
-export const SHAKE_IMMUNITY_S  = 0.6    // grace window after a shake-off so the same rush can't re-sack
+export const SHAKE_IMMUNITY_S  = 1.5    // grace window after a shake-off so the same rush can't re-sack
 export const SHAKE_KNOCKBACK_YD = 2.5   // how far the beaten rusher is shoved off the QB
 
 // A throw is "deep" once it travels this many yards past the line of scrimmage.

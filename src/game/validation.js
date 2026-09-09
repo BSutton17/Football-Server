@@ -1,6 +1,7 @@
 import { FIELD, ROUTE_TYPES, COVERAGE_TYPES, ZONE_TYPES } from '../constants.js'
 import { PHASE } from './stateMachine.js'
 import { getGame } from './gameState.js'
+import { isManualPlay, isManualFrozen } from './manual.js'
 
 // ── Return convention ─────────────────────────────────────────────────────────
 //
@@ -100,6 +101,10 @@ export function validateRemovePlayer(socket, id) {
   return null
 }
 
+// [route draw] Upper bound on the points a drawn route may arrive with. The client simplifies to a
+// handful of waypoints; this is a generous ceiling that only rejects obvious abuse.
+const MAX_DRAWN_POINTS = 200
+
 // assign_route — offense only, during pre_snap.
 // payload: { playerId, route, stemDepth? }
 export function validateAssignRoute(socket, payload) {
@@ -151,6 +156,15 @@ export function validateSetOffense(socket, payload) {
   if (angleErr) return angleErr
 
   if (!Array.isArray(players)) return 'players must be an array'
+
+  // [route draw] A hand-drawn route is an arbitrary point list from the client. Its CONTENT is
+  // clamped later (sanitizeDrawnRoute, at initLivePhase); this only bounds its SIZE, so a crafted
+  // payload can't hand the server a million-point path to chew through.
+  for (const p of players) {
+    if (p?.drawnRoute === undefined) continue
+    if (!Array.isArray(p.drawnRoute)) return 'drawnRoute must be an array'
+    if (p.drawnRoute.length > MAX_DRAWN_POINTS) return 'drawnRoute has too many points'
+  }
 
   return null
 }
@@ -260,6 +274,14 @@ export function validateThrowToReceiver(socket, receiverId) {
   // Throws only happen on a pass play, and only to an eligible receiver on the field.
   if (state.playDesign?.playType !== 'pass') return 'Can only throw on a pass play'
 
+
+  // [manual] Throws are legal ONLY while the play is frozen with the GO button up. Reading the field
+  // is the whole point of the mode, so you cannot fire into moving traffic — and it guarantees the
+  // pass is resolved against the same still picture the offense made the decision from.
+  if (isManualPlay(state) && !isManualFrozen(state)) {
+    return 'Release GO to stop the play before throwing'
+  }
+
   // The QB has been sacked this play — reject the throw (it arrives in the brief window between the
   // sack firing and the phase flipping to dead; without this the late throw can crash the sim).
   if (state.sackEnqueued) return 'Cannot throw — the QB was sacked'
@@ -286,6 +308,11 @@ export function validateThrowAtDefender(socket, defenderId) {
     checkString(defenderId, 'defenderId'),
   )
   if (baseErr) return baseErr
+
+  // [manual] Same rule as a normal throw: the ball only leaves the QB's hand while play is frozen.
+  if (isManualPlay(state) && !isManualFrozen(state)) {
+    return 'Release GO to stop the play before throwing'
+  }
 
   if (state.playDesign?.playType !== 'pass') return 'Can only throw on a pass play'
   if (state.sackEnqueued) return 'Cannot throw — the QB was sacked'
@@ -332,6 +359,11 @@ export function validateThrowaway(socket) {
     checkRole(socket, 'offense'),
   )
   if (baseErr) return baseErr
+
+  // [manual] Same rule as a normal throw: the ball only leaves the QB's hand while play is frozen.
+  if (isManualPlay(state) && !isManualFrozen(state)) {
+    return 'Release GO to stop the play before throwing'
+  }
 
   if (state.playDesign?.playType !== 'pass') return 'Can only throw the ball away on a pass play'
   if (state.sackEnqueued)     return 'Cannot throw the ball away — the QB was sacked'

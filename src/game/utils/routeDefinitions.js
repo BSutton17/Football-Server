@@ -6,7 +6,7 @@
 //
 // The route engine walks through segments in order:
 //   • Intermediate segments are cut-through points (transition on approach)
-//   • The final segment is the endpoint (player continues or stops based on STOP_ROUTES)
+//   • The final segment is the endpoint (player continues or stops based on the route's SHAPE)
 //
 // Routes with two segments have a natural breakpoint (cut point) at the first waypoint.
 // Simple routes have one segment (no break — straight to the endpoint).
@@ -43,4 +43,13 @@ export const ROUTE_DEF = {
 }
 
 // Routes whose final waypoint is a stop (player settles and waits for the ball).
+//
+// [route geometry] No longer consulted by the simulation — settling is now derived from the route's
+// geometry (routeTraits.settles), so hand-drawn routes behave the same as named ones. It is kept as
+// the LEGACY SPECIFICATION: routeGeometry.test.js asserts the geometric classifier still reproduces
+// this exact set for every route in ROUTE_DEF, which is what proves the change was behaviour-neutral.
+//
+// 'block' is the one deliberate exception. Blockers never reach the route engine at all — movement.js
+// branches on `p.route === 'block'` before routes are walked — so its membership here was already
+// dead, and the geometric classifier does not reproduce it.
 export const STOP_ROUTES = new Set(['curl', 'comeback', 'block'])

@@ -197,12 +197,14 @@ describe('Short Term Memory', () => {
 // ── Tight Window ─────────────────────────────────────────────────────────────────
 
 describe('Tight Window', () => {
-  it('earns from 2 contested (covered) completions', () => {
+  it('earns from 3 contested (covered) completions', () => {
     const qb = makeQB(XF.TIGHT_WINDOW)
     const state = makeState(qb)
     recordPassOutcome(state, qb, { outcome: 'complete', tier: 'covered', deep: false, receiverId: 'a' }, noIo)
     expect(qb.xFactorActive).toBeFalsy()
     recordPassOutcome(state, qb, { outcome: 'complete', tier: 'covered', deep: false, receiverId: 'b' }, noIo)
+    expect(qb.xFactorActive).toBeFalsy()
+    recordPassOutcome(state, qb, { outcome: 'complete', tier: 'covered', deep: false, receiverId: 'c' }, noIo)
     expect(qb.xFactorActive).toBe(true)
   })
 

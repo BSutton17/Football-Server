@@ -56,7 +56,8 @@ function startGameFromSelection(io, roomId) {
   if (!room || !sel) return
 
   const offenseSlot = room.offenseSlot ?? 0
-  const state = initGame(roomId, offenseSlot)
+  // [manual] The room's mode/difficulty (fixed by its creator) become the game's for good.
+  const state = initGame(roomId, offenseSlot, { mode: room.mode, difficulty: room.difficulty })
   state.teams = [sel.picks[0], sel.picks[1]]   // chosen team per slot — for future per-team play
   startGameLoop(roomId, io)
 

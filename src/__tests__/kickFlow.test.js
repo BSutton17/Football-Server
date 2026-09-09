@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@jest/globals'
 import { beginSpecialTeams, applyKickInput, serializeSpecialTeams, KICK, ST_PHASE, KICK_TIMER_SECONDS, PUNT_RETURN,
-  fgBlockRegion, fgBlockProbability, FG_BLOCK } from '../game/specialTeams.js'
+  fgBlockRegion, fgBlockProbability, FG_BLOCK, POWER_DRAIN_PER_SEC, POWER_DRAIN_SLOWDOWN } from '../game/specialTeams.js'
 import { runKickClock } from '../game/systems/kickClock.js'
 import { runConversionClock } from '../game/systems/decisionClock.js'
 import { runClock } from '../game/systems/clock.js'
@@ -60,7 +60,7 @@ describe('[8] kick timer', () => {
 })
 
 describe('[9][10] power meter drains continuously once started, refilled by taps', () => {
-  it('halfway through the timer with no taps the meter is a little over half (10%-eased drain)', () => {
+  it('halfway through the timer with no taps the meter is around two thirds ([kick feel])', () => {
     const state = kickState('pm', KICK.PUNT); room('pm')
     beginSpecialTeams(state, KICK.PUNT, { kickingSlot: 0 })
     const st = state.specialTeams
@@ -68,8 +68,16 @@ describe('[9][10] power meter drains continuously once started, refilled by taps
     const half = KICK_TIMER_SECONDS / 2
     let elapsed = 0
     while (elapsed < half) { runKickClock(state, mockIo(), 0.05); elapsed += 0.05 }
-    expect(st.power).toBeCloseTo(0.55, 1)   // drains 0.9 over the full timer → ~0.55 at the half
+    // Drain is eased 10% and then slowed a further 30% ([kick feel]): 0.9 / 1.3 ≈ 0.69 of the meter
+    // over the full timer, so a little under a third is gone by the halfway point.
+    expect(st.power).toBeCloseTo(0.65, 1)
     expect(st.phase).toBe(ST_PHASE.SETUP)   // not executed yet
+  })
+
+  it('the meter takes 30% longer to drain than the un-slowed rate ([kick feel])', () => {
+    // Pinned explicitly so the 30% easing can't be tuned away by accident.
+    expect(POWER_DRAIN_PER_SEC).toBeCloseTo((1 / KICK_TIMER_SECONDS) * 0.9 / 1.3, 6)
+    expect(POWER_DRAIN_SLOWDOWN).toBe(1.3)
   })
 
   it('a directional tap fights the drain back up (+2%)', () => {

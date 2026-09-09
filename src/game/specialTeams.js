@@ -71,7 +71,10 @@ export const KICK_INACTIVITY_SECONDS = 5    // [8] auto-start the kick timer aft
 export const POWER_REFILL_PER_TAP   = 0.02  // [10] every valid directional input adds 2% power back
 // [9][10] Power drains over the kick timer; the player fights it by tapping. Drain is eased 10% so
 // it's a touch more forgiving to keep the meter up.
-export const POWER_DRAIN_PER_SEC    = (FULL_POWER / KICK_TIMER_SECONDS) * 0.9
+// [kick feel] The meter now takes 30% LONGER to drain — the rate is divided by 1.3 — so there is
+// more time to fight it back up and a clean kick is less punishing to land.
+export const POWER_DRAIN_SLOWDOWN   = 1.3
+export const POWER_DRAIN_PER_SEC    = (FULL_POWER / KICK_TIMER_SECONDS) * 0.9 / POWER_DRAIN_SLOWDOWN
 // [13] The aiming arrow is capped at ±30° from straight ahead. Angle is normalized −1..1 (±1 = ±30°).
 export const AIM_MAX_DEGREES        = 30
 // [12] Each left/right input nudges the arrow this much (normalized); ~10 presses reach the ±30° cap.

@@ -1,4 +1,6 @@
 import { FIELD } from '../../constants.js'
+import { sanitizeDrawnRoute, drawnRouteWaypoints, routeTraits } from '../utils/routeGeometry.js'
+import { buildWaypoints } from '../utils/routeEngine.js'
 import { getLosY } from '../gameState.js'
 import { getRatings, ratingOf, speedFromRating } from '../../data/ratings.js'
 import { onSnapXFactors } from './xFactors.js'
@@ -77,6 +79,44 @@ export function initLivePhase(state) {
         routeDepthScale: p.routeDepthScale ?? 1,
       }
       state.offensePlayers.set(p.id, fp)
+    }
+
+    // [route draw] A hand-drawn route arrives as offsets from where the receiver was standing when
+    // it was drawn. This is the single choke point where it becomes real, and therefore where it is
+    // clamped: the client beautifies for feel, but the SERVER decides what is legal — length, the
+    // cut lock, and staying inbounds. Building the waypoints here also means the route is anchored
+    // to wherever the receiver actually ended up, so moving him after drawing carries his route.
+    if (p.drawnRoute) {
+      const clean = sanitizeDrawnRoute(p.drawnRoute, fp.x)
+      if (clean) {
+        const losY = getLosY(state)
+        fp.route          = 'custom'
+        fp.routeDrawn     = true   // drawn routes get the angle-scaled cut penalty (see routeEngine)
+        fp.drawnRoute     = clean
+        fp.routeWaypoints = drawnRouteWaypoints(clean, fp.x, fp.y, dir)
+        // Pre-seeding the engine's own state so it walks these instead of building from a template.
+        fp.routeWaypointIdx = 0
+        fp.routeElapsed     = 0
+        fp.routePhase       = 'running'
+        // Geometry stands in for the route NAME everywhere the sim used to classify by name.
+        fp.routeTraits = routeTraits(fp.routeWaypoints, fp.y, losY, dir, fp.x, state.ballX)
+        fp.routeStart  = { x: fp.x, y: fp.y }
+      } else {
+        fp.route = null   // an unusable drawing is no route at all, not a broken one
+      }
+    }
+
+    // [route geometry] Named routes get their waypoints and traits built HERE rather than lazily on
+    // the receiver's first movement tick. Deep-safety rotation runs before the per-player loop, so
+    // building them lazily left every route unclassified on the opening tick of a play.
+    else if (fp.route && fp.route !== 'block') {
+      const losY = getLosY(state)
+      fp.routeWaypoints   = buildWaypoints(fp.route, fp.x, losY, dir, fp.routeDepthScale, state.ballX)
+      fp.routeWaypointIdx = 0
+      fp.routeElapsed     = 0
+      fp.routePhase       = 'running'
+      fp.routeTraits      = routeTraits(fp.routeWaypoints, fp.y, losY, dir, fp.x, state.ballX)
+      fp.routeStart       = { x: fp.x, y: fp.y }
     }
 
     // [293] Carry the player's per-team ratings onto the field entity so the sim uses them.

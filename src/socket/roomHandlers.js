@@ -17,13 +17,19 @@ function isValidCode(roomId) {
 
 export function registerRoomHandlers(io, socket) {
   // ── Create room ──────────────────────────────────────────────────────────────
-  socket.on('create_room', (roomId) => {
+  // [manual] payload is either a bare room code (legacy) or { roomId, mode, difficulty }. The
+  // creator's mode/difficulty are recorded on the room and govern it for the whole game.
+  socket.on('create_room', (payload) => {
+    const roomId     = typeof payload === 'string' ? payload : payload?.roomId;
+    const mode       = typeof payload === 'string' ? undefined : payload?.mode;
+    const difficulty = typeof payload === 'string' ? undefined : payload?.difficulty;
+
     if (!isValidCode(roomId)) {
       socket.emit('room_error', { message: 'Invalid room code' });
       return;
     }
 
-    const result = createRoom(roomId, socket.id);
+    const result = createRoom(roomId, socket.id, { mode, difficulty });
 
     if (result.error === 'exists') {
       socket.emit('room_error', { message: 'Code already in use, please try again' });
@@ -34,27 +40,37 @@ export function registerRoomHandlers(io, socket) {
     socket.data.roomId = roomId;
     updatePlayer(socket.id, { roomId });
 
-    socket.emit('room_joined', { slot: result.slot });
-    console.log(`[room] created ${roomId} by ${socket.id}`);
+    socket.emit('room_joined', { slot: result.slot, mode: result.mode, difficulty: result.difficulty });
+    console.log(`[room] created ${roomId} by ${socket.id} [${result.mode}/${result.difficulty}]`);
   });
 
   // ── Join room ────────────────────────────────────────────────────────────────
-  socket.on('join_room', (roomId) => {
+  // [manual] payload is either a bare room code (legacy) or { roomId, mode }. When a mode is given
+  // it must match the room's — the room is authoritative, so a mismatch is rejected with the real
+  // mode rather than silently switching the joiner into a game they didn't pick.
+  socket.on('join_room', (payload) => {
+    const roomId = typeof payload === 'string' ? payload : payload?.roomId;
+    const mode   = typeof payload === 'string' ? undefined : payload?.mode;
+
     if (!isValidCode(roomId)) {
       socket.emit('room_error', { message: 'Invalid room code' });
       return;
     }
 
-    const result = joinRoom(roomId, socket.id);
+    const result = joinRoom(roomId, socket.id, { mode });
 
     if (result.error === 'not_found') { socket.emit('room_not_found'); return; }
     if (result.error === 'full')      { socket.emit('room_full');      return; }
+    if (result.error === 'mode_mismatch') {
+      socket.emit('room_mode_mismatch', { mode: result.mode });
+      return;
+    }
 
     socket.join(roomId);
     socket.data.roomId = roomId;
     updatePlayer(socket.id, { roomId });
 
-    socket.emit('room_joined', { slot: result.slot });
+    socket.emit('room_joined', { slot: result.slot, mode: result.mode, difficulty: result.difficulty });
 
     // Assign roles and create sessions for both players at the same time
     const creatorId = Object.keys(result.roles).find(id => id !== socket.id);
