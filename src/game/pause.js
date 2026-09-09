@@ -16,6 +16,11 @@ export const STOPPAGE = {
   CHALLENGE: 'challenge',
   HALFTIME:  'halftime',
 
+  // [pause] A player called a pause. Open-ended: it lasts until somebody lifts it. Unlike every
+  // other stoppage this one can land ON TOP of another (a timeout, or a manual-mode freeze), so
+  // beginPlayerPause remembers what it interrupted and resumePlayerPause puts it back.
+  PLAYER_PAUSE: 'player_pause',
+
   // [manual] The three freezes that make up manual (electric-football) mode. All three reuse this
   // framework precisely because it preserves state EXACTLY — velocities included, which is what
   // lets the openness read stay honest while the field is frozen (see manual.js).
@@ -52,4 +57,31 @@ export function tickStoppage(state, dt) {
   if (s.remaining == null) return true
   s.remaining = Math.max(0, s.remaining - dt)
   return s.remaining > 0
+}
+
+// ── Player pause ([pause]) ───────────────────────────────────────────────────
+
+// True while a player-called pause is up.
+export function isPlayerPaused(state) {
+  return state?.stoppage?.reason === STOPPAGE.PLAYER_PAUSE
+}
+
+// Freezes the game until resumePlayerPause. Any stoppage already running is set aside rather than
+// discarded: pausing during a timeout, or while a manual-mode play is frozen with the GO button up,
+// must not silently cancel it — the play would resume moving with nobody holding anything.
+export function beginPlayerPause(state, bySlot) {
+  if (isPlayerPaused(state)) return false
+  state.pauseInterrupted = state.stoppage ?? null
+  state.pausedBy = bySlot
+  beginStoppage(state, STOPPAGE.PLAYER_PAUSE, null)
+  return true
+}
+
+// Lifts the pause and restores whatever it interrupted.
+export function resumePlayerPause(state) {
+  if (!isPlayerPaused(state)) return false
+  state.stoppage = state.pauseInterrupted ?? null
+  state.pauseInterrupted = null
+  state.pausedBy = null
+  return true
 }

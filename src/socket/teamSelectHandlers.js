@@ -1,9 +1,10 @@
 import { isValidTeamId } from '../data/teams.js'
-import { getTeamSelect, setPick, lockPick, bothLocked, clearTeamSelect } from '../game/teamSelect.js'
+import { getTeamSelect, setPick, lockPick, bothLocked, clearTeamSelect, setQuarterLength } from '../game/teamSelect.js'
 import { getRoom } from '../game/roomManager.js'
 import { initGame, getGame } from '../game/gameState.js'
 import { startGameLoop } from '../game/simulation.js'
 import { serializeGameState } from '../game/serialization.js'
+import { QUARTER_MINUTES_DEFAULT } from '../constants.js'
 
 // Which player slot (0 | 1) a socket occupies in its room, or -1 if not seated.
 function slotOf(roomId, socketId) {
@@ -22,6 +23,19 @@ export function registerTeamSelectHandlers(io, socket) {
 
     setPick(roomId, slot, teamId)
     io.to(roomId).emit('team_selected', { slot, teamId, locked: false })
+  })
+
+  // [quarter length] Only the HOST sets it — slot 0 is whoever created the room. The value is
+  // clamped server-side and echoed to BOTH screens, so the guest sees the choice being made rather
+  // than discovering it at kickoff.
+  socket.on('set_quarter_length', (payload) => {
+    const roomId = socket.data.roomId
+    if (!roomId || !getTeamSelect(roomId)) return
+    if (slotOf(roomId, socket.id) !== 0) return   // guests may look, not touch
+
+    const minutes = setQuarterLength(roomId, payload?.minutes)
+    if (minutes == null) return
+    io.to(roomId).emit('quarter_length_changed', { minutes })
   })
 
   // Final pick. Once both slots have locked, the game begins.
@@ -57,7 +71,12 @@ function startGameFromSelection(io, roomId) {
 
   const offenseSlot = room.offenseSlot ?? 0
   // [manual] The room's mode/difficulty (fixed by its creator) become the game's for good.
-  const state = initGame(roomId, offenseSlot, { mode: room.mode, difficulty: room.difficulty })
+  // [quarter length] …as does the host's quarter length, resolved here into seconds.
+  const state = initGame(roomId, offenseSlot, {
+    mode: room.mode,
+    difficulty: room.difficulty,
+    quarterSeconds: (sel.quarterMinutes ?? QUARTER_MINUTES_DEFAULT) * 60,
+  })
   state.teams = [sel.picks[0], sel.picks[1]]   // chosen team per slot — for future per-team play
   startGameLoop(roomId, io)
 

@@ -2,6 +2,8 @@ import { createRoom, joinRoom, leaveRoomBySlot, updateSocketId, getRoom } from '
 import { updatePlayer } from '../game/playerRegistry.js';
 import { createSession, markDisconnected, reconnect, getTokenBySocketId, invalidateSession, getTokensByRoomId } from '../game/sessionManager.js';
 import { getGame, deleteGame } from '../game/gameState.js';
+import { isPlayerPaused } from '../game/pause.js';
+import { PAUSE_RECONNECT_WINDOW_MS } from '../constants.js';
 import { stopGameLoop } from '../game/simulation.js';
 import { serializeGameState } from '../game/serialization.js';
 import { beginTeamSelect, getTeamSelect, clearTeamSelect } from '../game/teamSelect.js';
@@ -87,7 +89,12 @@ export function registerRoomHandlers(io, socket) {
 
       io.to(socketId).emit('roles_assigned', { role });
       io.to(socketId).emit('session_token', token);
-      io.to(socketId).emit('team_select_start', { slot, teamIds: TEAM_IDS });
+      // [quarter length] Ship the current setting with the screen so both players see it from the
+      // first frame, rather than the guest waiting for the host to touch the control.
+      io.to(socketId).emit('team_select_start', {
+        slot, teamIds: TEAM_IDS,
+        quarterMinutes: getTeamSelect(roomId)?.quarterMinutes,
+      });
 
       updatePlayer(socketId, { role });
       const peer = io.sockets.sockets.get(socketId);
@@ -136,7 +143,10 @@ export function registerRoomHandlers(io, socket) {
     // current picks restored; otherwise restore the live game state ([268] reconnect support).
     const sel = getTeamSelect(roomId);
     if (sel) {
-      socket.emit('team_select_start', { slot, teamIds: TEAM_IDS });
+      socket.emit('team_select_start', {
+        slot, teamIds: TEAM_IDS,
+        quarterMinutes: getTeamSelect(roomId)?.quarterMinutes,   // [quarter length] restore on reconnect
+      });
       sel.picks.forEach((teamId, s) => {
         if (teamId) socket.emit('team_selected', { slot: s, teamId, locked: sel.locked[s] });
       });
@@ -163,7 +173,9 @@ export function registerRoomHandlers(io, socket) {
     const token = getTokenBySocketId(socket.id);
 
     if (token) {
-      // Hold the slot for 30 seconds to allow reconnect
+      // Hold the slot for 30 seconds to allow reconnect — or for ten minutes if the game is paused
+      // ([pause]): the whole point of a pause is that somebody has stepped away, and a phone going
+      // to sleep in their pocket should not abandon the match.
       markDisconnected(token, (expiredRoomId, slot) => {
         // Clean up sessions, game state, and loop before notifying the other player
         for (const t of getTokensByRoomId(expiredRoomId)) invalidateSession(t);
@@ -173,6 +185,9 @@ export function registerRoomHandlers(io, socket) {
         clearTeamSelect(expiredRoomId);
         io.to(expiredRoomId).emit('game_abandoned');
         console.log(`[room] session expired — ${expiredRoomId} slot ${slot} abandoned`);
+      }, {
+        isPaused: () => isPlayerPaused(getGame(roomId)),
+        pausedWindowMs: PAUSE_RECONNECT_WINDOW_MS,
       });
 
       socket.to(roomId).emit('opponent_disconnected');

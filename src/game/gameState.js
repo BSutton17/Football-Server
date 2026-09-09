@@ -37,7 +37,7 @@ const gameStates = new Map()
 
 // [manual] `mode` / `difficulty` come from the room (fixed by its creator) and are constant for the
 // whole game. They default to the original automatic/easy behaviour when not supplied.
-export function initGame(roomId, offenseSlot, { mode, difficulty } = {}) {
+export function initGame(roomId, offenseSlot, { mode, difficulty, quarterSeconds } = {}) {
   const state = {
     roomId,
 
@@ -55,7 +55,10 @@ export function initGame(roomId, offenseSlot, { mode, difficulty } = {}) {
     // ── Phase & clock ────────────────────────────────────────────────────────
     phase: PHASE.PRE_SNAP,
     quarter: 1,
-    clock: RULES.QUARTER_SECONDS, // 300
+    // [quarter length] How long each quarter runs, chosen by the host before kickoff. Every reset
+    // of the clock reads this rather than the constant, so the choice holds all game.
+    quarterSeconds: quarterSeconds ?? RULES.QUARTER_SECONDS,
+    clock: quarterSeconds ?? RULES.QUARTER_SECONDS,
 
     // [204] Whether the game clock is currently stopped between plays. The clock always runs
     // during LIVE; between plays it keeps running ONLY after plays that don't stop it (in-bounds

@@ -1095,7 +1095,7 @@ function onClockExpired(_payload, state, io) {
 function advanceQuarter(state, io) {
   const prev = state.quarter
   state.quarter++
-  state.clock = RULES.QUARTER_SECONDS
+  state.clock = state.quarterSeconds ?? RULES.QUARTER_SECONDS   // [quarter length] host's choice
   state.clockStopped = true   // [204] the new quarter's clock is stopped until the next snap
 
   if (state.quarter === 3) {

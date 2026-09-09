@@ -18,7 +18,7 @@ import {
   isManualPlay, isManualFrozen,
 } from '../game/manual.js'
 import { transition, PHASE } from '../game/stateMachine.js'
-import { beginStoppage, STOPPAGE } from '../game/pause.js'
+import { beginStoppage, STOPPAGE, beginPlayerPause, resumePlayerPause, isPlayerPaused } from '../game/pause.js'
 import { FIELD, RULES } from '../constants.js'
 import { initLivePhase } from '../game/systems/init.js'
 import { enqueue, EVENT, resolveDecision, resolveConversion, resolvePuntReturn, resolveFieldGoalBlock, broadcastSpecialTeams } from '../game/eventQueue.js'
@@ -171,6 +171,41 @@ export function registerGameHandlers(io, socket) {
       })
     })
     console.log(`[game] ${roomId} timeout by slot ${slot} — ${state.timeouts[slot]} left; clock stopped`)
+  })
+
+  // ── Pause ([pause]) ────────────────────────────────────────────────────────
+  //
+  // Either player may pause, at any point — the feature exists for life interrupting a game, and
+  // the moment you need it is rarely a convenient one. It freezes everything through the shared
+  // stoppage framework, so the game clock, the play clock and a live play all stop exactly where
+  // they are. Whatever stoppage it interrupted is remembered and restored on resume.
+
+  socket.on('pause_game', () => {
+    const roomId = socket.data.roomId
+    const state  = getGame(roomId)
+    if (!state || state.phase === PHASE.GAME_OVER) return
+
+    const room = getRoom(roomId)
+    const slot = room ? room.players.indexOf(socket.id) : -1
+    if (slot < 0) return
+    if (!beginPlayerPause(state, slot)) return
+
+    room?.players.forEach((socketId, s) => {
+      if (!socketId) return
+      io.to(socketId).emit('game_paused', { byYou: s === slot })
+    })
+    console.log(`[game] ${roomId} PAUSED by slot ${slot}`)
+  })
+
+  // Either player may lift it too — whoever is ready to carry on shouldn't need the other to act.
+  socket.on('resume_game', () => {
+    const roomId = socket.data.roomId
+    const state  = getGame(roomId)
+    if (!state || !isPlayerPaused(state)) return
+    if (!resumePlayerPause(state)) return
+
+    io.to(roomId).emit('game_resumed')
+    console.log(`[game] ${roomId} resumed`)
   })
 
   // ── Snap ─────────────────────────────────────────────────────────────────

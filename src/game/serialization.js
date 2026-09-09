@@ -1,4 +1,5 @@
 import { getScoreFor, getLosY } from './gameState.js'
+import { isPlayerPaused } from './pause.js'
 import { FIELD, DIFFICULTY } from '../constants.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { findBallCarrier } from './systems/movement.js'
@@ -49,6 +50,10 @@ export function serializeGameState(state, viewerSlot) {
     ballX:    roundCoord(state.ballX ?? FIELD.WIDTH / 2),   // [hash] lateral spot the next formation lines up on
     playClock: Math.ceil(state.playClock ?? 25),           // [play-clock] starting value for this snap (40 on a drive start)
     playSerial: state.playSerial ?? 0,                     // [stale set] which pre-snap situation this is
+    // [pause] Carried so a player returning from a lost connection lands back into the paused game
+    // rather than a frozen-looking one with no explanation.
+    paused: isPlayerPaused(state),
+    pausedByYou: isPlayerPaused(state) && state.pausedBy === viewerSlot,
 
     score:    getScoreFor(state, viewerSlot),
     // [70] Timeouts remaining, viewer-relative (own = this player's team). Both counts sync to both

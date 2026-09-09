@@ -9,10 +9,14 @@
 // A slot may change its provisional pick freely; changing a pick clears that slot's lock, so a
 // player can never be "locked" on a team they've since browsed away from.
 
+import { clampQuarterMinutes, QUARTER_MINUTES_DEFAULT } from '../constants.js'
+
 const selections = new Map()   // Map<roomId, selection>
 
 export function beginTeamSelect(roomId) {
-  const selection = { picks: [null, null], locked: [false, false] }
+  // [quarter length] The host's choice lives here alongside the picks: it is a pregame setting, and
+  // team selection is the last moment before the game state exists to hold it.
+  const selection = { picks: [null, null], locked: [false, false], quarterMinutes: QUARTER_MINUTES_DEFAULT }
   selections.set(roomId, selection)
   return selection
 }
@@ -37,6 +41,15 @@ export function lockPick(roomId, slot, teamId) {
   sel.picks[slot]  = teamId
   sel.locked[slot] = true
   return sel
+}
+
+// [quarter length] Host-only, enforced by the caller. Returns the value actually stored, which is
+// clamped into the allowed band — the client is never trusted to send a legal number.
+export function setQuarterLength(roomId, minutes) {
+  const sel = selections.get(roomId)
+  if (!sel) return null
+  sel.quarterMinutes = clampQuarterMinutes(minutes)
+  return sel.quarterMinutes
 }
 
 export function bothLocked(roomId) {

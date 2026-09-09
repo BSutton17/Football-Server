@@ -117,6 +117,28 @@ export const MANUAL = {
   RESULT_HOLD_SECONDS: 2,
 }
 
+// ── Quarter length ([quarter length]) ────────────────────────────────────────
+//
+// The host picks how long a quarter runs before the game starts. RULES.QUARTER_SECONDS stays the
+// default for anything that never made a choice (an older client, a direct initGame in a test).
+export const QUARTER_MINUTES_MIN = 3
+export const QUARTER_MINUTES_MAX = 6
+export const QUARTER_MINUTES_DEFAULT = 5
+
+// Clamp an arbitrary client value to a whole number of minutes inside the allowed band.
+export function clampQuarterMinutes(minutes) {
+  const n = Math.round(Number(minutes))
+  if (!Number.isFinite(n)) return QUARTER_MINUTES_DEFAULT
+  return Math.max(QUARTER_MINUTES_MIN, Math.min(QUARTER_MINUTES_MAX, n))
+}
+
+// ── Pausing ([pause]) ────────────────────────────────────────────────────────
+//
+// A player-called pause freezes everything until it is lifted. Its real purpose is life
+// interrupting a game, so while it is up a disconnected player's seat is held far longer than the
+// usual reconnect window — a locked phone must not end the match.
+export const PAUSE_RECONNECT_WINDOW_MS = 10 * 60 * 1000
+
 // Valid values for route and coverage assignments.
 // Must stay in sync with Client/src/types/routes.ts.
 export const ROUTE_TYPES = new Set([
