@@ -132,3 +132,70 @@ describe('runBroadcast', () => {
     expect(typeof find(defence, 'wr1').openness).toBe('number')
   })
 })
+
+// ── [defense vision] The host can take the read away from the DEFENSE too ────
+//
+// Difficulty only ever governs what the OFFENSE sees. This is the other side of the same coin: a
+// host setting that decides whether the defence is shown how open each receiver is. It is on by
+// default — without it a defender has no way of knowing what his coverage needs to fix — and it is
+// deliberately independent of difficulty, so the two can be set in any combination.
+
+describe('defense vision', () => {
+  function withVision(difficulty, defenseSeesOpenness) {
+    deleteGame(ROOM)
+    const s = initGame(ROOM, 0, { mode: GAME_MODE.MANUAL, difficulty, defenseSeesOpenness })
+    s.phase = PHASE.LIVE
+    s.playDesign = { playType: 'pass', players: [] }
+    s.offensePlayers = new Map([
+      ['qb',  { id: 'qb',  label: 'QB', x: 26, y: 30 }],
+      ['wr1', { id: 'wr1', label: 'WR', x: 40, y: 55, routeWaypointIdx: 2 }],
+    ])
+    s.defensePlayers = new Map([['cb1', { id: 'cb1', label: 'CB', x: 44, y: 57 }]])
+    return s
+  }
+
+  // possession is slot 0, so slot 0 is the offense and slot 1 the defense.
+  const offenseSees = (s) => find(serializePositions(s, 0), 'wr1').openness !== undefined
+  const defenseSees = (s) => find(serializePositions(s, 1), 'wr1').openness !== undefined
+
+  it('is on by default, so the defence keeps the read it has always had', () => {
+    expect(initGame(ROOM, 0).defenseSeesOpenness).toBe(true)
+    expect(defenseSees(withVision(DIFFICULTY.EASY, undefined))).toBe(true)
+  })
+
+  it('turning it off blinds the DEFENCE without touching the offense', () => {
+    const s = withVision(DIFFICULTY.EASY, false)
+    expect(defenseSees(s)).toBe(false)
+    expect(offenseSees(s)).toBe(true)
+  })
+
+  it('leaving it on shows the defence the read even on hard', () => {
+    const s = withVision(DIFFICULTY.HARD, true)
+    expect(defenseSees(s)).toBe(true)
+    expect(offenseSees(s)).toBe(false)   // …while the offense is still blind, as hard means
+  })
+
+  it('…and on medium', () => {
+    const s = withVision(DIFFICULTY.MEDIUM, true)
+    expect(defenseSees(s)).toBe(true)
+    expect(offenseSees(s)).toBe(false)
+  })
+
+  it('both can be blind at once', () => {
+    const s = withVision(DIFFICULTY.HARD, false)
+    expect(defenseSees(s)).toBe(false)
+    expect(offenseSees(s)).toBe(false)
+  })
+
+  it('follows possession rather than a fixed seat', () => {
+    const s = withVision(DIFFICULTY.EASY, false)
+    s.possession = 1                      // the sides swap
+    expect(find(serializePositions(s, 0), 'wr1').openness).toBeUndefined()   // now the defence
+    expect(find(serializePositions(s, 1), 'wr1').openness).not.toBeUndefined()
+  })
+
+  it('the full internal payload still carries the read for either setting', () => {
+    expect(find(serializePositions(withVision(DIFFICULTY.HARD, false)), 'wr1').openness)
+      .not.toBeUndefined()
+  })
+})

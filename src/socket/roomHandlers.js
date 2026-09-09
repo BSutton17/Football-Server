@@ -94,6 +94,7 @@ export function registerRoomHandlers(io, socket) {
       io.to(socketId).emit('team_select_start', {
         slot, teamIds: TEAM_IDS,
         quarterMinutes: getTeamSelect(roomId)?.quarterMinutes,
+        defenseSeesOpenness: getTeamSelect(roomId)?.defenseSeesOpenness,
       });
 
       updatePlayer(socketId, { role });
@@ -146,6 +147,7 @@ export function registerRoomHandlers(io, socket) {
       socket.emit('team_select_start', {
         slot, teamIds: TEAM_IDS,
         quarterMinutes: getTeamSelect(roomId)?.quarterMinutes,   // [quarter length] restore on reconnect
+        defenseSeesOpenness: getTeamSelect(roomId)?.defenseSeesOpenness,
       });
       sel.picks.forEach((teamId, s) => {
         if (teamId) socket.emit('team_selected', { slot: s, teamId, locked: sel.locked[s] });

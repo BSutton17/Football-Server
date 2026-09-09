@@ -119,8 +119,18 @@ export function laneContext(state) {
 
 export function serializePositions(state, viewerSlot = null) {
   const positions = []
-  const hideOpenness = HIDES_OPENNESS.has(state.difficulty) &&
-                       viewerSlot != null && viewerSlot === state.possession
+  // Who is being denied the openness read, and why. The two sides are withheld for opposite
+  // reasons, so they are separate rules rather than one:
+  //   • the OFFENSE loses it on medium/hard — that is what those difficulties mean.
+  //   • the DEFENSE loses it only if the host turned its vision off ([defense vision]). It is on by
+  //     default, because a defender who cannot see how open a receiver is has no way of knowing
+  //     what his coverage needs to fix.
+  const isOffenseViewer = viewerSlot != null && viewerSlot === state.possession
+  const hideOpenness = viewerSlot != null && (
+    isOffenseViewer
+      ? HIDES_OPENNESS.has(state.difficulty)
+      : state.defenseSeesOpenness === false
+  )
 
   const toRelY = state.direction === 1
     ? (absY) => absY - FIELD.END_ZONE_DEPTH           // northbound: shift by south end zone

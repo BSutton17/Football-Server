@@ -11,7 +11,11 @@ import { HIDES_OPENNESS } from '../../constants.js'
 // game builds a single shared payload and broadcasts it, exactly as before — the per-viewer path
 // costs a second serialization pass at 20 Hz, so it is taken only when it actually changes anything.
 export function runBroadcast(state, io, _dt) {
-  if (HIDES_OPENNESS.has(state.difficulty)) {
+  // Serialize per viewer whenever the two sides are entitled to see different things — either
+  // because the difficulty hides the read from the offense, or because the host turned the
+  // defense's vision off ([defense vision]).
+  const sidesDiffer = HIDES_OPENNESS.has(state.difficulty) || state.defenseSeesOpenness === false
+  if (sidesDiffer) {
     const room = getRoom(state.roomId)
     if (room) {
       room.players.forEach((socketId, slot) => {

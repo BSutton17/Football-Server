@@ -37,13 +37,18 @@ const gameStates = new Map()
 
 // [manual] `mode` / `difficulty` come from the room (fixed by its creator) and are constant for the
 // whole game. They default to the original automatic/easy behaviour when not supplied.
-export function initGame(roomId, offenseSlot, { mode, difficulty, quarterSeconds } = {}) {
+export function initGame(roomId, offenseSlot, { mode, difficulty, quarterSeconds, defenseSeesOpenness } = {}) {
   const state = {
     roomId,
 
     // ── Game mode ([manual]) ─────────────────────────────────────────────────
     mode:       mode === GAME_MODE.MANUAL ? GAME_MODE.MANUAL : GAME_MODE.AUTOMATIC,
     difficulty: Object.values(DIFFICULTY).includes(difficulty) ? difficulty : DIFFICULTY.EASY,
+
+    // [defense vision] Whether the DEFENSE is shown how open each receiver is. Host-chosen before
+    // kickoff and fixed for the game. On by default, and independent of difficulty — difficulty
+    // only ever governs what the OFFENSE is allowed to see.
+    defenseSeesOpenness: defenseSeesOpenness !== false,
 
     // [manual] Live hold state for the GO button. Null outside a manual live play.
     //   holding   — is the offense currently holding GO (players moving)?

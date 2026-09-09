@@ -1,5 +1,5 @@
 import { isValidTeamId } from '../data/teams.js'
-import { getTeamSelect, setPick, lockPick, bothLocked, clearTeamSelect, setQuarterLength } from '../game/teamSelect.js'
+import { getTeamSelect, setPick, lockPick, bothLocked, clearTeamSelect, setQuarterLength, setDefenseSeesOpenness } from '../game/teamSelect.js'
 import { getRoom } from '../game/roomManager.js'
 import { initGame, getGame } from '../game/gameState.js'
 import { startGameLoop } from '../game/simulation.js'
@@ -36,6 +36,18 @@ export function registerTeamSelectHandlers(io, socket) {
     const minutes = setQuarterLength(roomId, payload?.minutes)
     if (minutes == null) return
     io.to(roomId).emit('quarter_length_changed', { minutes })
+  })
+
+  // [defense vision] Host-only, like the quarter length, and echoed to both screens so the guest
+  // knows what they are about to play.
+  socket.on('set_defense_vision', (payload) => {
+    const roomId = socket.data.roomId
+    if (!roomId || !getTeamSelect(roomId)) return
+    if (slotOf(roomId, socket.id) !== 0) return
+
+    const on = setDefenseSeesOpenness(roomId, payload?.on)
+    if (on == null) return
+    io.to(roomId).emit('defense_vision_changed', { on })
   })
 
   // Final pick. Once both slots have locked, the game begins.
@@ -76,6 +88,7 @@ function startGameFromSelection(io, roomId) {
     mode: room.mode,
     difficulty: room.difficulty,
     quarterSeconds: (sel.quarterMinutes ?? QUARTER_MINUTES_DEFAULT) * 60,
+    defenseSeesOpenness: sel.defenseSeesOpenness !== false,   // [defense vision]
   })
   state.teams = [sel.picks[0], sel.picks[1]]   // chosen team per slot — for future per-team play
   startGameLoop(roomId, io)

@@ -16,7 +16,13 @@ const selections = new Map()   // Map<roomId, selection>
 export function beginTeamSelect(roomId) {
   // [quarter length] The host's choice lives here alongside the picks: it is a pregame setting, and
   // team selection is the last moment before the game state exists to hold it.
-  const selection = { picks: [null, null], locked: [false, false], quarterMinutes: QUARTER_MINUTES_DEFAULT }
+  // [defense vision] Defaults ON: the defence seeing how open receivers are is the normal game, and
+  // turning it off is the deliberate extra challenge.
+  const selection = {
+    picks: [null, null], locked: [false, false],
+    quarterMinutes: QUARTER_MINUTES_DEFAULT,
+    defenseSeesOpenness: true,
+  }
   selections.set(roomId, selection)
   return selection
 }
@@ -50,6 +56,14 @@ export function setQuarterLength(roomId, minutes) {
   if (!sel) return null
   sel.quarterMinutes = clampQuarterMinutes(minutes)
   return sel.quarterMinutes
+}
+
+// [defense vision] Host-only, enforced by the caller. Returns the value actually stored.
+export function setDefenseSeesOpenness(roomId, on) {
+  const sel = selections.get(roomId)
+  if (!sel) return null
+  sel.defenseSeesOpenness = !!on
+  return sel.defenseSeesOpenness
 }
 
 export function bothLocked(roomId) {
