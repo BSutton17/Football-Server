@@ -45,3 +45,27 @@ export function distanceBetween(a, b) {
   const dy = a.y - b.y
   return Math.sqrt(dx * dx + dy * dy)
 }
+
+// ── [interior seam] The three linemen a back can squeeze between ─────────────
+//
+// A running back is far smaller than the men blocking for him and in reality slips through the
+// creases between the center and the two guards. Both the collision solver (which lets him pass
+// through them) and the vision model (which stops treating them as a wall) need to agree on
+// exactly which three those are, so the definition lives here.
+//
+// Worked out from where the linemen LINED UP (blockAnchorX, latched at the snap) rather than where
+// they have since been driven, so a line getting pushed around cannot change mid-play which bodies
+// the back is allowed to fit between. Tackles and a kept-in tight end are deliberately excluded —
+// running through THOSE is what the edge is for.
+const INTERIOR_LINEMEN = 3
+const INTERIOR_LABELS = new Set(['OL', 'C', 'G', 'T'])
+
+export function interiorLinemanIds(offensePlayers, ballX) {
+  const line = []
+  for (const o of offensePlayers.values()) {
+    if (!INTERIOR_LABELS.has(o.label)) continue
+    line.push({ id: o.id, dx: Math.abs((o.blockAnchorX ?? o.x) - ballX) })
+  }
+  line.sort((a, b) => a.dx - b.dx)
+  return new Set(line.slice(0, INTERIOR_LINEMEN).map(l => l.id))
+}

@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@jest/globals'
 import {
-  passProbabilities, resolvePass, opennessTier, OPENNESS_OPEN, OPENNESS_RED,
+  TIER_ODDS, passProbabilities, resolvePass, opennessTier, OPENNESS_OPEN, OPENNESS_RED,
 } from '../game/utils/passOutcome.js'
 
 // [pass-outcome feedback] Coverage tier drives the catch / break-up / interception split; the
@@ -33,10 +33,60 @@ describe('passProbabilities ([pass-outcome feedback])', () => {
     // The catch/accuracy mods are linear over 0–99 and cross zero at rating 66, so a 66/66
     // throw lands on the published base odds for each tier.
     expect(passProbabilities(0.9, 66, 66).catchP).toBeCloseTo(0.95, 2)
-    expect(passProbabilities(0.5, 66, 66).catchP).toBeCloseTo(0.55, 2)
+    expect(passProbabilities(0.5, 66, 66).catchP).toBeCloseTo(TIER_ODDS.covered.catch, 2)
     expect(passProbabilities(0.1, 66, 66).catchP).toBeCloseTo(0.10, 2)
     expect(passProbabilities(0.5, 66, 66).intP).toBeCloseTo(0.05, 2)
     expect(passProbabilities(0.1, 66, 66).intP).toBeCloseTo(0.20, 2)
+  })
+
+  // ── [contested-catch feedback] The contested window is a coin flip, even for the very best ──
+  //
+  // Elite receivers were catching genuinely contested balls far too consistently. `covered.catch`
+  // was cut 55% → 35% to bring the league's two best pairings down to roughly even money. These
+  // numbers are the agreed targets, so they are pinned here: a drift means someone moved a dial.
+  describe('contested-catch targets', () => {
+    // Ratings from Client/src/data/nflTeams.ts.
+    const CHASE_BURROW = { catching: 99, accuracy: 99 }   // CIN
+    const JSN_DARNOLD  = { catching: 96, accuracy: 90 }   // SEA
+    const pct = (o, p) => passProbabilities(o, p.accuracy, p.catching).catchP * 100
+
+    // The elite bonus is fixed by ratings (+15.0 / +11.8 points), so these track whatever
+    // `covered.catch` is tuned to rather than needing an edit on every balance pass.
+    it('the best pairing in the league sits just above the base contested odds', () => {
+      const base = TIER_ODDS.covered.catch * 100
+      expect(pct(0.5, CHASE_BURROW)).toBeCloseTo(base + 15.0, 1)
+      expect(pct(0.5, JSN_DARNOLD)).toBeCloseTo(base + 11.8, 1)
+    })
+
+    it('is currently tuned so a contested ball is no better than a coin flip for anyone', () => {
+      // The one deliberately absolute assertion: move it when the balance target moves.
+      expect(pct(0.5, CHASE_BURROW)).toBeLessThanOrEqual(60.0)
+      expect(pct(0.5, CHASE_BURROW)).toBeGreaterThanOrEqual(45.0)
+    })
+
+    it('leaves the smothered window exactly where it was', () => {
+      expect(pct(0.2, CHASE_BURROW)).toBeCloseTo(25.0, 1)
+      expect(pct(0.2, JSN_DARNOLD)).toBeCloseTo(21.8, 1)
+    })
+
+    it('leaves the open window exactly where it was — elites still never drop a clean one', () => {
+      expect(pct(0.75, CHASE_BURROW)).toBeCloseTo(100.0, 1)
+      expect(pct(0.75, JSN_DARNOLD)).toBeCloseTo(100.0, 1)
+    })
+
+    it('the rating mods are tier-independent, which is WHY only the contested row moved', () => {
+      // The same additive bonus lands on every tier, so the covered→smothered spread is exactly
+      // the gap between their base odds and cannot be tuned apart by rating dials alone.
+      for (const p of [CHASE_BURROW, JSN_DARNOLD]) {
+        const spread = (TIER_ODDS.covered.catch - TIER_ODDS.smothered.catch) * 100
+        expect(pct(0.5, p) - pct(0.2, p)).toBeCloseTo(spread, 6)
+      }
+    })
+
+    it('a contested ball is a losing proposition for an ordinary pairing', () => {
+      expect(pct(0.5, { catching: 66, accuracy: 66 })).toBeCloseTo(TIER_ODDS.covered.catch * 100, 1)
+      expect(pct(0.5, { catching: 50, accuracy: 50 })).toBeLessThan(TIER_ODDS.covered.catch * 100)
+    })
   })
 
   it('99 hands add +5% catch, 0 hands subtract 10% (vs the 66 baseline)', () => {

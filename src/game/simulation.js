@@ -14,6 +14,7 @@ import { runEventQueue }        from './systems/eventQueue.js'
 import { runBroadcast }         from './systems/broadcast.js'
 import { drainStamina }         from './systems/stamina.js'
 import { runPassRush }          from './systems/passRush.js'
+import { runPancake }           from './systems/pancake.js'
 import { runPressureDetection } from './systems/pressureDetection.js'
 import { runSackDetection }     from './systems/sackDetection.js'
 import { runTouchdownDetection } from './systems/touchdownDetection.js'
@@ -42,6 +43,7 @@ const DT = SIM.TICK_MS / 1000   // 0.05 s
 const LIVE_SYSTEMS = [
   runEngagement,        // flag engaged pairs; compute leverage on each defender
   runPassRush,          // accumulate rusher win meter; flag shed (broke free) rushers
+  runPancake,           // [pancake] dominant blocks put a defender down; ticks the freeze timers
   runMovement,          // steer players; engagement speed cap applied here
   runPushForce,         // bilateral push forces between engaged pairs
   drainStamina,

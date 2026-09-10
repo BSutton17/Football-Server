@@ -234,6 +234,13 @@ export function getGame(roomId) {
 }
 
 export function deleteGame(roomId) {
+  // Cancel any pending next-play timer so it cannot fire into a room that no longer exists (and so
+  // a test run isn't held open by it). See beginNextPlay in eventQueue.js.
+  const state = gameStates.get(roomId)
+  if (state?.nextPlayTimer != null) {
+    clearTimeout(state.nextPlayTimer)
+    state.nextPlayTimer = null
+  }
   gameStates.delete(roomId)
 }
 

@@ -104,17 +104,29 @@ function laneDensity(carrier, ray, bodies) {
 //              stickiness bonus so the back commits to a lane and cuts decisively ([priority 7]).
 // Defenders/blockers carry engagement state (set by runEngagement) so the RB reads where the
 // piles actually are and finds the best route around them ([run feedback]).
-export function findRunningLane(carrier, defenders, blockers, dir, biasAngle = 0, currentDir = null) {
+// squeezeIds — the interior linemen this back can physically fit between (see interiorLinemanIds).
+// They stop WALLING a ray while still counting as congestion, which is the whole difference between
+// "there is a crease here" and "there is a wall here". Without it every interior ray was walled by
+// the offense's OWN line the moment it engaged, so the only lane that ever scored was outside the
+// tackles and every inside run bounced — which is exactly what it looked like on the field.
+export function findRunningLane(carrier, defenders, blockers, dir, biasAngle = 0, currentDir = null, squeezeIds = null) {
   const engagedBlockers = blockers.filter(b => b.isEngaged)   // OL locked on a DL — occupy the lane
   const freeBlockers    = blockers.filter(b => !b.isEngaged)  // unblocked teammates — soft traffic
   const freeDefenders   = defenders.filter(d => !d.isEngaged) // the real tacklers — avoid them
 
-  // Bodies that WALL a ray: every defender at its spot, plus any OL actively engaging a defender.
-  // The engaged OL/DL pile is a moving wall; the back runs around it (and into the space it
-  // vacates as the line drives it downfield), never straight through it.
+  // Bodies that WALL a ray: every defender at its spot, plus any OL actively engaging a defender —
+  // EXCEPT the interior linemen the back can squeeze between. A pancaked defender is on the floor
+  // and walls nothing at all; the back runs straight over him.
+  const canSqueeze = (b) => squeezeIds != null && squeezeIds.has(b.id)
   const stoppers = []
-  for (const d of defenders)       stoppers.push({ x: d.x, y: d.y })
-  for (const b of engagedBlockers) stoppers.push({ x: b.x, y: b.y })
+  for (const d of defenders) {
+    if ((d.pancakedFor ?? 0) > 0) continue
+    stoppers.push({ x: d.x, y: d.y })
+  }
+  for (const b of engagedBlockers) {
+    if (canSqueeze(b)) continue
+    stoppers.push({ x: b.x, y: b.y })
+  }
 
   // Congestion — the OL + DL tied up together crowd the lane (but are blocked, so lighter than a
   // free defender).

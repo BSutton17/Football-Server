@@ -16,6 +16,7 @@ import { CATCH_MOMENTUM_TIME } from './systems/movement.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { isManualPlay, beginPassSuspense } from './manual.js'
 import { resolvePass, opennessTier } from './utils/passOutcome.js'
+import { resetPancakes } from './systems/pancake.js'
 import {
   recordPassOutcome, recordScramble, recordPassingTouchdown,
   recordReceiverOutcome, recordTouchdownScorer, recordRun,
@@ -1188,8 +1189,27 @@ function turnover(state, io, newYardLine = null) {
 // Re-fetches the game state inside the timeout — if the game was abandoned
 // during the delay, the lookup returns null and we exit cleanly.
 function beginNextPlay(roomId, io, delayMs = BETWEEN_PLAYS_MS) {
-  setTimeout(() => {
+  // [quarter transition] Two handlers can schedule the next play for the SAME dead ball: the
+  // play-ending event (tackle, incompletion, …) books the ordinary 2 s gap, and then CLOCK_EXPIRED
+  // books the 5 s period-transition hold on top of it. Whichever fires first used to win, so at the
+  // end of a quarter the short timer started the next play three seconds early — while both clients
+  // were still holding the full-screen interstitial. The play clock ran, the formation reset and the
+  // defense could not place or adjust anyone behind the overlay, which reads on the field as the DL
+  // being broken and players refusing to move.
+  //
+  // So the LONGER wait always wins: a pending hold is never shortened, and a longer one supersedes
+  // (and cancels) a shorter one already booked.
+  const pending = getGame(roomId)
+  const dueAt   = Date.now() + delayMs
+  if (pending) {
+    if (pending.nextPlayTimer != null && (pending.nextPlayDueAt ?? 0) >= dueAt) return
+    if (pending.nextPlayTimer != null) clearTimeout(pending.nextPlayTimer)
+    pending.nextPlayDueAt = dueAt
+  }
+
+  const handle = setTimeout(() => {
     const state = getGame(roomId)
+    if (state) { state.nextPlayTimer = null; state.nextPlayDueAt = 0 }
     if (!state || state.phase !== PHASE.DEAD) return
 
     // [51] A two-point try that ended without reaching the end zone is a FAILED conversion (a score
@@ -1203,6 +1223,12 @@ function beginNextPlay(roomId, io, delayMs = BETWEEN_PLAYS_MS) {
     if (state.clock <= 0) {
       if (state.quarter >= RULES.QUARTERS) { endGame(state, io); return }
       advanceQuarter(state, io)
+      // advanceQuarter has just told both clients to hold a full-screen interstitial. Falling
+      // through here would set the next play up *behind* that overlay: the formation resets, the
+      // play clock starts and the defense cannot place or adjust anyone until the overlay lifts
+      // seconds later. Re-schedule instead, so the hold is real on both ends.
+      beginNextPlay(roomId, io, TRANSITION_MS)
+      return
     }
 
     // Apply any pending stamina recovery (possession change = 0.5, Q3 = 0.8).
@@ -1228,6 +1254,7 @@ function beginNextPlay(roomId, io, delayMs = BETWEEN_PLAYS_MS) {
     state.tackleEnqueued        = false
     state.passCompletedThisPlay = false   // [294] per-play: did this play feature a completed pass
     state.qbSackImmunity        = 0       // [294] Shake It Off grace window resets each play
+    resetPancakes(state)                  // [pancake] nobody starts a play on the ground
     endSpecialTeams(state)                // [Special Teams][5] clear the kickoff (or any kick) interstitial
 
     // [play-clock] Reset the play clock for the upcoming snap: 40 s on the first play of a drive
@@ -1258,4 +1285,6 @@ function beginNextPlay(roomId, io, delayMs = BETWEEN_PLAYS_MS) {
 
     console.log(`[game] ${roomId} Q${state.quarter} — ready for next snap (${state.down}&${state.distance} at ${state.yardLine})`)
   }, delayMs)
+
+  if (pending) pending.nextPlayTimer = handle
 }

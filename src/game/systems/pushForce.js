@@ -2,6 +2,8 @@ import { detectEngagements, ENGAGEMENT_RADIUS } from '../utils/engagementZone.js
 import { computeLeverage }                       from '../utils/leverageModel.js'
 import { findBallRef }                            from './engagement.js'
 import { ratingOf, strengthModifier, passRushModifier } from '../../data/ratings.js'
+import { getLosY }                              from '../gameState.js'
+import { FIELD }                                from '../../constants.js'
 
 // ── Tuning constants ──────────────────────────────────────────────────────────
 
@@ -21,6 +23,19 @@ const RUN_PUSH_FORCE = 35  // yards/sec²  ([run feedback] raised from 16)
 // follows it for before the second level fills.
 const BLOCK_POWER_LABELS = new Set(['OL', 'C', 'G', 'T', 'TE'])
 const BLOCK_POWER_MULT   = 4.5  // [run feedback] raised from 1.25 (OL/TE run drive)
+
+// ── [running lane] Wash the man OUT of the hole, not just backwards ──────────
+//
+// Driving a defender straight back leaves him standing in the crease the back is aiming at — five
+// yards deeper, still exactly in the way. What opens a running lane is LATERAL displacement: the
+// blocker washes his man to whichever side he is already leaning, and the hole appears between the
+// bodies. Without this the only place the back could ever find grass was outside the whole pile,
+// which is why every inside run bounced.
+//
+// Expressed as a fraction of the drive force so the two stay in proportion when either is tuned.
+const RUN_SEAL_FRACTION      = 0.15
+// The blocker follows his man sideways to stay attached and keep the wall between him and the hole.
+const RUN_SEAL_BLOCKER_FOLLOW = 0.5
 
 // The advantage player (winning the block fight) absorbs a reaction force in the
 // opposite direction, but their footwork lets them resist it better.
@@ -64,6 +79,8 @@ export function runPushForce(state, _io, dt) {
   for (const { offense: o, defense: d, dist } of pairs) {
     // A shed rusher has broken free — no block-fight forces apply to it.
     if (d.shedBlock) continue
+    // [pancake] Nobody pushes anybody once one of them is on the floor.
+    if ((d.pancakedFor ?? 0) > 0 || (o.pancakeFrozenFor ?? 0) > 0) continue
 
     const lev = computeLeverage(o, d, ballRef)
 
@@ -101,6 +118,17 @@ export function runPushForce(state, _io, dt) {
       const dvy = ddy * mag * strMod
       d.vx += dvx;  d.vy += dvy   // defender driven straight back
       o.vx += dvx;  o.vy += dvy   // blocker drives WITH it (stays in contact — no recoil)
+
+      // …and washed sideways out of the lane. The lane's lateral spot at THIS defender's depth is
+      // where the back is headed; shove him further onto whichever side of it he already is.
+      const losY  = getLosY(state)
+      const past  = Math.max(0, (d.y - losY) * state.direction)
+      const laneX = (state.ballX ?? FIELD.WIDTH / 2) + ddx * past
+      let side = Math.sign(d.x - laneX)
+      if (side === 0) side = o.x <= d.x ? 1 : -1   // dead even — shove him away from the blocker
+      const seal = force * RUN_SEAL_FRACTION * Math.abs(effectiveLev) * depth * dt * strMod
+      d.vx += side * seal
+      o.vx += side * seal * RUN_SEAL_BLOCKER_FOLLOW
     } else if (effectiveLev > 0) {
       // Pass pro: shape the pocket — push the defender away from the ball; the blocker absorbs a
       // light backward reaction (a stronger blocker resists it better). The winning blocker rides

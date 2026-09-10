@@ -33,6 +33,8 @@ export function runSackDetection(state, io, dt, rng = Math.random) {
   if (yardsBehind < 0) return  // QB is past the LOS — no sack possible
 
   for (const d of state.defensePlayers.values()) {
+    if ((d.pancakedFor ?? 0) > 0) continue   // [pancake] on the ground — no sack
+
     const dx   = d.x - qb.x
     const dy   = d.y - qb.y
     const dist = Math.sqrt(dx * dx + dy * dy)

@@ -48,12 +48,22 @@ export function opennessTier(openness) {
 // Base catch / interception split per tier ([pass-outcome feedback]). The remaining probability is
 // the ball falling incomplete — a drop on an open window, a break-up under coverage:
 //   open      → 95% catch,  5% drop,                    0% INT
-//   covered   → 55% catch, 40% broken up,               5% INT
+//   covered   → 45% catch, 50% broken up,               5% INT
 //   smothered → 10% catch, 70% broken up,              20% INT
 // These are the odds at neutral ratings, before the catch/accuracy modifiers below.
-const TIER_ODDS = {
+//
+// [contested-catch feedback] `covered` was cut from 55%. Elite receivers were catching genuinely
+// contested balls far too consistently: Ja'Marr Chase (99 catching) from Joe Burrow (99 accuracy)
+// completed 70% of them, and Jaxon Smith-Njigba / Sam Darnold 66.8%. At the current 45% those two
+// sit at 60.0% / 56.8%; dropping this to 0.35 would put them at 50.0% / 46.8% instead.
+//
+// This tier is the ONLY dial that moves the contested row on its own. The rating modifiers below are
+// tier-independent — they add the same amount to every tier — so `smothered` and `open` are
+// untouched by this change, and conversely no combination of rating dials could have moved
+// `covered` without dragging `smothered` along with it.
+export const TIER_ODDS = {
   open:      { catch: 0.95, int: 0.00 },
-  covered:   { catch: 0.55, int: 0.05 },
+  covered:   { catch: 0.45, int: 0.05 },
   smothered: { catch: 0.10, int: 0.20 },
 }
 

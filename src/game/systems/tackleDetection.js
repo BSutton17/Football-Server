@@ -48,6 +48,9 @@ export function runTackleDetection(state, io, dt, rng = Math.random) {
   const tacklers = isReturn ? state.offensePlayers : state.defensePlayers
 
   for (const d of tacklers.values()) {
+    // [pancake] A flattened defender cannot make a tackle — the carrier runs straight through him.
+    if ((d.pancakedFor ?? 0) > 0) continue
+
     const dx = d.x - carrier.x
     const dy = d.y - carrier.y
     if (dx * dx + dy * dy > TACKLE_RADIUS * TACKLE_RADIUS) continue

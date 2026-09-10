@@ -1518,6 +1518,43 @@ describe('findZoneThreat', () => {
   })
 })
 
+// ── [zone separation] The undercut is for defenders who HAVE a cushion ───────
+//
+// Pulling the target toward the passer is what puts a zone defender in the throwing lane. But the
+// openness engine reads separation to the nearest defender as its dominant term, so applying that
+// pull at point-blank range backs a defender off the man he had already covered and hands the
+// separation straight back. It now scales in with the cushion he actually has.
+
+describe('lane bias scales with the defender cushion ([zone separation])', () => {
+  const center = { x: 26, y: 46 }
+  const qb     = { x: 26, y: 30 }
+  // A threat out to the sideline, so any pull back toward the QB is visible on x.
+  const threat = { x: 40, y: 46, vx: 0, vy: 0 }
+  const distTo = (t, r) => Math.hypot(t.x - r.x, t.y - r.y)
+
+  it('a defender already on top of his man does not back off him', () => {
+    const tight = getZoneTarget(center, threat, 55, { radius: 20, qb, self: { x: 40.5, y: 46 } })
+    expect(distTo(tight, threat)).toBeLessThan(0.5)
+  })
+
+  it('a defender with a real cushion still undercuts toward the passer', () => {
+    const off = getZoneTarget(center, threat, 55, { radius: 20, qb, self: { x: 26, y: 46 } })
+    expect(distTo(off, threat)).toBeGreaterThan(1.5)
+  })
+
+  it('the undercut grows as the cushion grows', () => {
+    const near = getZoneTarget(center, threat, 55, { radius: 20, qb, self: { x: 37, y: 46 } })
+    const far  = getZoneTarget(center, threat, 55, { radius: 20, qb, self: { x: 30, y: 46 } })
+    expect(distTo(far, threat)).toBeGreaterThan(distTo(near, threat))
+  })
+
+  it('with no defender given it behaves as before — full lane bias', () => {
+    const withSelf = getZoneTarget(center, threat, 55, { radius: 20, qb, self: { x: 26, y: 46 } })
+    const noSelf   = getZoneTarget(center, threat, 55, { radius: 20, qb })
+    expect(distTo(noSelf, threat)).toBeGreaterThanOrEqual(distTo(withSelf, threat) - 1e-9)
+  })
+})
+
 describe('getZoneTarget', () => {
   const center = { x: 26, y: 50 }
 

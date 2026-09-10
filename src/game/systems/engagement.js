@@ -46,6 +46,8 @@ export function runEngagement(state, _io, _dt) {
   for (const { offense: o, defense: d } of pairs) {
     // A rusher that has shed its block has broken free — don't re-engage or slow it.
     if (d.shedBlock) continue
+    // [pancake] A man on the ground is not blocking or being blocked, and must not slow anyone.
+    if ((d.pancakedFor ?? 0) > 0 || (o.pancakeFrozenFor ?? 0) > 0) continue
 
     // Engagement flags — keep first recorded partner (primary opponent).
     o.isEngaged     = true

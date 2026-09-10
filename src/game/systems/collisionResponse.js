@@ -1,5 +1,6 @@
 import { FIELD, PLAYER } from '../../constants.js'
 import { circleOverlap, detectCollisions, massForLabel } from '../utils/collision.js'
+import { interiorLinemanIds } from '../utils/playerQuery.js'
 
 // Coefficient of restitution: 0 = no bounce (perfectly inelastic). Football contact is
 // sticky, not springy.
@@ -25,9 +26,31 @@ const clampX = (x) => Math.max(PLAYER.RADIUS, Math.min(FIELD.WIDTH  - PLAYER.RAD
 const clampY = (y) => Math.max(PLAYER.RADIUS, Math.min(FIELD.LENGTH - PLAYER.RADIUS, y))
 
 export function runCollisionResponse(state, _io, _dt) {
+  // A flattened defender is on the ground: he is not a body anyone collides with, which is what
+  // lets the ball carrier run straight over him.
+  const isDown = (p) => (p.pancakedFor ?? 0) > 0
+
+  const carrierId = state.ballCarrierId
+  // [interior seam] On a run the back slips between his own center and guards — see
+  // interiorLinemanIds. The tackles and a kept-in TE stay solid.
+  const interior  = state.playDesign?.playType === 'run' && carrierId
+    ? interiorLinemanIds(state.offensePlayers, state.ballX ?? FIELD.WIDTH / 2)
+    : null
+
+  // May these two bodies simply pass through each other this tick?
+  const phasesThrough = (a, b) => {
+    if (isDown(a) || isDown(b)) return true
+    if (!interior) return false
+    // The carrier and one of his own interior linemen.
+    return (a.id === carrierId && interior.has(b.id)) ||
+           (b.id === carrierId && interior.has(a.id))
+  }
+
   // ── 1. Velocity impulse + engagement drag (offense vs defense contacts) ───────
   // Resolved once per contact from the current overlap, before separation moves anyone.
   for (const { offense: o, defense: d, nx, ny } of detectCollisions(state.offensePlayers, state.defensePlayers)) {
+    if (phasesThrough(o, d)) continue   // [pancake] he is on the floor — no impulse, no drag
+
     const vRel = (o.vx - d.vx) * nx + (o.vy - d.vy) * ny   // <0 means they're approaching
 
     if (vRel <= 0) {
@@ -56,6 +79,7 @@ export function runCollisionResponse(state, _io, _dt) {
       for (let k = i + 1; k < players.length; k++) {
         const a = players[i]
         const b = players[k]
+        if (phasesThrough(a, b)) continue
         const ov = circleOverlap(a, b)   // nx/ny point from b toward a
         if (!ov) continue
 

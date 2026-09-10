@@ -23,6 +23,8 @@ export function runPressureDetection(state, _io, _dt) {
   let heavyPressure = false
 
   for (const d of state.defensePlayers.values()) {
+    if ((d.pancakedFor ?? 0) > 0) continue   // [pancake] on the ground — applies no pressure
+
     const dx   = d.x - qb.x
     const dy   = d.y - qb.y
     const dist = Math.sqrt(dx * dx + dy * dy)

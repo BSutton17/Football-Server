@@ -156,6 +156,8 @@ export function serializePositions(state, viewerSlot = null) {
     const pos = { id: p.id, x: roundCoord(p.x), y: roundCoord(toRelY(p.y)), team: 'o' }
     if (p.id === carrierId) pos.state = 'ball'
     if (p.xFactorActive) pos.xfActive = true   // [294] both clients render an active X-Factor as a star
+    // [pancake] Flattened by a block: the client fades him out and he is out of the play.
+    if ((p.pancakedFor ?? 0) > 0) pos.pancaked = true
     // Pass catchers carry an openness score so the client can color them ([169]) — but only once
     // the receiver has declared: after its first cut (routeWaypointIdx ≥ 1) or, on a no-cut route,
     // after OPENNESS_REVEAL_DELAY. Until then it keeps its base color (the read hasn't developed).

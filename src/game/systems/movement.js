@@ -4,6 +4,7 @@ import { getFatigueMult } from './stamina.js'
 import { steer, advance } from '../utils/movement.js'
 import { getRouteTarget } from '../utils/routeEngine.js'
 import { findRunningLane, visionInterval } from '../utils/rbVision.js'
+import { interiorLinemanIds } from '../utils/playerQuery.js'
 import { getRatings, ratingOf, accelFromRating, speedFromRating, cutRetentionFromAccel, pursuitReactionTime, pursuitLeadQuality } from '../../data/ratings.js'
 import { runDebugOn, logRbVision, logPlayer, logBlock, logEngagements, logRunAssignment, lineDebugOn, logLine } from '../utils/runDebug.js'
 import { ENGAGED_SPEED_MULT } from './engagement.js'
@@ -633,7 +634,12 @@ function moveBallCarrier(p, state, dir, dt, accel, topSpd, biasAngle = 0, forceC
     const currentDir = p.runLane
       ? { x: p.runLane.dirX, y: p.runLane.dirY }
       : seedCarrierHeading(p, dir)
-    const newLane   = findRunningLane(p, defenders, blockers, dir, biasAngle, currentDir)
+    // [interior seam] Tell the vision model which of his own linemen he can fit between, so an
+    // engaged center/guard reads as a crease rather than a wall.
+    const squeezeIds = state.playDesign?.playType === 'run'
+      ? interiorLinemanIds(state.offensePlayers, state.ballX ?? FIELD.WIDTH / 2)
+      : null
+    const newLane   = findRunningLane(p, defenders, blockers, dir, biasAngle, currentDir, squeezeIds)
 
     // A sharp change of direction plants and bleeds speed; acceleration sets how much survives.
     let cut = false
@@ -675,6 +681,10 @@ function moveOffense(state, dt) {
 
   for (const p of state.offensePlayers.values()) {
     const label = p.label ?? ''
+
+    // [pancake] On a PASS the blocker goes to the ground with the man he flattened, so he cannot
+    // pop up and go help elsewhere. On a run this is never set — he keeps working upfield.
+    if ((p.pancakeFrozenFor ?? 0) > 0) { p.vx = 0; p.vy = 0; continue }
 
     // Press jam ([press]): a stunned player is frozen until the stun wears off.
     if ((p.stunTimer ?? 0) > 0) { p.stunTimer -= dt; p.vx = 0; p.vy = 0; continue }
@@ -1018,6 +1028,13 @@ const ZONE_CROWD_RADIUS    = 9
 // passer. Being in the throwing lane is what shrinks the window on an instant pass — the openness
 // engine reads a defender between passer and target as real coverage, a trailing one as beaten.
 const ZONE_LANE_BIAS       = 0.22
+// …but only from DEPTH. Undercutting is how a defender with a cushion gets between the passer and
+// the target; applying it at point-blank range just backs him off the man he had already covered
+// and hands the separation straight back. The openness engine reads separation as the dominant
+// term, so a defender who is already tight should stay tight and let his body be the coverage.
+// Below LANE_BIAS_MIN_GAP there is no undercut at all; it fades in fully by LANE_BIAS_FULL_GAP.
+const LANE_BIAS_MIN_GAP   = 2.0    // yards defender→threat under which he simply plays the man
+const LANE_BIAS_FULL_GAP  = 6.5    // yards beyond which the full lane bias applies
 // Commitment to a receiver whose route has not declared yet. Full commitment would let a double
 // move drag the defender out of his area; ignoring him entirely (the old behaviour) left him
 // wide open to an instant throw. Shading splits the difference.
@@ -1039,6 +1056,19 @@ const ZONE_CLOSING_MAX    = 2.5    // yards — cap on that credit, so it can ne
 // which reads on the field as a defender twitching between them and covering neither. A challenger
 // has to be clearly better, not marginally better, to take the assignment over.
 const ZONE_CLAIM_STICKINESS = 2.0
+
+// ── Help: a defender with nothing in his area goes and finds work ────────────
+//
+// The single biggest hole in a zone shell was a defender standing on an empty landmark while a
+// receiver ran free somewhere else — most obviously the back leaking into the flat, who sat outside
+// every landmark's detection range and so was covered by nobody at all. A real zone defender with a
+// quiet area does not admire it; he sees who is uncovered and breaks on him.
+//
+// This stays honest about what the defense may know: it reads receiver positions and velocities and
+// his own teammates' claims, never state.playDesign or r.route. He is looking at the field, not at
+// the play call.
+const ZONE_HELP_RADIUS = 17   // yards from the DEFENDER — how far he will travel to pick up a loose man
+const ZONE_HELP_REACH  = 20   // his effective zone radius once helping, so the boundary doesn't stop him
 
 const RECEIVER_LABELS = new Set(['WR', 'TE', 'RB'])
 
@@ -1081,9 +1111,15 @@ export function getZoneTarget(zoneCenter, threat, coverage = 55, opts = {}) {
 
   // Undercut toward the passer: on a pass with no flight time, the defender who is IN the lane is
   // the one who contests it. Trailing the receiver by a step reads as beaten no matter how close.
+  // Scaled by how much cushion he actually has — see LANE_BIAS_MIN_GAP.
   if (qb) {
-    tx += (qb.x - tx) * ZONE_LANE_BIAS
-    ty += (qb.y - ty) * ZONE_LANE_BIAS
+    const self = opts.self ?? null
+    const gap  = self ? Math.hypot(threat.x - self.x, threat.y - self.y) : Infinity
+    const span = LANE_BIAS_FULL_GAP - LANE_BIAS_MIN_GAP
+    const bias = ZONE_LANE_BIAS *
+      Math.max(0, Math.min(1, (gap - LANE_BIAS_MIN_GAP) / span))
+    tx += (qb.x - tx) * bias
+    ty += (qb.y - ty) * bias
   }
 
   // Partial commitment shades from the landmark toward the threat rather than chasing it outright.
@@ -1328,6 +1364,34 @@ export function computeZoneCoordination(state, losY, dir) {
     claimed.add(c.r.id)
   }
 
+  // ── Help pass ──
+  // Anyone still without an assignment goes to the nearest receiver nobody has. Distance is measured
+  // from the DEFENDER, not from his landmark: this is a decision about how far he must actually run,
+  // and it is the difference between a checkdown being free and being contested.
+  const helping = new Set()
+  const freeDefenders  = zoners.filter(z => !primary.has(z.d.id))
+  const looseReceivers = receivers.filter(r => !claimed.has(r.id))
+  if (freeDefenders.length > 0 && looseReceivers.length > 0) {
+    const helpPairs = []
+    for (const z of freeDefenders) {
+      for (const r of looseReceivers) {
+        // Guard the comparison explicitly rather than relying on `run > RADIUS`: a defender with no
+        // position yields NaN, and every NaN comparison is false, so the "too far" test would pass
+        // it straight through and he would help from anywhere on the field.
+        const run = Math.hypot(r.x - z.d.x, r.y - z.d.y)
+        if (!Number.isFinite(run) || run > ZONE_HELP_RADIUS) continue
+        helpPairs.push({ zId: z.d.id, r, score: run })
+      }
+    }
+    helpPairs.sort((a, b) => a.score - b.score)
+    for (const c of helpPairs) {
+      if (primary.has(c.zId) || claimed.has(c.r.id)) continue
+      primary.set(c.zId, c.r)
+      claimed.add(c.r.id)
+      helping.add(c.zId)
+    }
+  }
+
   const out = new Map()
   for (const z of zoners) {
     const mine = primary.get(z.d.id) ?? null
@@ -1344,10 +1408,13 @@ export function computeZoneCoordination(state, losY, dir) {
       if (reach <= ZONE_CROWD_RADIUS) { contested = true; break }
     }
 
+    // A helper has already decided to leave his spot, so the zone boundary must not veto the trip.
+    const isHelping = helping.has(z.d.id)
     out.set(z.d.id, {
       threat: mine,
-      radius: contested ? ZONE_RADIUS : ZONE_CARRY_RADIUS,
+      radius: isHelping ? ZONE_HELP_REACH : (contested ? ZONE_RADIUS : ZONE_CARRY_RADIUS),
       contested,
+      helping: isHelping,
     })
   }
   return out
@@ -1640,6 +1707,9 @@ function moveDefense(state, dt) {
   const zoneCoord = computeZoneCoordination(state, losY, dir)
 
   for (const p of state.defensePlayers.values()) {
+    // [pancake] Flattened — he is on the ground and out of the play until the timer expires.
+    if ((p.pancakedFor ?? 0) > 0) { p.vx = 0; p.vy = 0; continue }
+
     // Press jam ([press]): a corner/safety beaten off the press is frozen until the stun wears off.
     if ((p.stunTimer ?? 0) > 0) { p.stunTimer -= dt; p.vx = 0; p.vy = 0; continue }
 
@@ -1870,6 +1940,7 @@ function moveDefense(state, dt) {
             radius: zc?.radius ?? ZONE_RADIUS,
             qb,
             commitment,
+            self: p,
           })
           // [zone trace] Record what this defender decided this tick so the coverage lab can show
           // WHY it moved where it did. Off in normal play — one null check per zone defender.

@@ -186,3 +186,27 @@ export const PLAYER = {
   CONTACT_RADIUS: 1.5,   // yards center-to-center — bodies are touching (RADIUS * 2)
   MAX_SPEED:      8.0,   // yards per second (~16 mph, tuned for gameplay pace)
 }
+
+// ── [pancake] Dominant blocks put a defender on the ground ───────────────────
+//
+// A blocker who decisively outclasses the man in front of him — strength edge, block rating and
+// won leverage all together — occasionally puts him flat. A pancaked defender is out of the play:
+// he cannot move, cannot tackle, cannot rush, and the ball carrier runs straight through him.
+//
+// The two play types differ on purpose. On a RUN the blocker finishes and keeps working upfield —
+// that is the whole point of a pancake in the run game. On a PASS he is frozen for the same window,
+// so a pancake can never be used to free a protector up to go double-team somebody else.
+export const PANCAKE = {
+  DURATION_SECONDS: 3,     // how long the defender is down (and, on a pass, the blocker is frozen)
+  // Peak chance per second of contact, before the matchup multiplier below scales it down. Reached
+  // only by a blocker who is winning outright against a much weaker man.
+  MAX_RATE_PER_SECOND: 0.9,
+  // A block fight must be won by at least this much leverage before a pancake is even possible.
+  MIN_LEVERAGE: 0.25,
+  // …and the blocker must have at least this much of a strength edge (strengthModifier - 1, where
+  // 0 is a dead-even matchup and +0.45 is 99 vs 0).
+  MIN_STRENGTH_EDGE: 0.04,
+  // How the matchup score splits between raw strength and the relevant block rating.
+  STRENGTH_WEIGHT: 0.55,
+  SKILL_WEIGHT:    0.45,
+}

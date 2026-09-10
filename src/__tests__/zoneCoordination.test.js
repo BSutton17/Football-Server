@@ -277,3 +277,69 @@ describe('the claim is sticky ([zone decisiveness])', () => {
     expect(holders).toHaveLength(1)
   })
 })
+
+// ── [zone help] A defender with an empty area goes and finds work ────────────
+//
+// The biggest hole in the shell was a defender standing on a quiet landmark while a receiver ran
+// free somewhere else — most visibly the back leaking into the flat, who sat outside every
+// landmark's detection range and so was covered by nobody at all. The help pass hands any
+// still-unassigned defender the nearest receiver nobody has claimed.
+
+describe('help coverage ([zone help])', () => {
+  it('picks up a loose receiver that no zone detected', () => {
+    const state = build({
+      defenders: [
+        { id: 'lb', label: 'LB', x: 26, y: 56, cx: 26, cy: 46 },   // his own area is empty
+      ],
+      // Outside the landmark's detection radius, but well within reach of the defender himself.
+      receivers: [{ id: 'back', x: 34, y: 52 }],
+    })
+    const out = computeZoneCoordination(state, LOS, DIR)
+    expect(out.get('lb').threat?.id).toBe('back')
+    expect(out.get('lb').helping).toBe(true)
+  })
+
+  it('does NOT abandon a receiver already in his own area to go help', () => {
+    const state = build({
+      defenders: [{ id: 'lb', label: 'LB', x: 26, y: 56, cx: 26, cy: 46 }],
+      receivers: [
+        { id: 'mine',  x: 26, y: 47 },   // sitting in the zone — this is his man
+        { id: 'loose', x: 33, y: 52 },   // unclaimed, but not his problem
+      ],
+    })
+    const out = computeZoneCoordination(state, LOS, DIR)
+    expect(out.get('lb').threat.id).toBe('mine')
+    expect(out.get('lb').helping).toBeFalsy()
+  })
+
+  it('will not help from the other side of the field', () => {
+    const state = build({
+      defenders: [{ id: 'lb', label: 'LB', x: 4, y: 56, cx: 4, cy: 46 }],
+      receivers: [{ id: 'far', x: 50, y: 90 }],
+    })
+    expect(computeZoneCoordination(state, LOS, DIR).get('lb').threat).toBeNull()
+  })
+
+  it('two helpers never take the same loose receiver', () => {
+    const state = build({
+      defenders: [
+        { id: 'lb1', label: 'LB', x: 24, y: 56, cx: 24, cy: 46 },
+        { id: 'lb2', label: 'LB', x: 29, y: 56, cx: 29, cy: 46 },
+      ],
+      receivers: [{ id: 'loose', x: 26, y: 53 }],
+    })
+    const out = computeZoneCoordination(state, LOS, DIR)
+    const holders = ['lb1', 'lb2'].filter(id => out.get(id).threat?.id === 'loose')
+    expect(holders).toHaveLength(1)
+  })
+
+  it('a defender with no position on the field cannot help from nowhere', () => {
+    // Math.hypot with an undefined coordinate is NaN, and every NaN comparison is false — so a
+    // naive "too far?" check would wave him through. He must simply not help.
+    const state = build({
+      defenders: [{ id: 'ghost', label: 'LB', cx: 26, cy: 46 }],   // no x / y
+      receivers: [{ id: 'wr1', x: 50, y: 90 }],
+    })
+    expect(computeZoneCoordination(state, LOS, DIR).get('ghost').threat).toBeNull()
+  })
+})
