@@ -18,7 +18,7 @@
 // can prove the gate rather than trusting it.
 
 import express from 'express'
-import { loadPlaybook, upsert, remove, auditPlaybook, PLAYBOOK_PATH } from './store.js'
+import { loadPlaybook, upsert, remove, createFormation, auditPlaybook, PLAYBOOK_PATH } from './store.js'
 
 const KINDS = new Set(['formations', 'plays', 'shells'])
 
@@ -50,11 +50,19 @@ export function createPlaybookDevRouter() {
   router.post('/playbook/:kind', (req, res) => {
     const { kind } = req.params
     if (!KINDS.has(kind)) return res.status(400).json({ error: `unknown kind "${kind}"` })
-    const result = upsert(kind, req.body)
+    // A new formation also gets its run play — there is nothing to draw on a run, so authoring
+    // one by hand for every formation is pure clicking.
+    const result = kind === 'formations' ? createFormation(req.body) : upsert(kind, req.body)
     // 422, not 500: the payload is well-formed JSON that describes an illegal formation, and the
     // sandbox shows these strings to the user directly.
     if (!result.ok) return res.status(422).json({ errors: result.errors })
-    res.json({ id: result.id, [kind]: result.book[kind] })
+    res.json({
+      id: result.id,
+      runPlayId: result.runPlayId,
+      runNote: result.runNote,
+      [kind]: result.book[kind],
+      plays: result.book.plays,
+    })
   })
 
   router.put('/playbook/:kind/:id', (req, res) => {

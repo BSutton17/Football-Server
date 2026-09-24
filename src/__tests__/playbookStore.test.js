@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterAll } from '@jest/globals'
 import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { loadPlaybook, savePlaybook, upsert, remove, auditPlaybook, slugify } from '../playbook/store.js'
+import { loadPlaybook, savePlaybook, upsert, remove, createFormation, auditPlaybook, slugify } from '../playbook/store.js'
 import { isDevPlaybookEnabled, isLocalRequest } from '../playbook/devRoutes.js'
 import { emptyPlaybook } from '../ai/playbook/authored.js'
 
@@ -153,5 +153,73 @@ describe('auditing a hand-edited file', () => {
     expect(audit.problems).toHaveLength(2)
     expect(audit.problems.join(' ')).toMatch(/formation bad/)
     expect(audit.problems.join(' ')).toMatch(/shell worse/)
+  })
+})
+
+describe('⚠️ creating a formation creates its RUN play', () => {
+  // There is nothing to draw on a run — no routes, and no lane, because the lane is read off the
+  // defensive front at the line. Making a person author one by hand per formation is fifteen
+  // identical clicks that can only be got wrong.
+  it('comes with a run, named after the formation', () => {
+    const r = createFormation(deuce, { path: PATH })
+    expect(r.ok).toBe(true)
+    expect(r.runPlayId).toBe('deuce_run')
+    const book = loadPlaybook(PATH)
+    expect(book.plays.deuce_run).toMatchObject({ playType: 'run', formationId: 'deuce' })
+    expect(book.plays.deuce_run.name).toBe('Deuce Run')
+    expect(auditPlaybook(book).ok).toBe(true)
+  })
+
+  it('stores no lane on it', () => {
+    createFormation(deuce, { path: PATH })
+    expect(loadPlaybook(PATH).plays.deuce_run.runAngle).toBeUndefined()
+  })
+
+  it('leaves the carrier implied with one back, and names one with two', () => {
+    createFormation(deuce, { path: PATH })
+    expect(loadPlaybook(PATH).plays.deuce_run.assignments).toEqual({})
+
+    const twoBacks = {
+      ...deuce, name: 'Split',
+      spots: [...deuce.spots.slice(0, 3), { slot: 'RB1', dx: -3, depth: 6 }, { slot: 'RB2', dx: 3, depth: 6 }],
+    }
+    createFormation(twoBacks, { path: PATH })
+    expect(loadPlaybook(PATH).plays.split_run.assignments).toEqual({ RB1: { kind: 'carry' } })
+  })
+
+  it('still creates a formation with no back, and says why there is no run', () => {
+    // An empty set has nobody to hand it to. The formation is not rejected for it.
+    const empty = {
+      name: 'Empty', category: 'gun',
+      spots: ['WR1', 'WR2', 'WR3', 'WR4', 'TE1'].map((slot, i) => ({ slot, dx: i * 5 - 12, depth: 0 })),
+    }
+    const r = createFormation(empty, { path: PATH })
+    expect(r.ok).toBe(true)
+    expect(r.runPlayId).toBeNull()
+    expect(r.runNote).toMatch(/no back/)
+    expect(loadPlaybook(PATH).formations.empty).toBeTruthy()
+  })
+
+  it('⚠️ does NOT pile up duplicate runs when a formation is EDITED', () => {
+    // Editing goes through upsert, not createFormation — otherwise every nudge of a receiver
+    // would add another run play.
+    createFormation(deuce, { path: PATH })
+    upsert('formations', { ...deuce, name: 'Deuce Wide' }, { id: 'deuce', path: PATH })
+    upsert('formations', { ...deuce, name: 'Deuce Wider' }, { id: 'deuce', path: PATH })
+    expect(Object.keys(loadPlaybook(PATH).plays)).toEqual(['deuce_run'])
+  })
+
+  it('does not create the formation at all when it is invalid', () => {
+    const r = createFormation({ ...deuce, category: 'wildcat' }, { path: PATH })
+    expect(r.ok).toBe(false)
+    const book = loadPlaybook(PATH)
+    expect(book.formations).toEqual({})
+    expect(book.plays).toEqual({})
+  })
+
+  it('leaves the run play ordinary — it can be deleted like any other', () => {
+    createFormation(deuce, { path: PATH })
+    expect(remove('plays', 'deuce_run', { path: PATH }).ok).toBe(true)
+    expect(loadPlaybook(PATH).formations.deuce).toBeTruthy()
   })
 })

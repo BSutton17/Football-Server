@@ -17,7 +17,7 @@ import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync } from '
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  emptyPlaybook, validateFormation, validatePlay, validateShell, PLAYBOOK_VERSION,
+  emptyPlaybook, validateFormation, validatePlay, validateShell, autoRunPlay, PLAYBOOK_VERSION,
 } from '../ai/playbook/authored.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -84,6 +84,28 @@ export function upsert(kind, item, { id = null, path = PLAYBOOK_PATH, book = nul
   const next = { ...current, [kind]: { ...current[kind], [finalId]: item } }
   savePlaybook(next, path)
   return { ok: true, id: finalId, book: next }
+}
+
+// ── Creating a formation creates its run ────────────────────────────────────
+//
+// ⚠️ ON CREATE ONLY, never on edit. Re-adding it every time a formation is saved would pile up
+// duplicate runs every time the user nudged a receiver.
+//
+// The run play is an ordinary play afterwards — renameable, editable and deletable like any
+// other. This only saves the clicks; it does not make it special.
+export function createFormation(formation, { path = PLAYBOOK_PATH } = {}) {
+  const made = upsert('formations', formation, { path })
+  if (!made.ok) return made
+
+  const run = autoRunPlay(formation, made.id)
+  // No back on the field: an empty set has nobody to hand it to. The formation is still created.
+  if (!run) return { ...made, runPlayId: null, runNote: 'no back in this formation, so no run play' }
+
+  // Pass the book forward so the run is written onto the formation that was just saved, rather
+  // than re-reading a file that a second save would then race.
+  const play = upsert('plays', run, { path, book: made.book })
+  if (!play.ok) return { ...made, runPlayId: null, runNote: play.errors.join('; ') }
+  return { ok: true, id: made.id, runPlayId: play.id, book: play.book }
 }
 
 // ── Deleting ────────────────────────────────────────────────────────────────

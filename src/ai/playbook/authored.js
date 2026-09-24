@@ -258,6 +258,29 @@ export function shellOptions(shells) {
   return out
 }
 
+// ── Every formation can run the ball ────────────────────────────────────────
+//
+// A run out of a formation carries no drawn information — no routes, and no lane, because the
+// lane is read off the defensive front at the line. So there is nothing for a human to author,
+// and making them create one by hand for every formation is fifteen identical clicks that can
+// only be got wrong. Creating a formation therefore creates its run play too, and the user is
+// left with the only job that actually needs a person: drawing the pass plays.
+//
+// Returns null when the formation fields no back. An empty set has nobody to hand it to, and a
+// run play that cannot name a carrier would fail validation the moment it was saved.
+export function autoRunPlay(formation, formationId) {
+  const backs = (formation?.spots ?? []).filter(s => slotLabel(s.slot) === 'RB')
+  if (backs.length === 0) return null
+  return {
+    name: `${formation.name} Run`,
+    formationId,
+    playType: 'run',
+    // One back needs no carrier — the validator resolves it. Two is ambiguous, so the first is
+    // named and the user can change it or add a second run play for the other.
+    assignments: backs.length === 1 ? {} : { [backs[0].slot]: { kind: 'carry' } },
+  }
+}
+
 export function emptyPlaybook() {
   return { version: PLAYBOOK_VERSION, formations: {}, plays: {}, shells: {} }
 }
