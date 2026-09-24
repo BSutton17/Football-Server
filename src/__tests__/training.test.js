@@ -4,8 +4,6 @@ import { buildSlate, smallSlate, hashSlate, HASH_SPOTS } from '../training/slate
 import { observe, OBSERVATION_SIZE, OBSERVATION_FIELDS, observationSpecHash } from '../training/observation.js'
 import { decode, decodePersonnel, legalShells, ACTION_SIZE, actionSpecHash } from '../training/action.js'
 import { scorePlay, scoreSlate, finalFitness } from '../training/fitness.js'
-import { identity, assertCompatible, evaluateGenome, train } from '../training/train.js'
-import { createNetworkBrain } from '../training/networkBrain.js'
 import { createGenome, connectFully, createInnovationRegistry, createRng } from '../neat/neat.js'
 import { createKnowledge, applyEvent } from '../ai/knowledge.js'
 import { syntheticRoster } from '../ai/roster.js'
@@ -16,6 +14,10 @@ import { COVERAGE_ON_FIELD } from '../ai/defense.js'
 // fail SILENTLY — a broken observation, a mis-decoded action or a mis-read outcome produces a
 // number that looks fine and means nothing. Each of these pins one of those.
 
+// ⚠️ The blocks that tested the per-play trainer (`train.js`), the narrow-action-space brain and
+// the checkpoint-identity guard were removed with those modules. Training is now series-scored
+// co-evolution — see coevolve.test.js. What remains here still applies: the AI-vs-AI harness, the
+// slate, the observation and action layouts, and the fitness guards.
 describe('AI vs AI', () => {
   it('runs a play with nobody watching', () => {
     const ctx = createTrainingGame({ seed: 11 })
@@ -251,94 +253,8 @@ describe('fitness', () => {
   })
 })
 
-describe('a genome in the seat', () => {
-  function makeGenome(seed = 1) {
-    const reg = createInnovationRegistry(OBSERVATION_SIZE + 1 + ACTION_SIZE)
-    return connectFully(createGenome(OBSERVATION_SIZE, ACTION_SIZE), reg, createRng(seed))
-  }
 
-  it('plays the slate and produces a finite fitness', () => {
-    const r = evaluateGenome(makeGenome(3), smallSlate(), {})
-    expect(Number.isFinite(r.fitness)).toBe(true)
-    expect(r.fitness).toBeGreaterThanOrEqual(0)
-    expect(r.plays).toHaveLength(9)
-  }, 30000)
 
-  it('its calls are as legal as the heuristic\'s — nothing is ever refused', () => {
-    const slate = smallSlate()
-    const r = evaluateGenome(makeGenome(7), slate, {})
-    for (const p of r.plays) {
-      expect({ situation: p.situationId, problems: p.problems }).toEqual({ situation: p.situationId, problems: [] })
-    }
-  }, 30000)
-
-  it('different genomes make different calls', () => {
-    const calls = [1, 2, 3].map(seed => {
-      const ctx = createTrainingGame({ seed: 77 })
-      try {
-        const brain = createNetworkBrain({ socket: ctx.seats[1], slot: 1, roster: syntheticRoster('n'), genome: makeGenome(seed), seed })
-        ctx.brains[1] = brain
-        ctx.seats[1].emit = (e, p) => brain.onEvent(e, p)
-        runPlay(ctx, { down: 2, distance: 8, yardLine: 45, ballX: 26.665, possession: 0 })
-        return brain.decisions[0]?.shellId ?? null
-      } finally { destroyTrainingGame(ctx) }
-    })
-    expect(calls.every(Boolean)).toBe(true)
-    expect(new Set(calls).size).toBeGreaterThan(1)
-  }, 30000)
-})
-
-describe('the worker pool', () => {
-  // The one property that matters: fanning out must not change the answer. Every play is seeded
-  // from its situation, so which thread ran it is irrelevant — and a parallel trainer that quietly
-  // disagreed with the serial one would be worse than no parallelism at all.
-  it('produces identical fitness to running serially', async () => {
-    const { createPool } = await import('../training/pool.js')
-    const reg = createInnovationRegistry(OBSERVATION_SIZE + 1 + ACTION_SIZE)
-    const genomes = [1, 2, 3, 4].map(seed =>
-      connectFully(createGenome(OBSERVATION_SIZE, ACTION_SIZE), reg, createRng(seed)))
-    const slate = buildSlate({ size: 3, generation: 0, seed: 21 })
-
-    const serial = genomes.map(g => evaluateGenome(g, slate, {}).fitness)
-
-    const pool = createPool(3)
-    try {
-      const parallel = await pool.evaluate(genomes, slate, {})
-      expect(parallel.map(r => r.fitness)).toEqual(serial)
-    } finally {
-      await pool.destroy()
-    }
-  }, 120000)
-
-  it('survives a worker being handed something it cannot evaluate', async () => {
-    const { createPool } = await import('../training/pool.js')
-    const pool = createPool(2)
-    try {
-      // A genome with no nodes cannot build a network. It must score zero, not kill the run.
-      const broken = { id: 'broken', inputs: OBSERVATION_SIZE, outputs: ACTION_SIZE, nodes: [], connections: [] }
-      const res = await pool.evaluate([broken], buildSlate({ size: 2, generation: 0, seed: 3 }), {})
-      expect(res[0].fitness).toBe(0)
-    } finally {
-      await pool.destroy()
-    }
-  }, 120000)
-})
-
-describe('checkpoint identity', () => {
-  it('refuses a resume that would change the exam, and names the field', () => {
-    const now = identity({ seed: 1, populationSize: 150, slateSize: 40, slateSeed: 12345 })
-    expect(() => assertCompatible(now, now)).not.toThrow()
-    expect(() => assertCompatible({ ...now, inputs: 34 }, now)).toThrow(/inputs/)
-    expect(() => assertCompatible({ ...now, observationHash: 'deadbeef' }, now)).toThrow(/observationHash/)
-    expect(() => assertCompatible({ ...now, slateSize: 20 }, now)).toThrow(/slateSize/)
-  })
-
-  it('pins both schema hashes', () => {
-    const id = identity({ seed: 1, populationSize: 10, slateSize: 5, slateSeed: 1 })
-    expect(id.observationHash).toBe(observationSpecHash())
-    expect(id.actionHash).toBe(actionSpecHash())
-  })
-})
 
 
 // ── Par has to actually bind ([training]) ────────────────────────────────────
@@ -405,50 +321,3 @@ describe('par and the slate must describe the same situations', () => {
 //
 // A run killed at generation 116 therefore left behind a genome scoring 15.00 on the holdout after
 // reporting a best of 16.17. Hours of compute, and the one artefact worth keeping was the wrong one.
-describe('the holdout champion reaches onGeneration', () => {
-  it('hands the holdout best to the callback, not just the population', async () => {
-    const seen = []
-    await train({
-      generations: 3, populationSize: 8, slateSize: 4, baselineRepeats: 1,
-      workers: 0,
-      onGeneration: (entry, pop, best) => seen.push({ entry, pop, best }),
-    })
-
-    expect(seen).toHaveLength(3)
-    for (const s of seen) {
-      // The third argument is what a checkpoint needs; without it there is nothing to save.
-      expect(s.best).toBeTruthy()
-      expect(s.best.genome).toBeTruthy()
-      expect(Array.isArray(s.best.genome.nodes)).toBe(true)
-      expect(typeof s.best.holdout).toBe('number')
-      expect(typeof s.best.generation).toBe('number')
-    }
-  })
-
-  it('the holdout champion is the best-scoring one seen so far, and never regresses', async () => {
-    const seen = []
-    await train({
-      generations: 4, populationSize: 8, slateSize: 4, baselineRepeats: 1,
-      workers: 0,
-      onGeneration: (entry, pop, best) => seen.push({ bestHoldout: entry.bestHoldout, best }),
-    })
-    for (const s of seen) expect(s.best.holdout).toBeCloseTo(s.bestHoldout, 6)
-    const holds = seen.map(s => s.best.holdout)
-    for (let i = 1; i < holds.length; i++) expect(holds[i]).toBeGreaterThanOrEqual(holds[i - 1])
-  })
-
-  it('it is NOT the same thing as the population snapshot champion', async () => {
-    // Not an equality assertion — they can coincide — but the two must be sourced separately, or
-    // the bug is simply reintroduced. The snapshot champion carries a TRAINING fitness; the holdout
-    // champion carries a holdout score. Different provenance, different number.
-    let last = null
-    await train({
-      generations: 3, populationSize: 8, slateSize: 4, baselineRepeats: 1,
-      workers: 0,
-      onGeneration: (entry, pop, best) => { last = { snap: pop.snapshot().champion, best } },
-    })
-    expect(last.snap).toBeTruthy()
-    expect(last.best.genome).toBeTruthy()
-    expect(typeof last.best.holdout).toBe('number')
-  })
-})

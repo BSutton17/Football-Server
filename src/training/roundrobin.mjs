@@ -19,26 +19,27 @@
 
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { evaluateDeep } from './deepTrain.js'
+import { playPairing } from './coevolve.js'
 import { buildSlate } from './slate.js'
-import { runBaseline } from './baseline.js'
 
 const SIZE = Number(process.argv[2] ?? 20)
-const DIR = process.env.OUT_DIR ?? 'training-output/pingpong-current'
-const REPEATS = 2
+const DIR = process.env.OUT_DIR ?? 'training-output/coevolve-current'
 
-const archivePath = join(DIR, 'archive.json')
-if (!existsSync(archivePath)) {
-  console.log(`No archive at ${archivePath}. Run: npm run training:pingpong`)
+const archivePath = [join(DIR, 'champions.json'), join(DIR, 'archive.json')].find(existsSync)
+if (!archivePath) {
+  console.log(`No champions in ${DIR}. Run: npm run training:coevolve`)
   process.exit(0)
 }
-const { archive } = JSON.parse(readFileSync(archivePath, 'utf8'))
+const saved = JSON.parse(readFileSync(archivePath, 'utf8'))
+// A co-evolution run saves two champions; a ping-pong archive saved a list. Accept either so old
+// runs stay comparable with new ones.
+const archive = saved.archive ?? [
+  { round: saved.offense?.generation ?? 0, side: 'offense', genome: saved.offense?.genome },
+  { round: saved.defense?.generation ?? 0, side: 'defense', genome: saved.defense?.genome },
+].filter(x => x.genome)
 
-// A slate no round ever trained or was selected on.
-const SEED = 616161
-const GEN = 31337
-const slate = buildSlate({ size: SIZE, generation: GEN, seed: SEED })
-const par = runBaseline({ size: SIZE, repeats: REPEATS, seed: SEED, generation: GEN }).expected
+// Series nothing trained or was selected on.
+const slate = buildSlate({ size: SIZE, generation: 31337, seed: 616161 })
 
 // null represents the heuristic, which plays in the field on both sides as the fixed reference.
 const defenses = [{ round: 0, label: 'heuristic', genome: null },
@@ -46,14 +47,17 @@ const defenses = [{ round: 0, label: 'heuristic', genome: null },
 const offenses = [{ round: 0, label: 'heuristic', genome: null },
   ...archive.filter(a => a.side === 'offense').map(a => ({ round: a.round, label: `r${a.round}`, genome: a.genome }))]
 
-console.log(`\n  ${defenses.length} defenses x ${offenses.length} offenses on ${SIZE} unseen situations x ${REPEATS}`)
-console.log(`  Cells are the DEFENSE's score (15.00 = par). Lower is better for the offense.\n`)
+console.log(`
+  ${defenses.length} defenses x ${offenses.length} offenses over ${SIZE} unseen series`)
+console.log(`  Cells are the DEFENSE's mean SERIES score. Positive is a good defense; 0 is even.
+`)
 
-// One matchup. The defense's score is reported; the offense's is its mirror, so one number suffices.
+// The DEFENSE's mean series score. Series scoring is zero sum, so the offense's is the negative
+// and one number describes the matchup.
 function play(defense, offense) {
-  return evaluateDeep(defense.genome, {
-    side: 'defense', slate, expected: par, opponents: [offense.genome], repeats: REPEATS,
-  }).fitness
+  let total = 0
+  for (const s of slate.situations) total += -playPairing(offense.genome, defense.genome, s).score
+  return total / slate.situations.length
 }
 
 const grid = []

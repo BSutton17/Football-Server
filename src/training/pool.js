@@ -81,49 +81,17 @@ export function createPool(size = defaultWorkerCount()) {
   return {
     size,
 
-    // Evaluates every genome against the slate. Resolves to an array of results, index-aligned
-    // with `genomes`.
-    // How many genomes threw during the last evaluate(), and a sample of why. Read by train() so a
-    // run that is quietly crashing most of its population says so instead of looking merely flat.
-    lastErrors() { return errors },
 
-    evaluate(genomes, slate, expected) {
-      return new Promise((resolve) => {
-        if (genomes.length === 0) { resolve([]); return }
-        errors = []
-        results = new Array(genomes.length).fill(null)
-        pending = genomes.length
-        queue = genomes.map((genome, index) => ({
-          type: 'evaluate',
-          index,
-          // Structured-cloned across the thread boundary, so these must be plain data. Genomes and
-          // slates already are — a class instance or a Map here would throw at postMessage time.
-          genome: JSON.parse(JSON.stringify(genome)),
-          slate,
-          expected,
-        }))
-        onDone = resolve
-        pump()
-      })
-    },
 
-    // [deep] The same fan-out for a one-side-against-a-frozen-opponent evaluation.
-    evaluateDeep(genomes, { side, slate, expected, opponents }) {
+    // [coevolve] Fan out a generation of series jobs. Each result carries a fitness for one offense
+    // genome and one per defense it faced, so a single pass scores both populations.
+    evaluateSeries(jobs) {
       return new Promise((resolve) => {
-        if (genomes.length === 0) { resolve([]); return }
+        if (jobs.length === 0) { resolve([]); return }
         errors = []
-        results = new Array(genomes.length).fill(null)
-        pending = genomes.length
-        // Cloned ONCE for the whole generation, not per genome — the pool can hold half a dozen
-        // 600-connection genomes and structured-cloning that per job is pure waste.
-        const frozen = (opponents ?? [null]).map(o => (o ? JSON.parse(JSON.stringify(o)) : null))
-        queue = genomes.map((genome, index) => ({
-          type: 'evaluateDeep',
-          index,
-          genome: JSON.parse(JSON.stringify(genome)),
-          opponents: frozen,
-          side, slate, expected,
-        }))
+        results = new Array(jobs.length).fill(null)
+        pending = jobs.length
+        queue = jobs.map((job, index) => ({ type: 'series', index, job }))
         onDone = resolve
         pump()
       })

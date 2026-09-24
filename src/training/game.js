@@ -166,8 +166,21 @@ export const HASHES = [HASH?.LEFT ?? FIELD.WIDTH * 0.25, FIELD.WIDTH / 2, HASH?.
 // harness that only reports yardage will happily average over a broken game, so every play is
 // checked for the things that should never be true, and they come back with the result.
 export function runPlay(ctx, situation) {
+  applySituation(ctx.state, situation)
+  return playDown(ctx, situation)
+}
+
+// ── One down, from wherever the game already is ([series]) ──────────────────
+//
+// The body of runPlay, minus the situation reset. A SERIES needs consecutive downs — the engine
+// has already advanced down, distance and field position at the whistle, and resetting the
+// situation between them would throw all of that away and replay the same first-and-ten forever.
+//
+// `opts` carries only what a caller can legitimately impose on a single down: `forcePlayType` for
+// the run curriculum. Everything else comes from the live game state.
+export function playDown(ctx, opts = {}) {
   const { io, state, seats } = ctx
-  applySituation(state, situation)
+  const situation = opts
 
   const startYardLine = state.yardLine
   const offenseSlot = state.possession

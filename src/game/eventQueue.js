@@ -989,7 +989,10 @@ export function broadcastSpecialTeams(state, io) {
 // authoritative: an illegal option falls back to the default. Go For It resumes normal pre-snap;
 // Punt / Field Goal hand off to the unified kicking engine — they enter the special-teams SETUP so
 // the offense aims + powers the kick ([6][7][8][9]); the kick clock resolves it.
-export function resolveDecision(state, io, option) {
+// `quiet` skips the re-sync broadcast, for the same reason startNextPlay has it: this emits in SLOT
+// order, which hands the offense the new play first and leaves the defense wiping its own picture.
+// See the warning in runPlay. Only the synchronous training harness passes it.
+export function resolveDecision(state, io, option, { quiet = false } = {}) {
   if (!state.decisionPending) return
   if (!isDecisionLegal(state, option)) option = decisionDefault(state)
 
@@ -1005,12 +1008,12 @@ export function resolveDecision(state, io, option) {
   } else {
     // Go For It — resume normal pre-snap; re-sync so the menu clears and the play clock runs.
     const room = getRoom(roomId)
-    if (room) {
+    if (room && !quiet) {
       room.players.forEach((socketId, slot) => {
         if (socketId) io.to(socketId).emit('game_state', serializeGameState(state, slot))
       })
     }
-    console.log(`[game] ${roomId} 4th-down decision: GO FOR IT`)
+    if (!quiet) console.log(`[game] ${roomId} 4th-down decision: GO FOR IT`)
   }
 }
 
@@ -1191,6 +1194,99 @@ function turnover(state, io, newYardLine = null) {
 //
 // Re-fetches the game state inside the timeout — if the game was abandoned
 // during the delay, the lookup returns null and we exit cleanly.
+// ⚠️ THE NEXT PLAY IS SET UP HERE, NOT INSIDE A TIMER.
+//
+// This used to live in the setTimeout body. Training plays a SERIES of downs synchronously — four
+// snaps with no event loop in between — so a real timer never fires and every series died on the
+// second down. Extracting it means the timer and the training harness run the IDENTICAL code, so
+// a series is genuinely four downs of the real game rather than a re-implementation of one.
+// `quiet` skips the closing game_state broadcast. Training needs that: this function emits in SLOT
+// order, which hands the offense the new play first — it places its whole formation, and then the
+// defense's game_state arrives as a NEW PLAY and wipes the picture it was just given, so it lines
+// up against an empty field and fields nobody. The harness emits in the correct order itself (see
+// the warning in runPlay). A real game is unaffected: both clients are remote and neither acts
+// inside the other's delivery.
+export function startNextPlay(roomId, io, { quiet = false } = {}) {
+  const state = getGame(roomId)
+  if (state) { state.nextPlayTimer = null; state.nextPlayDueAt = 0 }
+  if (!state || state.phase !== PHASE.DEAD) return
+
+  // [51] A two-point try that ended without reaching the end zone is a FAILED conversion (a score
+  // clears twoPointActive in onTouchdown before this runs). No points; the scoring team kicks off.
+  // We're already in DEAD, so applyTwoPointResult stages the kickoff and reschedules this.
+  if (state.twoPointActive != null) { applyTwoPointResult(state, io, false); return }
+
+  // [216] Safety net: if the clock ran out at the exact end of this play, the play-ending event
+  // pre-empted CLOCK_EXPIRED in the queue. Resolve the period end here rather than lining up
+  // with a dead clock. (When onClockExpired handled it directly the clock is already reset > 0.)
+  if (state.clock <= 0) {
+    if (state.quarter >= RULES.QUARTERS) { endGame(state, io); return }
+    advanceQuarter(state, io)
+    // advanceQuarter has just told both clients to hold a full-screen interstitial. Falling
+    // through here would set the next play up *behind* that overlay: the formation resets, the
+    // play clock starts and the defense cannot place or adjust anyone until the overlay lifts
+    // seconds later. Re-schedule instead, so the hold is real on both ends.
+    beginNextPlay(roomId, io, TRANSITION_MS)
+    return
+  }
+
+  // Apply any pending stamina recovery (possession change = 0.5, Q3 = 0.8).
+  if (state.pendingStaminaRecovery > 0) {
+    recoverStamina(state, state.pendingStaminaRecovery)
+    state.pendingStaminaRecovery = 0
+  }
+
+  // Wipe everything that was specific to the play that just ended
+  state.offensePlayers        = new Map()
+  state.defensePlayers        = new Map()
+  state.ballCarrierId         = null
+  state.targetReceiverId      = null
+  state.deadBallSpot          = null
+  state.catchSpot             = null
+  state.qbScrambling          = false
+  state.interceptionReturn    = false
+  state.activeThrow           = null
+  state.tick                  = 0
+  state.qbPressureCount       = 0
+  state.qbUnderHeavyPressure  = false
+  state.sackEnqueued          = false
+  state.tackleEnqueued        = false
+  state.passCompletedThisPlay = false   // [294] per-play: did this play feature a completed pass
+  state.qbSackImmunity        = 0       // [294] Shake It Off grace window resets each play
+  resetPancakes(state)                  // [pancake] nobody starts a play on the ground
+  endSpecialTeams(state)                // [Special Teams][5] clear the kickoff (or any kick) interstitial
+
+  // [play-clock] Reset the play clock for the upcoming snap: 40 s on the first play of a drive
+  // (the offense needs time to drag its formation in), 25 s on every other play. newDrive is left
+  // set through this play's pre-snap + countdown (the defense gets a longer adjust window on a fresh
+  // drive) and is cleared at the snap.
+  state.playClock        = state.newDrive ? RULES.PLAY_CLOCK_NEW_DRIVE : RULES.PLAY_CLOCK_SECONDS
+  state.playClockRunning = true
+  // [stale set] A new play — formations designed for the previous one no longer apply.
+  state.playSerial       = (state.playSerial ?? 0) + 1
+
+  transition(state, PHASE.PRE_SNAP)
+
+  // [Special Teams][2][3] Arm the 4th-down menu before the game_state below goes out (so it
+  // carries the menu). Pauses the play clock and gates set/snap until the offense chooses.
+  maybeStartDecision(state)
+
+  // Send the full game state to each player so their screens reflect
+  // the current quarter, clock, down, distance, and field position
+  const room = getRoom(roomId)
+  if (!room) return
+
+  if (!quiet) {
+    room.players.forEach((socketId, slot) => {
+      if (socketId) {
+        io.to(socketId).emit('game_state', serializeGameState(state, slot))
+      }
+    })
+  }
+
+  console.log(`[game] ${roomId} Q${state.quarter} — ready for next snap (${state.down}&${state.distance} at ${state.yardLine})`)
+}
+
 function beginNextPlay(roomId, io, delayMs = BETWEEN_PLAYS_MS) {
   // [quarter transition] Two handlers can schedule the next play for the SAME dead ball: the
   // play-ending event (tackle, incompletion, …) books the ordinary 2 s gap, and then CLOCK_EXPIRED
@@ -1210,84 +1306,7 @@ function beginNextPlay(roomId, io, delayMs = BETWEEN_PLAYS_MS) {
     pending.nextPlayDueAt = dueAt
   }
 
-  const handle = setTimeout(() => {
-    const state = getGame(roomId)
-    if (state) { state.nextPlayTimer = null; state.nextPlayDueAt = 0 }
-    if (!state || state.phase !== PHASE.DEAD) return
-
-    // [51] A two-point try that ended without reaching the end zone is a FAILED conversion (a score
-    // clears twoPointActive in onTouchdown before this runs). No points; the scoring team kicks off.
-    // We're already in DEAD, so applyTwoPointResult stages the kickoff and reschedules this.
-    if (state.twoPointActive != null) { applyTwoPointResult(state, io, false); return }
-
-    // [216] Safety net: if the clock ran out at the exact end of this play, the play-ending event
-    // pre-empted CLOCK_EXPIRED in the queue. Resolve the period end here rather than lining up
-    // with a dead clock. (When onClockExpired handled it directly the clock is already reset > 0.)
-    if (state.clock <= 0) {
-      if (state.quarter >= RULES.QUARTERS) { endGame(state, io); return }
-      advanceQuarter(state, io)
-      // advanceQuarter has just told both clients to hold a full-screen interstitial. Falling
-      // through here would set the next play up *behind* that overlay: the formation resets, the
-      // play clock starts and the defense cannot place or adjust anyone until the overlay lifts
-      // seconds later. Re-schedule instead, so the hold is real on both ends.
-      beginNextPlay(roomId, io, TRANSITION_MS)
-      return
-    }
-
-    // Apply any pending stamina recovery (possession change = 0.5, Q3 = 0.8).
-    if (state.pendingStaminaRecovery > 0) {
-      recoverStamina(state, state.pendingStaminaRecovery)
-      state.pendingStaminaRecovery = 0
-    }
-
-    // Wipe everything that was specific to the play that just ended
-    state.offensePlayers        = new Map()
-    state.defensePlayers        = new Map()
-    state.ballCarrierId         = null
-    state.targetReceiverId      = null
-    state.deadBallSpot          = null
-    state.catchSpot             = null
-    state.qbScrambling          = false
-    state.interceptionReturn    = false
-    state.activeThrow           = null
-    state.tick                  = 0
-    state.qbPressureCount       = 0
-    state.qbUnderHeavyPressure  = false
-    state.sackEnqueued          = false
-    state.tackleEnqueued        = false
-    state.passCompletedThisPlay = false   // [294] per-play: did this play feature a completed pass
-    state.qbSackImmunity        = 0       // [294] Shake It Off grace window resets each play
-    resetPancakes(state)                  // [pancake] nobody starts a play on the ground
-    endSpecialTeams(state)                // [Special Teams][5] clear the kickoff (or any kick) interstitial
-
-    // [play-clock] Reset the play clock for the upcoming snap: 40 s on the first play of a drive
-    // (the offense needs time to drag its formation in), 25 s on every other play. newDrive is left
-    // set through this play's pre-snap + countdown (the defense gets a longer adjust window on a fresh
-    // drive) and is cleared at the snap.
-    state.playClock        = state.newDrive ? RULES.PLAY_CLOCK_NEW_DRIVE : RULES.PLAY_CLOCK_SECONDS
-    state.playClockRunning = true
-    // [stale set] A new play — formations designed for the previous one no longer apply.
-    state.playSerial       = (state.playSerial ?? 0) + 1
-
-    transition(state, PHASE.PRE_SNAP)
-
-    // [Special Teams][2][3] Arm the 4th-down menu before the game_state below goes out (so it
-    // carries the menu). Pauses the play clock and gates set/snap until the offense chooses.
-    maybeStartDecision(state)
-
-    // Send the full game state to each player so their screens reflect
-    // the current quarter, clock, down, distance, and field position
-    const room = getRoom(roomId)
-    if (!room) return
-
-    room.players.forEach((socketId, slot) => {
-      if (socketId) {
-        io.to(socketId).emit('game_state', serializeGameState(state, slot))
-      }
-    })
-
-    console.log(`[game] ${roomId} Q${state.quarter} — ready for next snap (${state.down}&${state.distance} at ${state.yardLine})`)
-  }, delayMs)
+  const handle = setTimeout(() => startNextPlay(roomId, io), delayMs)
 
   if (pending) pending.nextPlayTimer = handle
 }
