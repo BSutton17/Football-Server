@@ -107,6 +107,24 @@ export function shadeFor(defender, receiver, { hasDeepHelp, ballX = FIELD_MID })
   return SHADE.OVER
 }
 
+// ── Leverage: the call's shading preference ─────────────────────────────────
+//
+// [authored] An authored shell is chosen together with a LEVERAGE — the one shading decision the
+// AI makes for itself. Per-defender shading cannot be solved (five man defenders x four shades is
+// 1,024 variants of every shell), so the choice is made once for the whole call.
+//
+// ⚠️ LEVERAGE IS A PREFERENCE, AND THE SAFETY RULES OUTRANK IT. `shadeFor` refuses to play
+// anything but UNDER with no deep help — "nothing behind you: never get beaten deep" — and a back
+// releasing is always a short threat. If a chosen leverage could override those, the AI would be
+// able to pick inside leverage with no safety behind it and concede touchdowns for it. This is
+// the same rule the trained action space used: repair the illegal choice, never score it badly.
+export function shadeWithLeverage(defender, receiver, ctx, leverage) {
+  if (leverage !== 'in' && leverage !== 'out') return shadeFor(defender, receiver, ctx)
+  if (receiver.label === 'RB') return SHADE.UNDER
+  if (!ctx?.hasDeepHelp) return SHADE.UNDER
+  return leverage === 'in' ? SHADE.IN : SHADE.OUT
+}
+
 // ── Alignment ─────────────────────────────────────────────────────────────────
 //
 // Where a defender stands before the snap. Man defenders line up on their receiver; zone defenders

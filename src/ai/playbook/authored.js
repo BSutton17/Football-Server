@@ -1,0 +1,263 @@
+// ── The authored playbook ([authored]) ──────────────────────────────────────
+//
+// Formations, plays and shells drawn BY HAND in the dev sandbox, rather than invented by a
+// network. The AI's job shrinks from "design football" to "choose which of these to call".
+//
+// ⚠️ WHY THIS REPLACED A LEARNED ACTION SPACE. Six hundred generations of a deep per-player action
+// space produced an offense WORSE than the hand-written heuristic, and a defense that wins series
+// while lining up in shapes that do not look like football. Both have one cause: every fitness we
+// have used scores OUTCOMES, so nothing ever paid for looking like football, and the search duly
+// found shapes that exploit the engine instead. Authoring removes that whole failure class — the
+// AI can no longer invent a shape, only pick one a human vouched for.
+//
+// ⚠️ SLOTS ARE THE STABLE KEY, AND THAT IS THE WHOLE DESIGN. A play's routes are stored against
+// `WR1`/`TE1`/`RB1`, never against a player id (which changes with the roster) and never against
+// an alignment role like X or Z (which changes when the formation moves). That is what lets a
+// formation be EDITED without erasing the plays built on it: move the spot, and the route — stored
+// as offsets from wherever that slot starts — moves with it.
+//
+// Everything here is field-position independent for the same reason the hand-written table is:
+// `dx` is yards from the BALL'S HASH and `depth` is yards behind the line of scrimmage, so one
+// authored formation is correct from anywhere on the field and from either hash.
+
+import { legalSpot } from './formations.js'
+
+export const PLAYBOOK_VERSION = 1
+
+// The offense fields five skill players; the five linemen and the quarterback are placed
+// automatically and are never authored. The pool is the roster's, so a formation cannot ask for a
+// fourth tight end that no team carries.
+export const SLOT_POOL = { WR: 4, TE: 3, RB: 2 }
+export const MAX_SKILL = 5
+
+// The user's two categories. A sub-formation name ("Deuce", "U Off Trips Wk") is free text under
+// one of them.
+export const CATEGORIES = ['gun', 'pistol']
+
+export const PLAY_TYPES = ['pass', 'run']
+
+// `WR1` -> `WR`. The label is what the roster fills and what legalSpot clamps against.
+export function slotLabel(slot) {
+  return String(slot).replace(/[0-9]+$/, '')
+}
+
+export function slotsFor(pool = SLOT_POOL) {
+  const out = []
+  for (const [label, n] of Object.entries(pool)) for (let i = 1; i <= n; i++) out.push(`${label}${i}`)
+  return out
+}
+
+const ALL_SLOTS = new Set(slotsFor())
+
+function err(list, msg) { list.push(msg); return list }
+
+// ── Validation ──────────────────────────────────────────────────────────────
+//
+// The sandbox shows these; the loader refuses anything that fails. An authored formation is data
+// the engine trusts, so it is checked once here rather than defended against everywhere.
+export function validateFormation(f) {
+  const errors = []
+  if (!f || typeof f !== 'object') return { ok: false, errors: ['formation is not an object'] }
+  if (!f.name || !String(f.name).trim()) err(errors, 'needs a name')
+  if (!CATEGORIES.includes(f.category)) err(errors, `category must be one of ${CATEGORIES.join(', ')}`)
+  const spots = Array.isArray(f.spots) ? f.spots : []
+  if (spots.length !== MAX_SKILL) err(errors, `needs exactly ${MAX_SKILL} skill players, got ${spots.length}`)
+
+  const seen = new Set()
+  const counts = {}
+  for (const s of spots) {
+    if (!ALL_SLOTS.has(s?.slot)) { err(errors, `unknown slot "${s?.slot}"`); continue }
+    if (seen.has(s.slot)) err(errors, `slot ${s.slot} used twice`)
+    seen.add(s.slot)
+    const label = slotLabel(s.slot)
+    counts[label] = (counts[label] ?? 0) + 1
+    if (!Number.isFinite(s.dx)) err(errors, `${s.slot} dx must be a number`)
+    if (!Number.isFinite(s.depth)) err(errors, `${s.slot} depth must be a number`)
+    else if (s.depth < 0) err(errors, `${s.slot} depth is yards BEHIND the line and cannot be negative`)
+  }
+  for (const [label, n] of Object.entries(counts)) {
+    if (n > (SLOT_POOL[label] ?? 0)) err(errors, `${n} ${label}s exceeds the roster pool of ${SLOT_POOL[label] ?? 0}`)
+  }
+
+  // ⚠️ The quarterback stands at (ballX, losY - 6). A back written at dx 0 / depth 6 lands exactly
+  // on top of him and the two collide at the snap — the hand-written table shipped three
+  // formations that did this before it was caught.
+  for (const s of spots) {
+    if (slotLabel(s.slot) === 'RB' && Math.abs(s.dx ?? 0) < 1.5 && Math.abs((s.depth ?? 0) - 6) < 1.5) {
+      err(errors, `${s.slot} is stacked on the quarterback (dx ${s.dx}, depth ${s.depth}) — move him wider or deeper`)
+    }
+  }
+  return { ok: errors.length === 0, errors }
+}
+
+export function validatePlay(p, formations) {
+  const errors = []
+  if (!p || typeof p !== 'object') return { ok: false, errors: ['play is not an object'] }
+  if (!p.name || !String(p.name).trim()) err(errors, 'needs a name')
+  if (!PLAY_TYPES.includes(p.playType)) err(errors, `playType must be one of ${PLAY_TYPES.join(', ')}`)
+  const formation = formations?.[p.formationId]
+  if (!formation) return { ok: false, errors: [...errors, `unknown formation "${p.formationId}"`] }
+
+  const slots = new Set((formation.spots ?? []).map(s => s.slot))
+  for (const slot of Object.keys(p.assignments ?? {})) {
+    if (!slots.has(slot)) err(errors, `assignment for ${slot}, which is not in formation "${p.formationId}"`)
+  }
+  for (const [slot, a] of Object.entries(p.assignments ?? {})) {
+    if (!a || typeof a !== 'object') { err(errors, `${slot} assignment is not an object`); continue }
+    if (a.kind === 'route') {
+      // Stored exactly as the client's beautifier emits and the server's place_player already
+      // accepts: offsets from wherever the slot starts, which is what survives a formation edit.
+      if (!Array.isArray(a.points) || a.points.length === 0) err(errors, `${slot} route has no points`)
+      else for (const pt of a.points) {
+        if (!Number.isFinite(pt?.dx) || !Number.isFinite(pt?.dd)) { err(errors, `${slot} route has a bad point`); break }
+      }
+      if (p.playType === 'run') err(errors, `${slot} has a route on a run play`)
+    } else if (a.kind !== 'block' && a.kind !== 'carry') {
+      err(errors, `${slot} has unknown assignment kind "${a.kind}"`)
+    }
+  }
+  const carriers = Object.entries(p.assignments ?? {}).filter(([, a]) => a?.kind === 'carry')
+  if (p.playType === 'pass' && carriers.length > 0) err(errors, 'a pass play cannot have a carrier')
+
+  if (p.playType === 'run') {
+    // ⚠️ A RUN STORES NO ANGLE. Authoring one lane per play would mean drawing the same run four
+    // times — inside, off-tackle, outside each way — and would freeze a decision that is only
+    // answerable once the defense has lined up. `chooseRunAngle` reads the box at the line, which
+    // is the same information a real back is reading. So the play says RUN and the lane is found
+    // at the snap.
+    if (p.runAngle != null) {
+      err(errors, 'a run does not store an angle — the lane is chosen at the line from the defensive front')
+    }
+    if (carriers.length > 1) err(errors, `a run has one carrier, got ${carriers.length}`)
+    if (carriers.length === 0) {
+      // With one back there is nothing to say; with two, "run" is ambiguous and the sandbox has to
+      // ask rather than guess which one gets it.
+      const backs = (formation.spots ?? []).filter(s => slotLabel(s.slot) === 'RB')
+      if (backs.length !== 1) {
+        err(errors, `${backs.length} backs in this formation — mark which one carries`)
+      }
+    }
+  }
+  return { ok: errors.length === 0, errors }
+}
+
+// ── Putting an authored formation on the grass ──────────────────────────────
+//
+// The mirror of `layout()` for the hand-written table, and deliberately the same contract so the
+// two can coexist while the playbook is migrated.
+//
+// ⚠️ MIRRORING DEFAULTS TO OFF. The hand-written table flips left/right at random, which is free
+// variety when a formation is symmetric shorthand. An AUTHORED play was drawn a specific way —
+// "Mesh Right" mirrored is a different play — so flipping is opt-in per play rather than automatic.
+export function layoutAuthored(formation, { losY, ballX, mirror = false }) {
+  if (!formation?.spots) return []
+  return formation.spots.map((s, index) => {
+    const dx = mirror ? -s.dx : s.dx
+    const label = slotLabel(s.slot)
+    const { x, y } = legalSpot(label, ballX + dx, losY - s.depth, losY)
+    return { slot: s.slot, label, x, y, index }
+  })
+}
+
+// Personnel counts, DERIVED rather than stored — a formation that says it wants two tight ends and
+// lists one is a contradiction the sandbox should not be able to save.
+export function personnelOf(formation) {
+  const out = { WR: 0, TE: 0, RB: 0 }
+  for (const s of formation?.spots ?? []) {
+    const label = slotLabel(s.slot)
+    if (label in out) out[label]++
+  }
+  return out
+}
+
+// A play's route for one slot, mirrored with the formation so the art and the simulated path agree.
+export function routeFor(play, slot, { mirror = false } = {}) {
+  const a = play?.assignments?.[slot]
+  if (a?.kind !== 'route') return null
+  return mirror ? a.points.map(pt => ({ dx: -pt.dx, dd: pt.dd })) : a.points
+}
+
+// ── Authored defensive shells ───────────────────────────────────────────────
+//
+// ⚠️ SHELLS KEY OFF ALIGNMENT ROLES, NOT SLOTS — the opposite of the offense, and deliberately.
+// An offensive play was drawn for ONE formation, so its routes key off that formation's slots
+// (`WR1`). A defensive shell has to work against EVERY formation, so it describes JOBS — three
+// deep, four under, rush four — and `expandShell` fits real defenders to whoever is actually
+// split out. Keying a shell off slots would mean authoring 40 shells x 50 formations.
+//
+// ⚠️ WHO COVERS WHOM IS NOT AUTHORED. `matchMen` pairs man defenders to receivers by position
+// eligibility and field side, which is what stops a corner being manned on a tight end. Authoring
+// the matchups would have to be redone for every new formation; deriving them never does.
+
+export const SHELL_KINDS = ['man', 'zone']
+
+// The vocabulary `expandShell` understands, derived from the shipped shells rather than invented
+// here — a validator that drifts from the expander accepts shells that then play as nonsense.
+export const JOB_TYPES = ['deep', 'under', 'rush', 'man', 'spy']
+export const ZONE_TYPES = ['curl', 'flat', 'hook']
+export const SPOTS = ['half', 'left', 'middle', 'quarter', 'right', 'strong', 'third']
+export const DEF_POSITIONS = ['CB', 'LB', 'S']
+
+// ── Leverage: the one thing the AI decides for itself ───────────────────────
+//
+// Shading is a real decision — which single thing a man defender sells out to take away — but it
+// cannot be a PER-DEFENDER decision and still be solvable: five man defenders x four shades is
+// 1,024 variants of every shell, which no payoff matrix can hold. So the choice is made once for
+// the whole call, giving three options per shell instead of a thousand.
+//
+// `auto` is the existing heuristic (`shadeFor`), which reads each receiver's split individually.
+export const LEVERAGES = ['auto', 'in', 'out']
+
+export function validateShell(s) {
+  const errors = []
+  if (!s || typeof s !== 'object') return { ok: false, errors: ['shell is not an object'] }
+  if (!s.name || !String(s.name).trim()) err(errors, 'needs a name')
+  if (!SHELL_KINDS.includes(s.kind)) err(errors, `kind must be one of ${SHELL_KINDS.join(', ')}`)
+  // A shell may PIN its leverage when the call only makes sense one way (press-bail wants outside
+  // leverage, always). Left null, the AI picks among LEVERAGES at call time.
+  if (s.forcedLeverage != null && !['in', 'out'].includes(s.forcedLeverage)) {
+    err(errors, 'forcedLeverage must be "in", "out", or null to let the AI choose')
+  }
+
+  const jobs = Array.isArray(s.jobs) ? s.jobs : []
+  if (jobs.length === 0) err(errors, 'needs at least one job')
+  let hasCoverage = false
+  for (const [i, j] of jobs.entries()) {
+    const at = `job ${i}`
+    if (!JOB_TYPES.includes(j?.job)) { err(errors, `${at}: unknown job "${j?.job}"`); continue }
+    if (j.job === 'deep' || j.job === 'under' || j.job === 'man') hasCoverage = true
+    const positions = Array.isArray(j.positions) ? j.positions : []
+    if (positions.length === 0) err(errors, `${at}: needs at least one eligible position`)
+    for (const p of positions) {
+      if (!DEF_POSITIONS.includes(p)) err(errors, `${at}: unknown position "${p}"`)
+    }
+    if (j.zone != null && !ZONE_TYPES.includes(j.zone)) err(errors, `${at}: unknown zone "${j.zone}"`)
+    if (j.spot != null && !SPOTS.includes(j.spot)) err(errors, `${at}: unknown spot "${j.spot}"`)
+    if (j.depth != null && !Number.isFinite(j.depth)) err(errors, `${at}: depth must be a number`)
+    if (j.job === 'under' && j.zone == null) err(errors, `${at}: an underneath zone needs a zone type`)
+  }
+
+  // ⚠️ NOBODY UNCOVERED. A shell that rushes everyone and covers nobody is legal JSON and an
+  // instant touchdown. expandShell has a repair pass for this, but a shell that needs repairing
+  // every single snap was authored wrong and the sandbox should say so.
+  if (jobs.length && !hasCoverage) err(errors, 'rushes and spies only — nobody is covering anyone')
+  return { ok: errors.length === 0, errors }
+}
+
+// Every defensive option the AI chooses among: a shell crossed with the leverages it allows.
+// This is the column set of the payoff matrix, and it is small on purpose.
+export function shellOptions(shells) {
+  const out = []
+  for (const [id, s] of Object.entries(shells ?? {})) {
+    if (s?.forcedLeverage) { out.push({ shellId: id, leverage: s.forcedLeverage }); continue }
+    // A pure zone shell has no man defenders to shade, so leverage would be three identical
+    // columns — wasted simulation and a matrix with duplicate strategies in it.
+    if (s?.kind === 'zone') { out.push({ shellId: id, leverage: 'auto' }); continue }
+    for (const leverage of LEVERAGES) out.push({ shellId: id, leverage })
+  }
+  return out
+}
+
+export function emptyPlaybook() {
+  return { version: PLAYBOOK_VERSION, formations: {}, plays: {}, shells: {} }
+}

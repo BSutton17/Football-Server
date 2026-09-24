@@ -4,6 +4,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { registerSocketHandlers } from './socket/index.js';
 import { SIM } from './constants.js';
+import { createPlaybookDevRouter, isDevPlaybookEnabled } from './playbook/devRoutes.js';
 
 const PORT = process.env.PORT || 3001;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
@@ -11,6 +12,14 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 const app = express();
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+// [authored] The play sandbox's save button. Writes JSON files into the repo, so it is mounted
+// ONLY when explicitly enabled and never in production — see isDevPlaybookEnabled for the gate.
+// Start with: ENABLE_PLAYBOOK_DEV=1 npm run dev
+if (isDevPlaybookEnabled()) {
+  app.use('/dev', createPlaybookDevRouter());
+  console.log('[server] ⚠️  playbook dev API mounted at /dev/playbook (loopback only) — writes to the repo');
+}
 
 // Allowed browser origins. Trailing slashes are stripped on BOTH sides because browsers send the
 // Origin without one. Extend via the CLIENT_ORIGIN env var (also accepts a comma-separated list).
