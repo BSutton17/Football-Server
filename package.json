@@ -5,13 +5,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
-    "training:baseline": "node src/training/runBaseline.mjs",
-    "training:headroom": "node src/training/headroom.mjs",
-    "training:blitzlab": "node src/training/blitzlab.mjs",
-    "training:roundrobin": "node src/training/roundrobin.mjs",
-    "training:inspect": "node src/training/inspect.mjs",
-    "training:coevolve": "node src/training/runCoevolve.mjs"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
