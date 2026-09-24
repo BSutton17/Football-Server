@@ -119,6 +119,15 @@ export function validatePlay(p, formations) {
   const carriers = Object.entries(p.assignments ?? {}).filter(([, a]) => a?.kind === 'carry')
   if (p.playType === 'pass' && carriers.length > 0) err(errors, 'a pass play cannot have a carrier')
 
+  // ⚠️ A PASS WITH NOBODY RUNNING A ROUTE IS A SACK, and it is an easy one to save by accident —
+  // pick a formation, name the play, forget to draw. It would sit in the playbook looking like a
+  // real call and lose every time it came up, and the matrix would dutifully learn never to call
+  // it rather than telling anyone it was a mistake.
+  if (p.playType === 'pass') {
+    const routes = Object.values(p.assignments ?? {}).filter(a => a?.kind === 'route')
+    if (routes.length === 0) err(errors, 'a pass play needs at least one route — nobody is running one')
+  }
+
   if (p.playType === 'run') {
     // ⚠️ A RUN STORES NO ANGLE. Authoring one lane per play would mean drawing the same run four
     // times — inside, off-tackle, outside each way — and would freeze a decision that is only

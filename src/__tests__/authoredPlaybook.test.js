@@ -163,6 +163,14 @@ describe('a play the sandbox would save', () => {
     expect(validatePlay(named, { f: twoBacks }).ok).toBe(true)
   })
 
+  it('refuses a pass play with nobody running a route', () => {
+    // Easy to save by accident: pick a formation, name it, forget to draw. It would sit in the
+    // playbook looking like a real call and lose every time — and the matrix would learn never to
+    // call it rather than telling anyone it was a mistake.
+    const nobody = { name: 'Empty Call', formationId: 'deuce', playType: 'pass', assignments: { RB1: { kind: 'block' } } }
+    expect(validatePlay(nobody, { deuce }).errors.join(' ')).toMatch(/needs at least one route/)
+  })
+
   it('refuses an unknown formation instead of guessing', () => {
     expect(validatePlay({ ...meshRight, formationId: 'nope' }, { deuce }).ok).toBe(false)
   })
