@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync } from 'no
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadPlaybook, savePlaybook, upsert, remove, createFormation, auditPlaybook, slugify } from '../playbook/store.js'
-import { isDevPlaybookEnabled, isLocalRequest } from '../playbook/devRoutes.js'
+import { isDevPlaybookEnabled, isLocalRequest, createPlaybookDevRouter } from '../playbook/devRoutes.js'
 import { emptyPlaybook } from '../ai/playbook/authored.js'
 
 // [authored] Persistence for the play sandbox. The file lives in the repo, so training reads it
@@ -221,5 +221,28 @@ describe('⚠️ creating a formation creates its RUN play', () => {
     createFormation(deuce, { path: PATH })
     expect(remove('plays', 'deuce_run', { path: PATH }).ok).toBe(true)
     expect(loadPlaybook(PATH).formations.deuce).toBeTruthy()
+  })
+})
+
+describe('⚠️ the router has to answer a BROWSER, not just curl', () => {
+  // The bug this catches: CORS is configured on the Socket.io server and nowhere else, so the
+  // HTTP routes returned no Access-Control-Allow-Origin. Every curl test passed -- curl ignores
+  // CORS -- while the sandbox page could not reach the API at all. A test that only exercises the
+  // handler will never see this; the middleware stack has to be in it.
+  const stack = () => {
+    const router = createPlaybookDevRouter()
+    // express Router keeps its middleware in .stack; the CORS layer must be FIRST, or a rejected
+    // preflight never gets the headers that would have let it through.
+    return router.stack.map(l => l.name)
+  }
+
+  it('mounts CORS, and mounts it before anything can reject the request', () => {
+    const names = stack()
+    expect(names.length).toBeGreaterThan(2)
+    expect(names[0]).toBe('corsMiddleware')
+  })
+
+  it('still parses JSON bodies after it', () => {
+    expect(stack()).toContain('jsonParser')
   })
 })

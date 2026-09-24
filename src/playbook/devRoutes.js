@@ -18,6 +18,7 @@
 // can prove the gate rather than trusting it.
 
 import express from 'express'
+import cors from 'cors'
 import { loadPlaybook, upsert, remove, createFormation, auditPlaybook, PLAYBOOK_PATH } from './store.js'
 
 const KINDS = new Set(['formations', 'plays', 'defFormations', 'shells'])
@@ -33,8 +34,22 @@ export function isLocalRequest(req) {
   return ip === '::1' || ip === '127.0.0.1' || ip === '::ffff:127.0.0.1'
 }
 
+// ⚠️ CORS IS ON THE SOCKET, NOT ON EXPRESS. `src/index.js` passes a cors config to the Socket.io
+// server and nothing else — the HTTP routes have never needed it, because the only other one is
+// /health. So a browser calling this router from the Vite dev server on :5173 gets no
+// Access-Control-Allow-Origin back and the fetch is blocked before it ever reaches the handler,
+// and a JSON POST's OPTIONS preflight goes unanswered.
+//
+// This was invisible to every test that found it working: curl ignores CORS entirely, so the whole
+// API round-tripped perfectly from a shell while being unusable from the page it exists for.
+//
+// Scoped to localhost only, and only on this dev-only router, so nothing about the deployed
+// server's CORS posture changes.
+const LOCAL_ORIGIN = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/
+
 export function createPlaybookDevRouter() {
   const router = express.Router()
+  router.use(cors({ origin: (origin, cb) => cb(null, !origin || LOCAL_ORIGIN.test(origin)) }))
   router.use(express.json({ limit: '2mb' }))
 
   router.use((req, res, next) => {
