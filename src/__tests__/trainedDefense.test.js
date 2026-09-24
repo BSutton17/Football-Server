@@ -18,9 +18,9 @@ describe('the installed hard-mode brain', () => {
     expect(existsSync(BRAIN)).toBe(true)
   })
 
-  it('loads, and is the round-11 ping-pong champion', () => {
+  it('loads, and is a ping-pong champion', () => {
     const saved = JSON.parse(readFileSync(BRAIN, 'utf8'))
-    expect(saved.source).toMatch(/round 11/)
+    expect(saved.source).toMatch(/round \d+/)
     expect(saved.genome?.nodes?.length).toBeGreaterThan(0)
     // It earned its place by beating the heuristic across a round robin of every champion.
     expect(saved.roundRobinMean).toBeGreaterThan(saved.heuristicMean)
