@@ -1,7 +1,8 @@
 import { describe, it, expect } from '@jest/globals'
 import {
   validateFormation, validatePlay, layoutAuthored, personnelOf, routeFor, slotsFor, slotLabel,
-  validateShell, shellOptions, MAX_SKILL, SLOT_POOL,
+  validateShell, shellOptions, validateDefFormation, defPersonnelOf, layoutDefense,
+  MAX_SKILL, SLOT_POOL, DEFENDERS, DL_COUNT,
 } from '../ai/playbook/authored.js'
 import { shadeWithLeverage, shadeFor } from '../ai/assignments.js'
 import { SHADE } from '../ai/playbook/coverages.js'
@@ -205,41 +206,143 @@ describe('⚠️ THE PROPERTY THE WHOLE DESIGN RESTS ON', () => {
   })
 })
 
-describe('authored defensive shells', () => {
-  const cover1 = {
-    name: 'Cover 1 Press',
-    kind: 'man',
-    jobs: [
-      { job: 'deep', positions: ['S'], depth: 15, spot: 'middle' },
-      { job: 'man', positions: ['CB', 'S', 'LB'] },
-      { job: 'spy', positions: ['LB'] },
-    ],
-  }
+const nickel = {
+  name: 'Nickel',
+  spots: [
+    { slot: 'DL1', dx: -3.25, depth: 1 }, { slot: 'DL2', dx: -1.25, depth: 1 },
+    { slot: 'DL3', dx: 1.25, depth: 1 }, { slot: 'DL4', dx: 3.25, depth: 1 },
+    { slot: 'LB1', dx: -4, depth: 5 }, { slot: 'LB2', dx: 4, depth: 5 },
+    { slot: 'CB1', dx: -16, depth: 6 }, { slot: 'CB2', dx: 16, depth: 6 },
+    { slot: 'CB3', dx: -8, depth: 5 },
+    { slot: 'S1', dx: -8, depth: 14 }, { slot: 'S2', dx: 8, depth: 14 },
+  ],
+}
 
+const cover3 = {
+  name: 'Cover 3',
+  formationId: 'nickel',
+  kind: 'zone',
+  assignments: {
+    CB1: { job: 'zone', zone: 'deep' }, CB2: { job: 'zone', zone: 'deep' },
+    S1: { job: 'zone', zone: 'deep' }, S2: { job: 'zone', zone: 'hook' },
+    CB3: { job: 'zone', zone: 'flat' },
+    LB1: { job: 'zone', zone: 'hook' }, LB2: { job: 'rush' },
+  },
+}
+
+describe('a defensive formation the sandbox would save', () => {
   it('accepts a legal one', () => {
-    expect(validateShell(cover1)).toEqual({ ok: true, errors: [] })
+    expect(validateDefFormation(nickel)).toEqual({ ok: true, errors: [] })
   })
 
-  it('refuses vocabulary expandShell would not understand', () => {
-    // ⚠️ The vocabulary is DERIVED from the shipped shells. A validator that drifts from the
-    // expander accepts shells that then play as nonsense.
-    expect(validateShell({ ...cover1, jobs: [{ job: 'blitzzz', positions: ['LB'] }] }).errors.join(' '))
-      .toMatch(/unknown job/)
-    expect(validateShell({ ...cover1, jobs: [{ job: 'under', positions: ['LB'], zone: 'banana' }] }).errors.join(' '))
-      .toMatch(/unknown zone/)
-    expect(validateShell({ ...cover1, jobs: [{ job: 'deep', positions: ['QB'], spot: 'third' }] }).errors.join(' '))
-      .toMatch(/unknown position/)
+  it('DECLARES ITS PERSONNEL rather than storing it', () => {
+    // Three corners is nickel, four is dime. That falls out of who was placed, and it is exactly
+    // the signal the play-call solver conditions on, because personnel is public pre-snap.
+    expect(defPersonnelOf(nickel)).toEqual({ DL: 4, LB: 2, CB: 3, S: 2 })
+  })
+
+  it('needs all eleven', () => {
+    expect(validateDefFormation({ ...nickel, spots: nickel.spots.slice(0, 9) }).errors.join(' '))
+      .toMatch(new RegExp(`exactly ${DEFENDERS} defenders`))
+  })
+
+  it('⚠️ holds the front to four, because two files hard-code the same four', () => {
+    // autoDefense in ai/controller.js and defenseAutoPlaced in Client/src/game/formation.ts both
+    // build the same four linemen. A formation with a different number would put players on one
+    // screen that do not exist on the other.
+    const threeFour = {
+      ...nickel,
+      spots: [...nickel.spots.filter(s => s.slot !== 'DL4'), { slot: 'LB3', dx: 0, depth: 5 }],
+    }
+    expect(threeFour.spots).toHaveLength(DEFENDERS)
+    expect(validateDefFormation(threeFour).errors.join(' '))
+      .toMatch(new RegExp(`front is ${DL_COUNT} linemen`))
+  })
+
+  it('refuses more at a position than a roster carries', () => {
+    const fiveCB = {
+      ...nickel,
+      spots: [...nickel.spots.filter(s => !['S1', 'S2'].includes(s.slot)),
+        { slot: 'CB4', dx: -12, depth: 8 }, { slot: 'S1', dx: 0, depth: 14 }],
+    }
+    expect(validateDefFormation(fiveCB).ok).toBe(true)   // 4 CB is exactly the pool
+  })
+})
+
+describe('a defensive shell built on a formation', () => {
+  it('accepts a legal one', () => {
+    expect(validateShell(cover3, { nickel })).toEqual({ ok: true, errors: [] })
+  })
+
+  it('refuses an unknown formation instead of guessing', () => {
+    expect(validateShell({ ...cover3, formationId: 'nope' }, { nickel }).ok).toBe(false)
+  })
+
+  it('will not put a lineman in coverage', () => {
+    const silly = { ...cover3, assignments: { ...cover3.assignments, DL1: { job: 'man' } } }
+    expect(validateShell(silly, { nickel }).errors.join(' ')).toMatch(/lineman and cannot be in man/)
+    const sillier = { ...cover3, assignments: { ...cover3.assignments, DL2: { job: 'zone', zone: 'hook' } } }
+    expect(validateShell(sillier, { nickel }).errors.join(' ')).toMatch(/lineman and cannot drop/)
+  })
+
+  it('requires a zone to say which zone', () => {
+    const vague = { ...cover3, assignments: { ...cover3.assignments, LB1: { job: 'zone' } } }
+    expect(validateShell(vague, { nickel }).errors.join(' ')).toMatch(/needs a zone type/)
   })
 
   it('refuses a shell where nobody covers anybody', () => {
     // Legal JSON, instant touchdown.
-    const allRush = { ...cover1, jobs: [{ job: 'rush', positions: ['LB'] }, { job: 'spy', positions: ['LB'] }] }
-    expect(validateShell(allRush).errors.join(' ')).toMatch(/nobody is covering anyone/)
+    const allRush = {
+      ...cover3,
+      assignments: { LB1: { job: 'rush' }, LB2: { job: 'rush' }, S1: { job: 'spy' } },
+    }
+    expect(validateShell(allRush, { nickel }).errors.join(' ')).toMatch(/nobody is covering anyone/)
   })
 
-  it('requires an underneath zone to say which zone it is', () => {
-    expect(validateShell({ ...cover1, jobs: [{ job: 'under', positions: ['LB'], depth: 8 }] }).errors.join(' '))
-      .toMatch(/needs a zone type/)
+  it('⚠️ MAN ASSIGNMENTS NAME AN ALIGNMENT ROLE, never a slot', () => {
+    // That is what lets one shell work against every offensive formation instead of needing a
+    // version per formation. null leaves it to matchMen, which is the default.
+    const man = {
+      ...cover3, kind: 'man',
+      assignments: { CB1: { job: 'man', target: 'X' }, CB2: { job: 'man', target: null }, S1: { job: 'zone', zone: 'deep' } },
+    }
+    expect(validateShell(man, { nickel }).ok).toBe(true)
+    const bySlot = { ...man, assignments: { CB1: { job: 'man', target: 'WR1' } } }
+    expect(validateShell(bySlot, { nickel }).errors.join(' ')).toMatch(/not an alignment role/)
+  })
+})
+
+describe('⚠️ NUDGES SAVE ONTO THE SHELL, not the formation', () => {
+  it('lets two shells line up differently out of one formation', () => {
+    // The user chose this: Cover 2 and Cover 3 out of the same nickel should be able to show
+    // different pictures, so the formation is the base and each shell carries its own overrides.
+    const pressed = { ...cover3, name: 'Cover 3 Press', alignments: { CB1: { dx: -18, depth: 2 } } }
+    expect(validateShell(pressed, { nickel }).ok).toBe(true)
+
+    const base = layoutDefense(nickel, cover3, { losY: 40, ballX: 26.65 })
+    const shifted = layoutDefense(nickel, pressed, { losY: 40, ballX: 26.65 })
+    const cb1 = (rows) => rows.find(r => r.slot === 'CB1')
+    expect(cb1(base).x).toBeCloseTo(26.65 - 16)
+    expect(cb1(shifted).x).toBeCloseTo(26.65 - 18)
+    expect(cb1(base).y).toBeCloseTo(46)      // defenders stand IN FRONT of the line
+    expect(cb1(shifted).y).toBeCloseTo(42)
+    // Everyone else is untouched by one shell's nudge.
+    expect(cb1(base) === cb1(shifted)).toBe(false)
+    expect(base.find(r => r.slot === 'CB2').x).toBeCloseTo(shifted.find(r => r.slot === 'CB2').x)
+  })
+
+  it('refuses an alignment for someone not in the formation', () => {
+    const stray = { ...cover3, alignments: { LB4: { dx: 0, depth: 5 } } }
+    expect(validateShell(stray, { nickel }).errors.join(' ')).toMatch(/not in formation/)
+  })
+
+  it('is field-position independent like everything else', () => {
+    const a = layoutDefense(nickel, cover3, { losY: 25, ballX: 20 })
+    const b = layoutDefense(nickel, cover3, { losY: 70, ballX: 33 })
+    for (let i = 0; i < a.length; i++) {
+      expect(a[i].x - 20).toBeCloseTo(b[i].x - 33)
+      expect(a[i].y - 25).toBeCloseTo(b[i].y - 70)
+    }
   })
 })
 
@@ -248,8 +351,8 @@ describe('leverage — the one thing the AI decides for itself', () => {
     // ⚠️ The column set of the payoff matrix. Per-defender shading would be 4^5 = 1,024 variants
     // per shell, which no matrix can hold; this is three.
     const shells = {
-      c1: { name: 'Cover 1', kind: 'man', jobs: [{ job: 'man', positions: ['CB'] }] },
-      c3: { name: 'Cover 3', kind: 'zone', jobs: [{ job: 'deep', positions: ['S'] }] },
+      c1: { name: 'Cover 1', kind: 'man', formationId: 'nickel', assignments: {} },
+      c3: { name: 'Cover 3', kind: 'zone', formationId: 'nickel', assignments: {} },
     }
     const opts = shellOptions(shells)
     expect(opts.filter(o => o.shellId === 'c1').map(o => o.leverage)).toEqual(['auto', 'in', 'out'])
@@ -259,7 +362,7 @@ describe('leverage — the one thing the AI decides for itself', () => {
   })
 
   it('honours a shell that pins its own leverage', () => {
-    const shells = { press: { name: 'Press Bail', kind: 'man', forcedLeverage: 'out', jobs: [{ job: 'man', positions: ['CB'] }] } }
+    const shells = { press: { name: 'Press Bail', kind: 'man', formationId: 'nickel', forcedLeverage: 'out', assignments: {} } }
     expect(shellOptions(shells)).toEqual([{ shellId: 'press', leverage: 'out' }])
   })
 

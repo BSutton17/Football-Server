@@ -17,16 +17,26 @@ import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync } from '
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
-  emptyPlaybook, validateFormation, validatePlay, validateShell, autoRunPlay, PLAYBOOK_VERSION,
+  emptyPlaybook, validateFormation, validatePlay, validateDefFormation, validateShell, autoRunPlay,
+  PLAYBOOK_VERSION,
 } from '../ai/playbook/authored.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 export const PLAYBOOK_PATH = process.env.PLAYBOOK_PATH ?? join(HERE, '..', 'ai', 'playbook', 'authored.json')
 
+// Each kind validates against the whole book, because a play is only legal with respect to the
+// offensive formation it names and a shell with respect to its defensive one.
 const KINDS = {
-  formations: validateFormation,
-  plays: validatePlay,
-  shells: validateShell,
+  formations: (item) => validateFormation(item),
+  plays: (item, book) => validatePlay(item, book.formations),
+  defFormations: (item) => validateDefFormation(item),
+  shells: (item, book) => validateShell(item, book.defFormations),
+}
+
+// Which collection holds the things built ON a given kind, for the delete guard below.
+const DEPENDENTS = {
+  formations: { kind: 'plays', key: 'formationId' },
+  defFormations: { kind: 'shells', key: 'formationId' },
 }
 
 export function loadPlaybook(path = PLAYBOOK_PATH) {
@@ -37,6 +47,7 @@ export function loadPlaybook(path = PLAYBOOK_PATH) {
       version: raw.version ?? PLAYBOOK_VERSION,
       formations: raw.formations ?? {},
       plays: raw.plays ?? {},
+      defFormations: raw.defFormations ?? {},
       shells: raw.shells ?? {},
     }
   } catch (err) {
@@ -77,7 +88,7 @@ export function upsert(kind, item, { id = null, path = PLAYBOOK_PATH, book = nul
   if (!validate) throw new Error(`unknown playbook kind "${kind}"`)
   const current = book ?? loadPlaybook(path)
 
-  const result = kind === 'plays' ? validate(item, current.formations) : validate(item)
+  const result = validate(item, current)
   if (!result.ok) return { ok: false, errors: result.errors }
 
   const finalId = uniqueId(slugify(item.name), current[kind], id)
@@ -117,14 +128,16 @@ export function remove(kind, id, { path = PLAYBOOK_PATH, book = null, force = fa
   const current = book ?? loadPlaybook(path)
   if (!current[kind]?.[id]) return { ok: false, errors: [`no ${kind} with id "${id}"`] }
 
-  if (kind === 'formations' && !force) {
-    const dependents = Object.entries(current.plays)
-      .filter(([, p]) => p.formationId === id)
-      .map(([playId, p]) => p.name ?? playId)
+  const dep = DEPENDENTS[kind]
+  if (dep && !force) {
+    const dependents = Object.entries(current[dep.kind] ?? {})
+      .filter(([, x]) => x[dep.key] === id)
+      .map(([xid, x]) => x.name ?? xid)
     if (dependents.length) {
+      const what = dep.kind === 'plays' ? 'play' : 'shell'
       return {
         ok: false,
-        errors: [`${dependents.length} play(s) still use this formation: ${dependents.join(', ')}`],
+        errors: [`${dependents.length} ${what}(s) still use this formation: ${dependents.join(', ')}`],
         dependents,
       }
     }
@@ -133,10 +146,12 @@ export function remove(kind, id, { path = PLAYBOOK_PATH, book = null, force = fa
   const rest = { ...current[kind] }
   delete rest[id]
   let next = { ...current, [kind]: rest }
-  // A forced formation delete takes its plays with it, because a play pointing at a formation that
-  // no longer exists cannot be put on the field.
-  if (kind === 'formations' && force) {
-    next.plays = Object.fromEntries(Object.entries(next.plays).filter(([, p]) => p.formationId !== id))
+  // A forced delete takes its dependents with it, because a play or shell pointing at a formation
+  // that no longer exists cannot be put on the field.
+  if (dep && force) {
+    next[dep.kind] = Object.fromEntries(
+      Object.entries(next[dep.kind] ?? {}).filter(([, x]) => x[dep.key] !== id),
+    )
   }
   savePlaybook(next, path)
   return { ok: true, book: next }
@@ -146,17 +161,11 @@ export function remove(kind, id, { path = PLAYBOOK_PATH, book = null, force = fa
 // file cannot quietly put a broken play on the field.
 export function auditPlaybook(book) {
   const problems = []
-  for (const [id, f] of Object.entries(book.formations ?? {})) {
-    const r = validateFormation(f)
-    if (!r.ok) problems.push(`formation ${id}: ${r.errors.join('; ')}`)
-  }
-  for (const [id, p] of Object.entries(book.plays ?? {})) {
-    const r = validatePlay(p, book.formations ?? {})
-    if (!r.ok) problems.push(`play ${id}: ${r.errors.join('; ')}`)
-  }
-  for (const [id, s] of Object.entries(book.shells ?? {})) {
-    const r = validateShell(s)
-    if (!r.ok) problems.push(`shell ${id}: ${r.errors.join('; ')}`)
+  for (const [kind, validate] of Object.entries(KINDS)) {
+    for (const [id, item] of Object.entries(book[kind] ?? {})) {
+      const r = validate(item, book)
+      if (!r.ok) problems.push(`${kind} ${id}: ${r.errors.join('; ')}`)
+    }
   }
   return { ok: problems.length === 0, problems }
 }

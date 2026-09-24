@@ -146,13 +146,13 @@ describe('auditing a hand-edited file', () => {
     const book = {
       ...emptyPlaybook(),
       formations: { bad: { ...deuce, category: 'wildcat' } },
-      shells: { worse: { name: 'All Rush', kind: 'man', jobs: [{ job: 'rush', positions: ['LB'] }] } },
+      shells: { worse: { name: 'Orphan', kind: 'man', formationId: 'gone', assignments: {} } },
     }
     const audit = auditPlaybook(book)
     expect(audit.ok).toBe(false)
     expect(audit.problems).toHaveLength(2)
-    expect(audit.problems.join(' ')).toMatch(/formation bad/)
-    expect(audit.problems.join(' ')).toMatch(/shell worse/)
+    expect(audit.problems.join(' ')).toMatch(/formations bad/)
+    expect(audit.problems.join(' ')).toMatch(/shells worse/)
   })
 })
 

@@ -186,81 +186,159 @@ export function routeFor(play, slot, { mirror = false } = {}) {
   return mirror ? a.points.map(pt => ({ dx: -pt.dx, dd: pt.dd })) : a.points
 }
 
-// ── Authored defensive shells ───────────────────────────────────────────────
+// -- Authored defensive formations and shells --------------------------------
 //
-// ⚠️ SHELLS KEY OFF ALIGNMENT ROLES, NOT SLOTS — the opposite of the offense, and deliberately.
-// An offensive play was drawn for ONE formation, so its routes key off that formation's slots
-// (`WR1`). A defensive shell has to work against EVERY formation, so it describes JOBS — three
-// deep, four under, rush four — and `expandShell` fits real defenders to whoever is actually
-// split out. Keying a shell off slots would mean authoring 40 shells x 50 formations.
+// The defense mirrors the offense: a FORMATION is the alignment, and a SHELL is what those eleven
+// players are told to do. How they behave once the ball is snapped:
 //
-// ⚠️ WHO COVERS WHOM IS NOT AUTHORED. `matchMen` pairs man defenders to receivers by position
-// eligibility and field side, which is what stops a corner being manned on a tight end. Authoring
-// the matchups would have to be redone for every new formation; deriving them never does.
+//   MAN  -- the receiver can line up anywhere, so the defender covering him travels with him. The
+//           authored spot is only where he STARTS. The engine already does this: "man defenders
+//           travel with their receiver, zone defenders hold their landmark."
+//   ZONE -- he holds the spot that was authored for him, adjusted for the ball's hash, so the
+//           shell keeps the SHAPE it was drawn with.
+//
+// A DEFENSIVE FORMATION DECLARES ITS PERSONNEL. Three corners is nickel, four is dime. That is
+// not a separate setting -- it falls out of which slots were placed, and it is exactly the signal
+// the play-call solver conditions on, because personnel is public before the snap.
+//
+// THE FRONT IS FOUR, IN TWO PLACES. `autoDefense` in ai/controller.js and the `defenseAutoPlaced`
+// table in Client/src/game/formation.ts both hard-code the same four linemen, and the comment
+// there says they must match. Authored DL spots have to feed BOTH or the two sides draw
+// different fronts.
+export const DEF_SLOT_POOL = { DL: 4, LB: 4, CB: 4, S: 3 }
+export const DEFENDERS = 11
+export const DL_COUNT = 4
 
 export const SHELL_KINDS = ['man', 'zone']
+export const JOBS = ['man', 'zone', 'rush', 'spy']
+export const ZONE_TYPES = ['flat', 'curl', 'hook', 'deep']
 
-// The vocabulary `expandShell` understands, derived from the shipped shells rather than invented
-// here — a validator that drifts from the expander accepts shells that then play as nonsense.
-export const JOB_TYPES = ['deep', 'under', 'rush', 'man', 'spy']
-export const ZONE_TYPES = ['curl', 'flat', 'hook']
-export const SPOTS = ['half', 'left', 'middle', 'quarter', 'right', 'strong', 'third']
-export const DEF_POSITIONS = ['CB', 'LB', 'S']
+// Man assignments name an ALIGNMENT ROLE, never a slot: the widest receiver left, the slot left,
+// the tight end. That is what lets one shell work against every offensive formation instead of
+// needing a version per formation. `null` leaves it to matchMen, which pairs by position and
+// field side -- and is the default, because authoring matchups would have to be redone for every
+// new offensive formation.
+export const COVER_ROLES = ['X', 'SL', 'Y', 'SR', 'Z', 'RB']
 
-// ── Leverage: the one thing the AI decides for itself ───────────────────────
+// -- Leverage: the one thing the AI decides for itself -----------------------
 //
-// Shading is a real decision — which single thing a man defender sells out to take away — but it
-// cannot be a PER-DEFENDER decision and still be solvable: five man defenders x four shades is
-// 1,024 variants of every shell, which no payoff matrix can hold. So the choice is made once for
-// the whole call, giving three options per shell instead of a thousand.
-//
-// `auto` is the existing heuristic (`shadeFor`), which reads each receiver's split individually.
+// Shading is a real decision, but it cannot be a PER-DEFENDER one and still be solvable: five man
+// defenders x four shades is 1,024 variants of every shell, which no payoff matrix can hold. So
+// the choice is made once for the whole call -- three options per shell instead of a thousand.
 export const LEVERAGES = ['auto', 'in', 'out']
 
-export function validateShell(s) {
+const ALL_DEF_SLOTS = new Set(slotsFor(DEF_SLOT_POOL))
+
+export function validateDefFormation(f) {
+  const errors = []
+  if (!f || typeof f !== 'object') return { ok: false, errors: ['formation is not an object'] }
+  if (!f.name || !String(f.name).trim()) err(errors, 'needs a name')
+
+  const spots = Array.isArray(f.spots) ? f.spots : []
+  if (spots.length !== DEFENDERS) err(errors, `needs exactly ${DEFENDERS} defenders, got ${spots.length}`)
+
+  const seen = new Set()
+  const counts = {}
+  for (const s of spots) {
+    if (!ALL_DEF_SLOTS.has(s?.slot)) { err(errors, `unknown slot "${s?.slot}"`); continue }
+    if (seen.has(s.slot)) err(errors, `slot ${s.slot} used twice`)
+    seen.add(s.slot)
+    const label = slotLabel(s.slot)
+    counts[label] = (counts[label] ?? 0) + 1
+    if (!Number.isFinite(s.dx)) err(errors, `${s.slot} dx must be a number`)
+    if (!Number.isFinite(s.depth)) err(errors, `${s.slot} depth must be a number`)
+  }
+  for (const [label, n] of Object.entries(counts)) {
+    if (n > (DEF_SLOT_POOL[label] ?? 0)) {
+      err(errors, `${n} ${label}s exceeds the ${DEF_SLOT_POOL[label] ?? 0} a roster carries`)
+    }
+  }
+  // The engine builds exactly four linemen and the client draws the same four. A formation with a
+  // different number would put players on one screen that do not exist on the other.
+  if (spots.length === DEFENDERS && (counts.DL ?? 0) !== DL_COUNT) {
+    err(errors, `the front is ${DL_COUNT} linemen, got ${counts.DL ?? 0} -- a 3-4 front needs an engine change first`)
+  }
+  return { ok: errors.length === 0, errors }
+}
+
+// Defensive personnel, DERIVED from who was placed. Three corners is nickel, four is dime.
+export function defPersonnelOf(formation) {
+  const out = { DL: 0, LB: 0, CB: 0, S: 0 }
+  for (const s of formation?.spots ?? []) {
+    const label = slotLabel(s.slot)
+    if (label in out) out[label]++
+  }
+  return out
+}
+
+export function validateShell(s, formations) {
   const errors = []
   if (!s || typeof s !== 'object') return { ok: false, errors: ['shell is not an object'] }
   if (!s.name || !String(s.name).trim()) err(errors, 'needs a name')
   if (!SHELL_KINDS.includes(s.kind)) err(errors, `kind must be one of ${SHELL_KINDS.join(', ')}`)
-  // A shell may PIN its leverage when the call only makes sense one way (press-bail wants outside
-  // leverage, always). Left null, the AI picks among LEVERAGES at call time.
   if (s.forcedLeverage != null && !['in', 'out'].includes(s.forcedLeverage)) {
     err(errors, 'forcedLeverage must be "in", "out", or null to let the AI choose')
   }
 
-  const jobs = Array.isArray(s.jobs) ? s.jobs : []
-  if (jobs.length === 0) err(errors, 'needs at least one job')
-  let hasCoverage = false
-  for (const [i, j] of jobs.entries()) {
-    const at = `job ${i}`
-    if (!JOB_TYPES.includes(j?.job)) { err(errors, `${at}: unknown job "${j?.job}"`); continue }
-    if (j.job === 'deep' || j.job === 'under' || j.job === 'man') hasCoverage = true
-    const positions = Array.isArray(j.positions) ? j.positions : []
-    if (positions.length === 0) err(errors, `${at}: needs at least one eligible position`)
-    for (const p of positions) {
-      if (!DEF_POSITIONS.includes(p)) err(errors, `${at}: unknown position "${p}"`)
+  const formation = formations?.[s.formationId]
+  if (!formation) return { ok: false, errors: [...errors, `unknown defensive formation "${s.formationId}"`] }
+  const slots = new Set((formation.spots ?? []).map(x => x.slot))
+
+  let covers = 0
+  for (const [slot, a] of Object.entries(s.assignments ?? {})) {
+    if (!slots.has(slot)) { err(errors, `assignment for ${slot}, which is not in formation "${s.formationId}"`); continue }
+    if (!a || !JOBS.includes(a.job)) { err(errors, `${slot} has unknown job "${a?.job}"`); continue }
+    if (a.job === 'man') {
+      covers++
+      if (a.target != null && !COVER_ROLES.includes(a.target)) {
+        err(errors, `${slot} is manned on "${a.target}", which is not an alignment role`)
+      }
+      if (slotLabel(slot) === 'DL') err(errors, `${slot} is a lineman and cannot be in man coverage`)
+    } else if (a.job === 'zone') {
+      covers++
+      if (!ZONE_TYPES.includes(a.zone)) err(errors, `${slot} needs a zone type (${ZONE_TYPES.join(', ')})`)
+      if (slotLabel(slot) === 'DL') err(errors, `${slot} is a lineman and cannot drop into a zone`)
     }
-    if (j.zone != null && !ZONE_TYPES.includes(j.zone)) err(errors, `${at}: unknown zone "${j.zone}"`)
-    if (j.spot != null && !SPOTS.includes(j.spot)) err(errors, `${at}: unknown spot "${j.spot}"`)
-    if (j.depth != null && !Number.isFinite(j.depth)) err(errors, `${at}: depth must be a number`)
-    if (j.job === 'under' && j.zone == null) err(errors, `${at}: an underneath zone needs a zone type`)
   }
 
-  // ⚠️ NOBODY UNCOVERED. A shell that rushes everyone and covers nobody is legal JSON and an
-  // instant touchdown. expandShell has a repair pass for this, but a shell that needs repairing
-  // every single snap was authored wrong and the sandbox should say so.
-  if (jobs.length && !hasCoverage) err(errors, 'rushes and spies only — nobody is covering anyone')
+  // NOBODY UNCOVERED. A shell that rushes everyone is legal JSON and an instant touchdown.
+  if (Object.keys(s.assignments ?? {}).length && covers === 0) {
+    err(errors, 'rushes and spies only -- nobody is covering anyone')
+  }
+
+  // NUDGES SAVE ONTO THE SHELL, not the formation. Cover 2 and Cover 3 out of one nickel formation
+  // should be able to line up differently, so a shell carries its own alignment overrides and the
+  // formation stays the base everything starts from.
+  for (const [slot, at] of Object.entries(s.alignments ?? {})) {
+    if (!slots.has(slot)) err(errors, `alignment for ${slot}, which is not in formation "${s.formationId}"`)
+    else if (!Number.isFinite(at?.dx) || !Number.isFinite(at?.depth)) err(errors, `${slot} has a bad alignment`)
+  }
   return { ok: errors.length === 0, errors }
 }
 
-// Every defensive option the AI chooses among: a shell crossed with the leverages it allows.
-// This is the column set of the payoff matrix, and it is small on purpose.
+// Where the eleven actually start: the formation, with this shell's nudges applied on top.
+export function layoutDefense(formation, shell, { losY, ballX }) {
+  return (formation?.spots ?? []).map((s, index) => {
+    const at = shell?.alignments?.[s.slot] ?? s
+    return {
+      slot: s.slot,
+      label: slotLabel(s.slot),
+      x: ballX + at.dx,
+      // Defenders stand in FRONT of the line, so depth counts the other way from the offense's.
+      y: losY + at.depth,
+      index,
+    }
+  })
+}
+
+// Every defensive option the AI chooses among: a shell crossed with the leverages it allows. This
+// is the column set of the payoff matrix, and it is small on purpose.
 export function shellOptions(shells) {
   const out = []
   for (const [id, s] of Object.entries(shells ?? {})) {
     if (s?.forcedLeverage) { out.push({ shellId: id, leverage: s.forcedLeverage }); continue }
-    // A pure zone shell has no man defenders to shade, so leverage would be three identical
-    // columns — wasted simulation and a matrix with duplicate strategies in it.
+    // A pure zone shell has no man defenders to shade, so three leverages would be three IDENTICAL
+    // columns -- wasted simulation and duplicate strategies in the matrix.
     if (s?.kind === 'zone') { out.push({ shellId: id, leverage: 'auto' }); continue }
     for (const leverage of LEVERAGES) out.push({ shellId: id, leverage })
   }
@@ -290,6 +368,9 @@ export function autoRunPlay(formation, formationId) {
   }
 }
 
+// `formations` and `plays` are the OFFENSE; `defFormations` and `shells` are the defense. They are
+// kept apart because they validate against completely different rules — five skill players against
+// eleven defenders — and because a play must only ever be built on an offensive formation.
 export function emptyPlaybook() {
-  return { version: PLAYBOOK_VERSION, formations: {}, plays: {}, shells: {} }
+  return { version: PLAYBOOK_VERSION, formations: {}, plays: {}, defFormations: {}, shells: {} }
 }

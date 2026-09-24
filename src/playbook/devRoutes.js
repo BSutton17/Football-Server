@@ -20,7 +20,7 @@
 import express from 'express'
 import { loadPlaybook, upsert, remove, createFormation, auditPlaybook, PLAYBOOK_PATH } from './store.js'
 
-const KINDS = new Set(['formations', 'plays', 'shells'])
+const KINDS = new Set(['formations', 'plays', 'defFormations', 'shells'])
 
 export function isDevPlaybookEnabled(env = process.env) {
   return env.NODE_ENV !== 'production' && Boolean(env.ENABLE_PLAYBOOK_DEV)
