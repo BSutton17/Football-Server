@@ -18,12 +18,24 @@ describe('the installed hard-mode brain', () => {
     expect(existsSync(BRAIN)).toBe(true)
   })
 
-  it('loads, and is a ping-pong champion', () => {
+  it('loads, and records a score that BEAT the heuristic on a common slate', () => {
     const saved = JSON.parse(readFileSync(BRAIN, 'utf8'))
-    expect(saved.source).toMatch(/round \d+/)
+    expect(saved.source).toMatch(/generation \d+/)
     expect(saved.genome?.nodes?.length).toBeGreaterThan(0)
-    // It earned its place by beating the heuristic across a round robin of every champion.
-    expect(saved.roundRobinMean).toBeGreaterThan(saved.heuristicMean)
+    // It earned its place by beating the heuristic on an unseen slate both sides played.
+    expect(saved.seriesMean).toBeGreaterThan(saved.heuristicSeriesMean)
+    // ...and by beating the brain it replaced, measured the SAME way.
+    expect(saved.seriesMean).toBeGreaterThan(saved.previousBrainSeriesMean)
+  })
+
+  // ⚠️ A SCORE IS ONLY MEANINGFUL INSIDE ONE HARNESS. The brain this replaced recorded
+  // `roundRobinMean: 17` from the per-play yards-vs-par harness, which read as a far better
+  // number than the 7.90 that replaced it — but re-measured under series scoring that same brain
+  // was 4.67. Comparing a new champion's score against a stored old one nearly kept the worse
+  // brain. The file therefore states which harness produced its numbers, and that is asserted.
+  it('says which harness produced its numbers', () => {
+    const saved = JSON.parse(readFileSync(BRAIN, 'utf8'))
+    expect(saved.scoring).toMatch(/series/i)
   })
 
   // ⚠️ THE ROT CHECK. A genome's inputs and outputs are positional: input 23 means whatever
