@@ -151,7 +151,7 @@ describe('routeTraits', () => {
 
   it('an empty route classifies as nothing rather than throwing', () => {
     expect(routeTraits([], START, LOS, DIR)).toEqual({
-      settles: false, breaksBack: false, deepVertical: false, maxDepth: 0,
+      settles: false, breaksBack: false, deepVertical: false, maxDepth: 0, goesNowhere: false,
     })
   })
 })

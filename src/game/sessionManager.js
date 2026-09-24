@@ -68,6 +68,17 @@ export function reconnect(token, newSocketId) {
   return { roomId: session.roomId, slot: session.slot, role: session.role };
 }
 
+// Keep a session's recorded role in step with the game. The role a player is GIVEN at kickoff is
+// not the role they hold for the rest of the match — every possession change swaps both sides
+// (see notifyRoleSwap in eventQueue.js). A session still carrying the kickoff role hands a
+// reconnecting player back the wrong side of the ball, so the reconnect path refreshes it here.
+export function setSessionRole(token, role) {
+  const session = sessions.get(token);
+  if (!session) return false;
+  session.role = role;
+  return true;
+}
+
 export function getTokenBySocketId(socketId) {
   for (const [token, session] of sessions) {
     if (session.socketId === socketId) return token;

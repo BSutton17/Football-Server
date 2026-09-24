@@ -1,5 +1,6 @@
 import { enqueue, EVENT } from '../eventQueue.js'
 import { PLAYER }         from '../../constants.js'
+import { rngOf }           from '../utils/rng.js'
 import { findBallCarrier } from './movement.js'
 import { ratingOf }        from '../../data/ratings.js'
 import { tackleBreakBonus, keepsSpeedOnBreak, recordTackleBroken } from './xFactors.js'
@@ -32,7 +33,8 @@ const BREAK_COOLDOWN = 0.15
 //
 // On an interception return ([190]) the carrier is the intercepting defender, so the tacklers are
 // the original OFFENSE; contact ends the return at the spot.
-export function runTackleDetection(state, io, dt, rng = Math.random) {
+export function runTackleDetection(state, io, dt, rng = null) {
+  const roll = rngOf(state, rng)
   if (state.tackleEnqueued) return   // one tackle per play — don't double-fire
 
   const carrier = findBallCarrier(state)
@@ -60,7 +62,7 @@ export function runTackleDetection(state, io, dt, rng = Math.random) {
       const broken = carrier.brokenTackles ?? 0
       // [294] An active RB X-Factor can boost the break chance (Shifty / Serious Dedication).
       const chance = tackleBreakChance(ratingOf(carrier, 'runPower'), broken) + tackleBreakBonus(state, carrier, broken)
-      if (chance > 0 && rng() < chance) {
+      if (chance > 0 && roll() < chance) {
         carrier.brokenTackles = broken + 1
         // [294] Trucked: breaking a tackle no longer costs the carrier its speed.
         if (!keepsSpeedOnBreak(state, carrier)) {

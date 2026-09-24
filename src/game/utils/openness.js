@@ -66,6 +66,48 @@ const LANE_BLOCKED_OPENNESS = 0.15  // forced well into the smothered band (10% 
 const LANE_MIN_T = 0.12
 const LANE_MAX_T = 0.85
 
+// ── [deep over the top] ───────────────────────────────────────────────────────
+//
+// The mirror of the short-pass lane rule, at the other end of the field. On a DEEP throw, a
+// defender established BETWEEN THE RECEIVER AND THE END ZONE is not "coverage the receiver has
+// separation from" — he is a man the receiver is running directly into. Whatever cushion exists at
+// the moment of release is about to close by itself, because the receiver is doing the closing.
+//
+// The old read got this wrong in a specific and visible way: separation is measured at the instant
+// of the throw, so a safety sitting six yards over the top scored a full window, took the 0.45
+// deep-lane cut, and came out at 0.45 — the middle "covered" band — when the honest answer is
+// smothered. A player looking at the screen could see the receiver was about to run into him.
+//
+// Unlike the short-pass rule this applies to MAN defenders as well as zone. The argument there was
+// that a zone defender faces the passer and can break on the ball while a man defender has his back
+// turned; here that does not matter, because the defender does not have to break on anything. He is
+// already standing where the ball is going.
+const DEEP_MIN_AIR        = 12    // air yards past the LOS before a throw counts as deep
+const DEEP_OVER_MIN       = 1.0   // yards deeper than the receiver to count as "over the top"
+const DEEP_OVER_MAX       = 12    // …beyond this he is too deep to be over the top of THIS throw
+const DEEP_OVER_WIDTH     = 4.0   // yards either side of the receiver he still covers
+const DEEP_SMOTHERED      = 0.25  // well inside the red band
+
+// Is a defender established over the top of a deep target?
+//   receiver / qb   — { x, y }
+//   defenders       — full defender objects
+//   losY, direction — to measure air yards past the line of scrimmage
+export function deepOverTheTop(receiver, defenders, qb, { losY, direction } = {}) {
+  if (!defenders || losY == null || !direction) return false
+
+  const airYards = (receiver.y - losY) * direction
+  if (airYards < DEEP_MIN_AIR) return false
+
+  for (const d of defenders) {
+    // How far BEYOND the receiver this defender is, toward the end zone the offense is attacking.
+    const beyond = (d.y - receiver.y) * direction
+    if (beyond < DEEP_OVER_MIN || beyond > DEEP_OVER_MAX) continue
+    if (Math.abs(d.x - receiver.x) > DEEP_OVER_WIDTH) continue
+    return true
+  }
+  return false
+}
+
 // Is a zone defender standing in the throwing line on a short pass?
 //   receiver / qb — { x, y }
 //   defenders     — full defender objects
@@ -226,11 +268,18 @@ export function opennessBreakdown(receiver, defenders, qb = null, opts = {}) {
   const laneBlocked = shortPassLaneBlocked(receiver, defenders, qb, opts)
   if (laneBlocked) openness = Math.min(openness, LANE_BLOCKED_OPENNESS)
 
+  // [deep over the top] …and the same idea on a deep ball. Applied last, for the same reason: it
+  // caps the final read rather than being averaged away by the separation the receiver has RIGHT
+  // NOW, which is separation he is in the act of giving up.
+  const overTheTop = deepOverTheTop(receiver, defenders, qb, opts)
+  if (overTheTop) openness = Math.min(openness, DEEP_SMOTHERED)
+
   return {
     openness: clamp01(openness),
     nearestId: nearest.id ?? null, nearestLabel: nearest.label ?? null, nearestDist,
     align, closing, safeties, bracket, ahead, beaten,
     frontDist: Number.isFinite(frontDist) ? frontDist : null,
     laneBlocked,
+    overTheTop,
   }
 }

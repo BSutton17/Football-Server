@@ -165,7 +165,7 @@ export function drawnRouteWaypoints(points, startX, startY, dir) {
 //   deepVertical — gets well downfield without breaking back; the deep shell should recognize it
 //   maxDepth     — deepest point past the LOS, in yards
 export function routeTraits(waypoints, startY, losY, dir, startX = null, pivotX = null) {
-  const empty = { settles: false, breaksBack: false, deepVertical: false, maxDepth: 0 }
+  const empty = { settles: false, breaksBack: false, deepVertical: false, maxDepth: 0, goesNowhere: false }
   if (!Array.isArray(waypoints) || waypoints.length === 0) return empty
 
   const depthOf = (p) => (p.y - losY) * dir
@@ -228,7 +228,9 @@ export function routeTraits(waypoints, startY, losY, dir, startX = null, pivotX 
   // Deep only if it got downfield AND didn't turn back at the end.
   const deepVertical = maxDepth >= DEEP_VERTICAL_DEPTH && !breaksBack
 
-  return { settles, breaksBack, deepVertical, maxDepth }
+  // goesNowhere is surfaced because the THROW LIGHT needs it as well as `settles` does: a route the
+  // receiver never runs has nothing to declare, so it is throwable from the snap ([screen]).
+  return { settles, breaksBack, deepVertical, maxDepth, goesNowhere }
 }
 
 // Turn angle in degrees at each interior vertex — the client uses the same threshold to decide

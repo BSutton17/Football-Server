@@ -27,6 +27,7 @@
 
 import { MANUAL, GAME_MODE } from '../constants.js'
 import { beginStoppage, endStoppage, isStopped, stoppageReason, STOPPAGE } from './pause.js'
+import { rngOf } from './utils/rng.js'
 
 // True when this game is being played in manual mode at all.
 export function isManualGame(state) {
@@ -36,8 +37,16 @@ export function isManualGame(state) {
 // True when the CURRENT play is driven by the GO button. Run plays keep the original behaviour even
 // in a manual room — you tap HIKE and the play runs to the whistle — so only pass plays arm the
 // hold loop ([manual]: "run plays play as normal").
+//
+// [rpo] An RPO arms it as well, and deliberately: it IS a pass until the read window closes, and
+// the window is counted in live play time (see systems/rpo.js). Holding GO is what makes that time
+// pass, so a player who releases to read the field keeps their full second of option rather than
+// having it expire while the whole board is frozen. Once the ball is handed off the play carries on
+// under the hold loop like any other — which matches "run plays play as normal" closely enough that
+// splitting the behaviour mid-play would be the surprising choice.
 export function isManualPlay(state) {
-  return isManualGame(state) && state.playDesign?.playType === 'pass'
+  const t = state.playDesign?.playType
+  return isManualGame(state) && (t === 'pass' || t === 'rpo')
 }
 
 // True while a manual play is frozen with the GO button up — the only window in which a throw is
@@ -182,7 +191,7 @@ export function revealLabel(outcome, reason) {
 export function beginPassSuspense(state, io, { event, payload, outcome, reason, settles }) {
   const m = state.manual
   const seconds = MANUAL.SUSPENSE_MIN_SECONDS +
-    Math.random() * (MANUAL.SUSPENSE_MAX_SECONDS - MANUAL.SUSPENSE_MIN_SECONDS)
+    rngOf(state)() * (MANUAL.SUSPENSE_MAX_SECONDS - MANUAL.SUSPENSE_MIN_SECONDS)
 
   if (m) m.pending = { event, payload, outcome, reason, settles }
   beginStoppage(state, STOPPAGE.PASS_SUSPENSE, seconds)

@@ -21,6 +21,7 @@ import { runTouchdownDetection } from './systems/touchdownDetection.js'
 import { runTackleDetection }   from './systems/tackleDetection.js'
 import { runCoverageDebug }     from './systems/coverageDebug.js'
 import { runThrowawayWindow }   from './systems/throwawayWindow.js'
+import { runRpo }               from './systems/rpo.js'
 import { runManualHold, revealPassOutcome, takePendingOutcome } from './manual.js'
 import { enqueue }               from './eventQueue.js'
 
@@ -41,6 +42,10 @@ const DT = SIM.TICK_MS / 1000   // 0.05 s
 //   4. runBroadcast  — send final positions to both clients
 
 const LIVE_SYSTEMS = [
+  // [rpo] FIRST: the read window can close on this tick, which hands the ball to the back. Doing it
+  // before movement means the whole tick agrees on who is carrying the ball, rather than the
+  // handoff landing a frame after everyone has already moved as if it were still a pass.
+  runRpo,
   runEngagement,        // flag engaged pairs; compute leverage on each defender
   runPassRush,          // accumulate rusher win meter; flag shed (broke free) rushers
   runPancake,           // [pancake] dominant blocks put a defender down; ticks the freeze timers

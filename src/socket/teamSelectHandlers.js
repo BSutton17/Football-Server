@@ -1,4 +1,5 @@
 import { isValidTeamId } from '../data/teams.js'
+import { markSoloRoom } from '../ai/timing.js'
 import { getTeamSelect, setPick, lockPick, bothLocked, clearTeamSelect, setQuarterLength, setDefenseSeesOpenness } from '../game/teamSelect.js'
 import { getRoom } from '../game/roomManager.js'
 import { initGame, getGame } from '../game/gameState.js'
@@ -89,8 +90,12 @@ function startGameFromSelection(io, roomId) {
     difficulty: room.difficulty,
     quarterSeconds: (sel.quarterMinutes ?? QUARTER_MINUTES_DEFAULT) * 60,
     defenseSeesOpenness: sel.defenseSeesOpenness !== false,   // [defense vision]
+    seed: room.seed ?? null,   // [determinism] set on a solo/training room; null online
   })
   state.teams = [sel.picks[0], sel.picks[1]]   // chosen team per slot — for future per-team play
+  // [offline] A solo room plays by different pre-snap timing rules (ai/timing.js). The flag is set
+  // on the ROOM at creation, because the game state does not exist until both teams are locked.
+  if (room.solo) markSoloRoom(state)
   startGameLoop(roomId, io)
 
   io.to(roomId).emit('team_select_complete', { teams: state.teams })

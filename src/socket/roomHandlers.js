@@ -1,8 +1,9 @@
 import { createRoom, joinRoom, leaveRoomBySlot, updateSocketId, getRoom } from '../game/roomManager.js';
 import { updatePlayer } from '../game/playerRegistry.js';
-import { createSession, markDisconnected, reconnect, getTokenBySocketId, invalidateSession, getTokensByRoomId } from '../game/sessionManager.js';
+import { createSession, markDisconnected, reconnect, getTokenBySocketId, invalidateSession, getTokensByRoomId, setSessionRole } from '../game/sessionManager.js';
 import { getGame, deleteGame } from '../game/gameState.js';
-import { isPlayerPaused } from '../game/pause.js';
+import { isPlayerPaused, beginPlayerPause } from '../game/pause.js';
+import { isSoloRoom } from '../ai/timing.js';
 import { PAUSE_RECONNECT_WINDOW_MS } from '../constants.js';
 import { stopGameLoop } from '../game/simulation.js';
 import { serializeGameState } from '../game/serialization.js';
@@ -116,7 +117,7 @@ export function registerRoomHandlers(io, socket) {
       return;
     }
 
-    const { roomId, slot, role } = session;
+    const { roomId, slot } = session;
 
     // The token resolved, but the room it points at may be gone (game ended/abandoned, or it was
     // never anything but a stale token from a previous game). Without a room AND either an active
@@ -128,6 +129,17 @@ export function registerRoomHandlers(io, socket) {
       socket.emit('reconnect_failed');
       return;
     }
+
+    // [role drift] The session records the role the player was GIVEN at kickoff, but roles swap on
+    // EVERY possession change (notifyRoleSwap in eventQueue.js updates socket.data.role and emits
+    // switch_sides — it never touched the session). Handing back the stored role after a refresh or
+    // a swipe out of the tab therefore put the player on the wrong side of the ball, and since
+    // socket.data.role is exactly what the validators check, every action they took was then
+    // rejected: a soft-lock. Derive the role from the live game with the same formula
+    // notifyRoleSwap uses, and write it back so the session can't drift again.
+    const liveGame = getGame(roomId);
+    const role = liveGame ? (liveGame.possession === slot ? 'offense' : 'defense') : session.role;
+    setSessionRole(token, role);
 
     // Slot the returning player back into their room
     updateSocketId(roomId, slot, socket.id);
@@ -191,6 +203,17 @@ export function registerRoomHandlers(io, socket) {
         isPaused: () => isPlayerPaused(getGame(roomId)),
         pausedWindowMs: PAUSE_RECONNECT_WINDOW_MS,
       });
+
+      // [offline] In a SOLO room the other seat is a computer, which will happily keep snapping and
+      // running plays to an empty stadium — the user's log showed exactly that, a game carrying on
+      // for the whole 30-second reconnect window after their phone dropped. Worse than wasteful:
+      // you could come back to a changed score. Hold the game instead, so it is waiting where they
+      // left it. Reconnecting resumes it; the ordinary expiry still tears it down if they do not.
+      const soloState = getGame(roomId);
+      if (isSoloRoom(soloState) && !isPlayerPaused(soloState)) {
+        beginPlayerPause(soloState, 0);
+        console.log(`[solo] ${roomId} held — the human dropped, so the computer stops playing`);
+      }
 
       socket.to(roomId).emit('opponent_disconnected');
       console.log(`[socket] - ${socket.id} disconnected from ${roomId} (${reason}) — 30s window open`);

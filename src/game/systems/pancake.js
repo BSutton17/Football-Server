@@ -3,6 +3,7 @@ import { computeLeverage }                       from '../utils/leverageModel.js
 import { findBallRef }                           from './engagement.js'
 import { ratingOf, strengthModifier }            from '../../data/ratings.js'
 import { PANCAKE }                               from '../../constants.js'
+import { rngOf }                                  from '../utils/rng.js'
 
 // ── [pancake] Dominant blocks ────────────────────────────────────────────────
 //
@@ -54,7 +55,8 @@ export function resetPancakes(state) {
   for (const p of state.defensePlayers.values()) { p.pancakedFor = 0; p.pancakedBy = null }
 }
 
-export function runPancake(state, _io, dt, rng = Math.random) {
+export function runPancake(state, _io, dt, rng = null) {
+  const roll = rngOf(state, rng)
   // ── Tick down anyone already down / frozen ──
   for (const d of state.defensePlayers.values()) {
     if (d.pancakedFor > 0) {
@@ -92,7 +94,7 @@ export function runPancake(state, _io, dt, rng = Math.random) {
     // Scale by how won the rep is and how square the contact is, then convert to a per-tick roll.
     const depth  = Math.max(0, (ENGAGEMENT_RADIUS - dist) / ENGAGEMENT_RADIUS)
     const chance = PANCAKE.MAX_RATE_PER_SECOND * score * lev.score * depth * dt
-    if (rng() >= chance) continue
+    if (roll() >= chance) continue
 
     d.pancakedFor = PANCAKE.DURATION_SECONDS
     d.pancakedBy  = o.id

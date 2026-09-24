@@ -16,6 +16,7 @@ import { CATCH_MOMENTUM_TIME } from './systems/movement.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { isManualPlay, beginPassSuspense } from './manual.js'
 import { resolvePass, opennessTier } from './utils/passOutcome.js'
+import { rngOf } from './utils/rng.js'
 import { resetPancakes } from './systems/pancake.js'
 import {
   recordPassOutcome, recordScramble, recordPassingTouchdown,
@@ -182,7 +183,7 @@ function onThrow({ receiverId, x, y }, state, io) {
   // it isn't a real target. Almost always a drop — only a small hands-scaled chance to hang on.
   // No defender break-up / interception here; the receiver simply isn't in position.
   if (!isReceiverReady(receiver)) {
-    const caught = Math.random() * 100 < earlyThrowCatchChance(ratingOf(receiver, 'catching'))
+    const caught = rngOf(state)() * 100 < earlyThrowCatchChance(ratingOf(receiver, 'catching'))
     if (caught) {
       deliverPassOutcome(state, io, {
         event: EVENT.PASS_COMPLETE, payload: { receiverId, x: receiver.x, y: receiver.y },
@@ -230,7 +231,7 @@ function onThrow({ receiverId, x, y }, state, io) {
     completionBonus: qbBonus + wrMods.catchBonus + dbMods.catchBonus,
     intDelta: wrMods.intDelta + dbMods.intDelta,
     interceptionEligible: state.throwAtDefender ?? false,
-  })
+  }, rngOf(state))
 
   // [294] Feed the resolved outcome into every involved player's X-Factor progress (earns + losses):
   // the QB, the targeted receiver, and the DB guarding that receiver.
@@ -679,7 +680,7 @@ export function executeKick(state, io) {
     uprightsX:       FIELD_CENTER_X,       // [18] the goalposts are centered
     backspin:        st.backspin,          // [21] punt backspin toggle
     fieldWidth:      FIELD.WIDTH,          // [24] enables out-of-bounds detection
-  })
+  }, rngOf(state))
   st.result = result
   // The kick is away — tell both clients so they freeze the meter and show "KICKED", and so the
   // receiving team sees the punt preview ([27]). Sent now (with the result) before it's applied.
@@ -762,7 +763,8 @@ const DEFAULT_RETURNER_RATING = 75
 //   [33] Let It Bounce → the ball rolls 0–10 yds toward the receiving goal; [34] backspin checks it
 //                        back 1–5; a roll into the end zone is a touchback.
 // Server-authoritative — an invalid choice falls back to the default. `rng` is injectable for tests.
-export function resolvePuntReturn(state, io, choice, rng = Math.random) {
+export function resolvePuntReturn(state, io, choice, rng = null) {
+  rng = rngOf(state, rng)
   const st = state.specialTeams
   if (!st || !st.returnPending) return
   if (!isValidPuntReturn(choice)) choice = puntReturnDefault()
@@ -880,7 +882,8 @@ function applyFieldGoalOutcome(state, io, result) {
 // ([50]) so both players see the same outcome. A blocked field goal is a turnover on downs; a blocked
 // extra point just scores nothing and is followed by a kickoff. A failed attempt is consumed (one per
 // kick) and the kick plays on. The caller (socket handler) has validated it's the defender (canAttemptBlock).
-export function resolveFieldGoalBlock(state, io, position, rng = Math.random) {
+export function resolveFieldGoalBlock(state, io, position, rng = null) {
+  rng = rngOf(state, rng)
   const st = state.specialTeams
   if (!st || st.blockAttempted) return
   st.blockAttempted = true

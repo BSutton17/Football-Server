@@ -7,6 +7,7 @@ import { findRunningLane, visionInterval } from '../utils/rbVision.js'
 import { interiorLinemanIds } from '../utils/playerQuery.js'
 import { getRatings, ratingOf, accelFromRating, speedFromRating, cutRetentionFromAccel, pursuitReactionTime, pursuitLeadQuality } from '../../data/ratings.js'
 import { runDebugOn, logRbVision, logPlayer, logBlock, logEngagements, logRunAssignment, lineDebugOn, logLine } from '../utils/runDebug.js'
+import { isRpo, rpoReadOpen, rpoRunner } from './rpo.js'
 import { ENGAGED_SPEED_MULT } from './engagement.js'
 import { isRusher } from './passRush.js'
 
@@ -58,8 +59,35 @@ function isPassProtector(p) {
 // pre-snap blocking assignment so every front defender is accounted for ([run feedback]).
 const RUN_BLOCKER_LABELS = new Set(['OL', 'C', 'G', 'T', 'TE'])
 
-function isRunBlocker(label) {
-  return RUN_BLOCKER_LABELS.has(label)
+// [carrier blocking] Yards outside the outermost lineman within which a TE counts as ATTACHED to
+// the line. This gate matters: membership used to be decided on the LABEL alone, so a TE split out
+// wide was folded into the line's coordinated scheme anyway — handed a front defender it was
+// fifteen yards away from, and then clamped to `blockAnchorX ± BLOCK_ANCHOR_RANGE` so it could
+// never actually get there. It just drifted for the whole play. A detached TE is a skill blocker
+// and blocks for the ball carrier downfield instead.
+const TE_INLINE_RANGE = 4
+
+// Latched once per play — the line's shape at the snap is what decides this, and re-deciding it
+// every tick would flip a TE between two completely different jobs mid-play.
+function isInlineTE(p, state) {
+  if (p.teInline == null) {
+    let lo = Infinity, hi = -Infinity
+    for (const o of state.offensePlayers.values()) {
+      if (!isLineman(o.label ?? '')) continue
+      lo = Math.min(lo, o.x); hi = Math.max(hi, o.x)
+    }
+    // No line on the field (tests, odd formations): fall back to the old label-only behaviour.
+    p.teInline = !Number.isFinite(lo) || (p.x >= lo - TE_INLINE_RANGE && p.x <= hi + TE_INLINE_RANGE)
+  }
+  return p.teInline
+}
+
+// Part of the OL's coordinated run-block unit. A TE has to be attached to the line to qualify.
+function isRunBlocker(p, state) {
+  const label = typeof p === 'string' ? p : (p.label ?? '')
+  if (!RUN_BLOCKER_LABELS.has(label)) return false
+  if (label === 'TE' && typeof p !== 'string') return isInlineTE(p, state)
+  return true
 }
 
 // Lazy anchor init — runs once per play (player objects are cleared between plays).
@@ -204,7 +232,7 @@ function isFrontDefender(d, losY, dir) {
 function assignRunBlockers(state, losY, dir) {
   const blockers = []
   for (const o of state.offensePlayers.values()) {
-    if (!isRunBlocker(o.label)) continue
+    if (!isRunBlocker(o, state)) continue
     if (o.blockAnchorX == null) o.blockAnchorX = o.x   // [P3] latch alignment at the snap
     blockers.push(o)
   }
@@ -422,25 +450,126 @@ function getRunBlockTarget(blocker, state, losY, dir) {
   return target
 }
 
-// ── Skill-position run blocking ([run fix]) ──────────────────────────────────
+// ── Downfield blocking for the ball carrier ([carrier blocking]) ─────────────
 //
-// On a run play every non-carrier skill player (WR/TE/extra RB) blocks rather than running
-// its route. It walls off the nearest defender within scan range — driving into them to
-// shield the ball carrier's lane — and, with no one to hit, presses upfield to the next
-// level to spring a longer run.
-const SKILL_BLOCK_SCAN = 12   // yards a downfield blocker scans for a defender to wall off
+// Every non-carrier skill player (WR / TE / extra RB) that isn't in the protection blocks FOR the
+// ball carrier — on a designed run, and after a catch for the yards that follow it. Two rules are
+// what make this read as blocking rather than milling about, and both were missing:
+//
+//   • Threats are ranked by the DEFENDER'S distance to the CARRIER, not to the blocker. The man
+//     about to make the tackle is the man worth blocking, wherever on the field he happens to be.
+//     The old logic had each blocker grab whatever defender was nearest ITSELF — including ones
+//     behind it, running the other way — which is why receivers looked like they were wandering.
+//
+//   • Targets are CLAIMED. Without that, two receivers routinely drove the same corner into the
+//     sideline while the safety with the actual angle came through untouched.
+//
+// Assignments latch for as long as the man is still a live threat, so the picture doesn't churn
+// from tick to tick, and defenders the LINE already has are left to the line.
+const CARRIER_THREAT_RADIUS = 20    // yd from the carrier — beyond this a defender isn't the threat yet
+const CARRIER_BLOCK_SCAN    = 18    // yd from the blocker — beyond this it can't get there in time
+const CARRIER_BLOCK_LATERAL = 1.5   // yd perpendicular-away from the carrier's path (widen the lane)
+const CARRIER_BLOCK_DOWNFIELD = 3.0 // yd along it — aim PAST the man so the blocker keeps driving
+const CARRIER_LEAD_DEPTH    = 7     // yd ahead of the carrier a blocker with no man presses to
 
-function getSkillRunBlockTarget(blocker, state, losY, dir) {
-  let nearest = null
-  let nearestDist = SKILL_BLOCK_SCAN
-  for (const d of state.defensePlayers.values()) {
-    const dist = Math.hypot(d.x - blocker.x, d.y - blocker.y)
-    if (dist < nearestDist) { nearestDist = dist; nearest = d }
+// [rpo] How far past the LOS a run blocker may work on an RPO. The ball can still be thrown, so the
+// line holds at the line instead of climbing to the second level — one yard is enough to let a
+// blocker drive a man who is lined up across from him without ever releasing downfield. This is
+// what makes an RPO's run lanes tighter than a called run's.
+const RPO_LINE_DEPTH = 1
+
+// [rpo] Yards behind the LOS the QB reads from — the mesh, not a drop.
+const RPO_QB_DEPTH = 2
+
+// The carrier's actual path, which is what a downfield blocker has to clear. Below a walking pace
+// the velocity heading is noise (a back pressing the hole, a receiver securing the catch), so it
+// falls back to straight upfield rather than swinging the whole block scheme around on jitter.
+function carrierLine(carrier, dir) {
+  const sp = Math.hypot(carrier.vx ?? 0, carrier.vy ?? 0)
+  if (sp < 1) return { ox: carrier.x, oy: carrier.y, dx: 0, dy: dir }
+  return { ox: carrier.x, oy: carrier.y, dx: carrier.vx / sp, dy: carrier.vy / sp }
+}
+
+// Where a downfield blocker steers to take its man: past the defender, shoved to whichever side of
+// the carrier's path he is already on. Aiming beyond him is what keeps the blocker driving through
+// contact instead of pulling up nose-to-nose and letting him disengage.
+function carrierDriveTarget(def, carrier, dir) {
+  const line  = carrierLine(carrier, dir)
+  const relX  = def.x - line.ox, relY = def.y - line.oy
+  const perpX = -line.dy, perpY = line.dx
+  const side  = Math.sign(relX * perpX + relY * perpY) || 1
+  return {
+    x: def.x + perpX * side * CARRIER_BLOCK_LATERAL + line.dx * CARRIER_BLOCK_DOWNFIELD,
+    y: def.y + perpY * side * CARRIER_BLOCK_LATERAL + line.dy * CARRIER_BLOCK_DOWNFIELD,
   }
-  // Drive the nearest defender off the run line (part the sea), or climb upfield to find work.
-  traceBlock(state, blocker, nearest?.id ?? null)
-  if (nearest) return runDriveTarget(nearest, runLine(state, losY, dir))
-  return { x: blocker.x, y: losY + dir * (RUN_SECOND_LEVEL_DEPTH + 6) }
+}
+
+// Per-tick assignment pass — the claiming half of the system. Runs before anybody moves, exactly
+// like assignRunBlockers, so no two blockers can pick the same man on the same tick.
+function assignCarrierBlockers(state, carrier) {
+  const blockers = []
+  for (const o of state.offensePlayers.values()) {
+    if (o.id === carrier.id) continue
+    if (!RECEIVER_LABELS.has(o.label ?? '')) continue
+    blockers.push(o)
+  }
+  if (blockers.length === 0) return
+
+  // Defenders the line already has are accounted for — unless they've shed, in which case they are
+  // free again and very much worth a receiver's attention.
+  const lineHas = new Set()
+  for (const o of state.offensePlayers.values()) {
+    const id = o.blockAssignmentId ?? o.blockTargetId
+    if (!id) continue
+    const d = state.defensePlayers.get(id)
+    if (d && !d.shedBlock) lineHas.add(id)
+  }
+
+  // Most dangerous first: closest to the ball carrier.
+  const threats = [...state.defensePlayers.values()]
+    .filter(d => Math.hypot(d.x - carrier.x, d.y - carrier.y) <= CARRIER_THREAT_RADIUS)
+    .sort((a, b) =>
+      Math.hypot(a.x - carrier.x, a.y - carrier.y) - Math.hypot(b.x - carrier.x, b.y - carrier.y))
+  const threatIds = new Set(threats.map(d => d.id))
+
+  const usedBlockers = new Set()
+  const claimed      = new Set()
+
+  // 1. Latch — keep a blocker on its man while that man is still a threat the line hasn't taken.
+  for (const b of blockers) {
+    const id = b.carrierBlockId
+    if (id && threatIds.has(id) && !claimed.has(id) && !lineHas.has(id)) {
+      usedBlockers.add(b.id); claimed.add(id)
+    } else {
+      b.carrierBlockId = null
+    }
+  }
+
+  // 2. Assign the rest, most dangerous threat first, to the nearest free blocker in range.
+  for (const d of threats) {
+    if (claimed.has(d.id) || lineHas.has(d.id)) continue
+    let best = null, bd = CARRIER_BLOCK_SCAN
+    for (const b of blockers) {
+      if (usedBlockers.has(b.id)) continue
+      const dist = Math.hypot(b.x - d.x, b.y - d.y)
+      if (dist < bd) { bd = dist; best = b }
+    }
+    if (best) { best.carrierBlockId = d.id; usedBlockers.add(best.id); claimed.add(d.id) }
+  }
+}
+
+function getCarrierBlockTarget(blocker, state, dir, carrier) {
+  const def = blocker.carrierBlockId ? state.defensePlayers.get(blocker.carrierBlockId) : null
+  traceBlock(state, blocker, def?.id ?? null)
+  if (def) return carrierDriveTarget(def, carrier, dir)
+
+  // Nobody to hit: get out in front of the carrier and meet the next wave, rather than standing
+  // still or drifting straight upfield from wherever this blocker happens to be.
+  const line = carrierLine(carrier, dir)
+  return {
+    x: Math.max(1, Math.min(FIELD.WIDTH - 1, carrier.x + line.dx * CARRIER_LEAD_DEPTH)),
+    y: carrier.y + line.dy * CARRIER_LEAD_DEPTH,
+  }
 }
 
 // ── Blocker protection (RBs / TEs assigned route='block') — blitz pickup ─────────
@@ -676,8 +805,22 @@ function moveOffense(state, dt) {
   const playType = state.playDesign?.playType ?? 'pass'
   const carrier  = findBallCarrier(state)
 
+  // [rpo] Before the handoff an RPO is a pass; after it, a run. `runBlocking` is what the LINE is
+  // doing, which on an RPO is run blocking from the snap (capped at the line — see RPO_LINE_DEPTH).
+  const rpoOpen     = rpoReadOpen(state)
+  const runBlocking = playType === 'run' || isRpo(state)
+
   // Assign the front before anyone moves so every down defender is accounted for.
-  if (playType === 'run') assignRunBlockers(state, losY, dir)
+  if (runBlocking) assignRunBlockers(state, losY, dir)
+
+  // [carrier blocking] Who the skill players block for. True on a designed run from the snap, and
+  // on a pass once the ball has actually been CAUGHT (state.catchSpot) — which is what scopes this
+  // to yards-after-catch and keeps it off a scrambling QB (no catch spot) and off an interception
+  // return (the carrier is a defender, so it isn't ours to block for).
+  const blockForCarrier =
+    !!carrier && state.offensePlayers.has(carrier.id) &&
+    (playType === 'run' || state.catchSpot != null || (isRpo(state) && !rpoOpen))
+  if (blockForCarrier) assignCarrierBlockers(state, carrier)
 
   for (const p of state.offensePlayers.values()) {
     const label = p.label ?? ''
@@ -699,7 +842,7 @@ function moveOffense(state, dt) {
     // a route carries straight into the run (no acceleration reset on the catch).
     if (carrier && p.id === carrier.id) {
       // A designed run aims for the called gap; an improvised carrier runs straight upfield.
-      const designedRun = playType === 'run' && label === 'RB'
+      const designedRun = (playType === 'run' || isRpo(state)) && label === 'RB'
       const biasAngle = designedRun
         ? ((state.playDesign?.runAngle ?? 0) * Math.PI) / 180
         : 0
@@ -715,24 +858,43 @@ function moveOffense(state, dt) {
     }
 
     if (label === 'QB') {
-      steer(p, p.x, losY - dir * 8, topSpd * 0.75, dt, accel)
+      // [rpo] An RPO is read from the mesh point, not from a seven-step drop: the QB stays up near
+      // the line. Dropping the full eight yards would also hang him out behind a line that, on an
+      // RPO, is holding at the LOS rather than setting a pocket around him.
+      const dropDepth = isRpo(state) ? RPO_QB_DEPTH : 8
+      steer(p, p.x, losY - dir * dropDepth, topSpd * 0.75, dt, accel)
 
-    } else if (playType === 'run' && isRunBlocker(label)) {
+    } else if (rpoOpen && p.id === rpoRunner(state)?.id) {
+      // [rpo] The mesh. The back holds his spot while the read window is open — he has not been
+      // given the ball yet, and taking off would give the play away before the QB has decided.
+      // Once the window closes runRpo makes him the ball carrier and the branch above takes over.
+      steer(p, p.x, p.y, 0, dt, accel)
+
+    } else if (runBlocking && isRunBlocker(p, state)) {
       // Run play: the OL + in-line TE drive their COORDINATED assignment (every front defender
       // accounted for) or, once the front is covered, climb to the second level / double-team.
       const target = getRunBlockTarget(p, state, losY, dir)
+      // [rpo] …except on an RPO, where the line never works downfield: the target depth is capped
+      // just past the line, which holds the blockers there instead of letting them climb.
+      if (isRpo(state)) {
+        target.y = losY + dir * Math.min(RPO_LINE_DEPTH, (target.y - losY) * dir)
+      }
       steer(p, target.x, target.y, topSpd * 0.75, dt, accel)
 
-    } else if (isPassProtector(p)) {
+    } else if (!runBlocking && isPassProtector(p)) {
       // Pass play: pass protection — the OL, plus any kept-in TE folded into the slide so the line
       // shifts its gap assignments around the TE ([te pass-pro]).
+      // Guarded on playType because a DETACHED TE with route 'block' is no longer swallowed by the
+      // run-blocker branch above ([carrier blocking]); without this it would drop into pass
+      // protection on a running play.
       const target = getPassBlockTarget(p, state, losY, dir)
       steer(p, target.x, target.y, topSpd * 0.6, dt, accel)
 
-    } else if (playType === 'run' && RECEIVER_LABELS.has(label)) {
-      // [run fix] On a run, perimeter receivers (WR / extra RB) block instead of running routes —
-      // they wall off the nearest defender and otherwise push upfield to spring the ball carrier.
-      const target = getSkillRunBlockTarget(p, state, losY, dir)
+    } else if (blockForCarrier && RECEIVER_LABELS.has(label)) {
+      // [carrier blocking] Non-carrier skill players block for the runner — on a designed run, and
+      // after the catch. They hunt the defender closest to the carrier (claimed, so nobody doubles)
+      // and drive him off the carrier's path; with no man in range they lead out in front instead.
+      const target = getCarrierBlockTarget(p, state, dir, carrier)
       steer(p, target.x, target.y, topSpd * 0.9, dt, accel)
 
     } else if (p.route === 'block') {
@@ -1604,9 +1766,27 @@ function steerCoverage(p, tx, ty, maxSpeed, dt, accel, turnRate) {
   p.vy = Math.sin(newAngle) * newSpeed
 }
 
-// Blitzing defenders push through blocks more aggressively than standard rushers.
-// This higher multiplier (vs ENGAGED_SPEED_MULT = 0.5) keeps them dangerous when engaged.
-const BLITZ_ENGAGED_MULT = 0.75
+// ⚠️ A BLOCK IS A BLOCK, WHOEVER IT IS ON.
+//
+// This was 0.75 against ENGAGED_SPEED_MULT = 0.5 for everyone else, and the `* 1.1` urgency bonus
+// below applied on top of it EVEN WHILE ENGAGED — so a blocked blitzer travelled at 0.825 of top
+// speed while a blocked lineman managed 0.5. Measured in a real pocket, a blocked blitzer closed
+// on the quarterback 1.9x to 3.2x as fast as a blocked lineman on the same play.
+//
+// That is what made a six-man blitz the best call on every down. It was not that the blitz went
+// unblocked — the protection engaged every rusher, and the man who reached the quarterback was
+// still engaged with a blocker on 10 of 11 plays. It was that being blocked barely slowed him, so
+// the pocket collapsed at ~1.4s no matter how many blockers were kept in. Max protect with 7.3
+// blockers produced pressure at the identical 1.44s.
+//
+// A blitzer keeps a SMALL edge, because hitting a gap at full speed carries real momentum into the
+// blocker — but a fraction more, not two-thirds more.
+const BLITZ_ENGAGED_MULT = 0.58
+
+// Extra closing speed for a blitzer, applied ONLY in space. Running unblocked at the quarterback is
+// where a blitz earns its yards; grinding through a blocker is not, and stacking this on top of the
+// engaged multiplier was half of the defect above.
+const BLITZ_FREE_URGENCY = 1.1
 
 // Returns the IDs of the outermost rushing defenders (excludes zone and man coverage).
 // The two edge rushers are responsible for contain — they hold their outside lanes
@@ -1648,6 +1828,10 @@ const RUN_PURSUIT_DELAY = { line: 0, box: 1.0, edge: 0.8, corner: 1.0, deep: 2.0
 const GAP_FLOW     = 0.6   // fraction of the ball's lateral shift a defender's gap flows with
 const DL_PENETRATE = 1.0   // yd into the backfield a lineman attacks its gap
 const RUN_SECOND_LEVEL_TRIGGER = 4   // yd past the LOS the carrier must reach before a deep safety attacks ([P8])
+// How close the ball has to get before a lineman stops holding its gap and attacks the ball. Wide
+// enough that it releases with time to close (the tackle itself needs 1.5 yd of contact), narrow
+// enough that the front doesn't abandon its lanes the moment a back presses the line.
+const DL_BALL_RANGE = 3.0
 
 // Classifies a defender's run-fit role from its label and alignment (latched once per play).
 function classifyRunDefender(p, losY, dir, center) {
@@ -1758,6 +1942,28 @@ function moveDefense(state, dt) {
         // and can't keep churning forward — its drive yields in proportion to how badly it's beaten,
         // so a won run block actually roots it backward instead of stalemating at the LOS ([run fix]).
         if (role === 'line') {
+          // ⚠️ …but it must still be allowed to MAKE THE PLAY. This branch used to steer at the
+          // gap landmark for the entire down and `continue`, so the `committed` check below was
+          // unreachable for a lineman and `RUN_PURSUIT_DELAY.line = 0` was dead code. A back
+          // running straight through a lineman's gap was waved past untouched, and a back who
+          // broke the line was never chased from behind by anyone on the front.
+          //
+          // Two things release him, and both are what a real lineman does:
+          //   • the ball is IN HIS LAP — the gap he is holding is the gap the back chose, so
+          //     holding a landmark beside the runner is not gap discipline, it is standing still.
+          //   • the ball is PAST HIM downfield — the wall has already been beaten and there is
+          //     nothing left to hold, so he turns and trails the play.
+          // Pursuit uses `spd`, which already carries getEngageMult, so a lineman still locked up
+          // with a blocker gives chase at blocked speed rather than sprinting out of the block.
+          const dx = carrier.x - p.x
+          const dy = carrier.y - p.y
+          const ballInHisLap = dx * dx + dy * dy <= DL_BALL_RANGE * DL_BALL_RANGE
+          const ballPastHim  = (carrier.y - p.y) * dir > 0
+          if (ballInHisLap || ballPastHim) {
+            pursueIntercept(p, carrier, spd, accel)
+            advance(p, dt)
+            continue
+          }
           const control  = p.isEngaged ? Math.max(0, Math.min(1, p.leverageScore ?? 0)) : 0
           const driveSpd = spd * (1 - control)
           steer(p, gapTargetX, losY - dir * DL_PENETRATE, driveSpd, dt, accel)
@@ -1816,15 +2022,17 @@ function moveDefense(state, dt) {
 
     switch (type) {
       case 'blitz': {
-        // Blitzers push through blocks harder — higher engaged speed than normal
-        const blitzTopSpd = getMaxSpeed(p) * fm * (p.isEngaged ? BLITZ_ENGAGED_MULT : 1.0)
+        // Blitzers keep a small edge through a block, and their urgency bonus only applies in space
+        // — see the note on BLITZ_ENGAGED_MULT.
+        const urgency = p.isEngaged ? 1.0 : BLITZ_FREE_URGENCY
+        const blitzTopSpd = getMaxSpeed(p) * fm * (p.isEngaged ? BLITZ_ENGAGED_MULT : 1.0) * urgency
         if (qb && edgeRusherIds.has(p.id)) {
           // Edge blitz: rush the edge outside the tackle, then turn the corner at QB depth
           const t = edgeRushTarget(p, qb)
-          steer(p, t.x, t.y, blitzTopSpd * 1.1, dt, accel)
+          steer(p, t.x, t.y, blitzTopSpd, dt, accel)
         } else {
           const target = qb ?? { x: FIELD.WIDTH / 2, y: losY + dir * 5 }
-          steer(p, target.x, target.y, blitzTopSpd * 1.1, dt, accel)
+          steer(p, target.x, target.y, blitzTopSpd, dt, accel)
         }
         break
       }

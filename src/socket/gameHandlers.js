@@ -11,12 +11,15 @@ import {
   validateScramble,
   validateThrowaway,
   validateCallTimeout,
+  roleOf,
 } from '../game/validation.js'
 import { getGame, initGame, commitThrowTarget, resolveThrowTarget } from '../game/gameState.js'
 import {
   beginManualPlay, pressGo, releaseGo, endManualControl, armThrowResolution,
   isManualPlay, isManualFrozen,
 } from '../game/manual.js'
+import { cancelRpo } from '../game/systems/rpo.js'
+import { isSoloRoom, markDefenseSet, soloCountdownFor, DEFENSE_SET_COUNTDOWN, OFFENSE_SET_COUNTDOWN } from '../ai/timing.js'
 import { transition, PHASE } from '../game/stateMachine.js'
 import { beginStoppage, STOPPAGE, beginPlayerPause, resumePlayerPause, isPlayerPaused } from '../game/pause.js'
 import { FIELD, RULES } from '../constants.js'
@@ -69,7 +72,8 @@ export function registerGameHandlers(io, socket) {
     if (err) return reject(socket, 'remove_player', err)
 
     const state = getGame(socket.data.roomId)
-    const map = socket.data.role === 'offense' ? state.offensePlayers : state.defensePlayers
+    // [role drift] Derived, not the socket.data cache — see roleOf in validation.js.
+    const map = roleOf(socket) === 'offense' ? state.offensePlayers : state.defensePlayers
     map.delete(id)
     io.to(socket.data.roomId).emit('player_removed', id)
   })
@@ -131,7 +135,14 @@ export function registerGameHandlers(io, socket) {
     // Window for the defense to adjust — 10 s on the FIRST play of a drive (like the 40 s play clock),
     // 5 s otherwise. Emit countdown ticks; at 0 the hike button unlocks.
     const roomId = socket.data.roomId
-    const start  = state.newDrive ? 10 : 5
+    // [offline] A solo defense that has already declared itself ready gets the short countdown —
+    // it asked not to wait, so making it wait the full window would be the opposite of the feature.
+    // A solo defense that has NOT declared gets the ordinary 5-second window: the offense beat it
+    // to the punch, so it is still reading the formation and has earned the time to answer it.
+    const start = isSoloRoom(state)
+      ? soloCountdownFor(state)
+      : (state.newDrive ? 10 : 5)
+    if (isSoloRoom(state)) state.solo.countdown = start
     Array.from({ length: start + 1 }, (_, i) => start - i).forEach((count, i) => {
       setTimeout(() => {
         const s = getGame(roomId)
@@ -139,6 +150,36 @@ export function registerGameHandlers(io, socket) {
         io.to(roomId).emit('hike_countdown', { count })
       }, i * 1000)
     })
+  })
+
+  // ── Defense sets early ([offline]) ────────────────────────────────────────
+  //
+  // Solo only. Online, the defense's window is a gift from the offense and cannot be cut short —
+  // shortening it would let one player rush the other. Offline there is nobody to rush: the
+  // computer's offense sets at a randomly chosen moment, and a human defense that is already
+  // happy with its look has no reason to stand and wait for it.
+  socket.on('set_defense', () => {
+    const state = getGame(socket.data.roomId)
+    if (!state || !isSoloRoom(state)) return
+    if (roleOf(socket) !== 'defense') return
+    if (state.phase !== PHASE.PRE_SNAP && state.phase !== PHASE.COUNTDOWN) return
+
+    // ⚠️ Ordering decides the length. In COUNTDOWN the offense already locked and its window — the
+    // ordinary 5 seconds — is running; pressing Set now is the defense volunteering to cut short
+    // the time it was given, which is not what the button is for. So it still registers (the button
+    // reads "Defense Set") but the clock is left exactly where it is. Announcing a 3 here was the
+    // bug: the countdown on screen kept running from 5 while the server claimed 3.
+    const offenseAlreadySet = state.phase === PHASE.COUNTDOWN
+    if (!markDefenseSet(state, { offenseAlreadySet })) return
+
+    const countdown = offenseAlreadySet
+      ? (state.solo.countdown ?? OFFENSE_SET_COUNTDOWN)
+      : DEFENSE_SET_COUNTDOWN
+    io.to(socket.data.roomId).emit('defense_set', { countdown })
+    console.log(
+      `[solo] ${socket.data.roomId} defense set ` +
+      (offenseAlreadySet ? `during countdown — ${countdown}s window already running` : `early — ${countdown}s countdown`)
+    )
   })
 
   // ── Timeout ([69][70]) ─────────────────────────────────────────────────────
@@ -242,7 +283,7 @@ export function registerGameHandlers(io, socket) {
     const state = getGame(socket.data.roomId)
     if (!state || state.phase !== PHASE.LIVE) return
     if (!isManualPlay(state)) return
-    if (socket.data.role !== 'offense') return
+    if (roleOf(socket) !== 'offense') return
     pressGo(state, io)
   })
 
@@ -250,7 +291,7 @@ export function registerGameHandlers(io, socket) {
     const state = getGame(socket.data.roomId)
     if (!state || state.phase !== PHASE.LIVE) return
     if (!isManualPlay(state)) return
-    if (socket.data.role !== 'offense') return
+    if (roleOf(socket) !== 'offense') return
     releaseGo(state, io)
   })
 
@@ -273,6 +314,9 @@ export function registerGameHandlers(io, socket) {
 
     state.qbScrambling  = true
     state.ballCarrierId = qb.id
+    // [rpo] The QB has committed — close the read window so the option can't hand the ball off on
+    // a later tick behind a ball that has already left his hands.
+    cancelRpo(state)
     // [manual] Committing to a scramble ends the hold loop: there is nothing left to decide (the QB
     // can no longer throw), so the run plays itself out exactly like a called run. This also lifts
     // the freeze the scramble was called from.
@@ -290,6 +334,9 @@ export function registerGameHandlers(io, socket) {
     const roomId = socket.data.roomId
     const state  = getGame(roomId)
     state.targetReceiverId = null
+    // [rpo] The QB has committed — close the read window so the option can't hand the ball off on
+    // a later tick behind a ball that has already left his hands.
+    cancelRpo(state)
     // [manual] A throwaway has no outcome to reveal — the QB chose the incompletion — so it skips
     // the "It is…" beat and simply ends the hold loop so the dead-ball resolution can run.
     endManualControl(state, io)
@@ -306,6 +353,7 @@ export function registerGameHandlers(io, socket) {
     // Once committed, any further taps are silently ignored — the decision is locked so
     // the offense can't change its mind after the pass is in the air ([166]).
     if (commitThrowTarget(state, receiverId)) {
+      cancelRpo(state)   // [rpo] the throw is away — the option is spent
       // Aim the ball at the receiver's position at this instant — the moment of release ([167]).
       const target = resolveThrowTarget(state, receiverId)
       // [manual] The throw was picked off a frozen picture. Arm the tick to resolve it before
@@ -325,6 +373,7 @@ export function registerGameHandlers(io, socket) {
 
     const state = getGame(socket.data.roomId)
     if (commitThrowTarget(state, defenderId)) {
+      cancelRpo(state)   // [rpo] the throw is away — the option is spent
       const d = state.defensePlayers.get(defenderId)
       // [manual] Like a throwaway, the outcome is chosen rather than rolled, so there is nothing to
       // build suspense over — end the hold loop and let the return run.

@@ -63,7 +63,7 @@ export function opennessTier(openness) {
 // `covered` without dragging `smothered` along with it.
 export const TIER_ODDS = {
   open:      { catch: 0.95, int: 0.00 },
-  covered:   { catch: 0.45, int: 0.05 },
+  covered:   { catch: 0.55, int: 0.05 },
   smothered: { catch: 0.10, int: 0.20 },
 }
 

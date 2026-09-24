@@ -25,7 +25,11 @@ export const ROUTE_DEF = {
   swing:      [[8, 1], [8, 4]],
   check_down: [[ 0,  3]],
   flare:      [[ 7,  4]],
-  screen:     [[ 5, -2]],
+  // [screen] A segment of [0,0] means "stay exactly where you are" — buildWaypoints resolves it to
+  // the receiver's OWN spot rather than the LOS, so a receiver lined up off the ball stands still
+  // instead of drifting up to the line. The receiver is therefore where he is going to be from the
+  // snap, which is what makes him instantly throwable (see isReceiverReady).
+  screen:     [[ 0,  0]],
   block:      [[ 0,  0]],
 
   // Two-segment routes — receiver runs to the first point, then cuts to the second
@@ -52,4 +56,7 @@ export const ROUTE_DEF = {
 // 'block' is the one deliberate exception. Blockers never reach the route engine at all — movement.js
 // branches on `p.route === 'block'` before routes are walked — so its membership here was already
 // dead, and the geometric classifier does not reproduce it.
-export const STOP_ROUTES = new Set(['curl', 'comeback', 'block'])
+//
+// [screen] 'screen' joins the set for a real reason rather than as bookkeeping: it is now a
+// stand-still route, so the receiver genuinely does settle on his spot at the snap.
+export const STOP_ROUTES = new Set(['curl', 'comeback', 'block', 'screen'])

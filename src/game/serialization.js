@@ -17,6 +17,11 @@ const OPENNESS_REVEAL_DELAY = 1.3   // seconds since snap for a no-cut route
 // it has made its first cut (cleared the first waypoint) or, on a no-cut route, held long enough for
 // the read to develop. Single source of truth for the ready gate (openness reveal + throw-early check).
 export function isReceiverReady(p) {
+  // [screen] A route the receiver does not run has nothing to declare — he is standing exactly
+  // where the route puts him from the moment the ball is snapped, and no amount of waiting will
+  // reveal more. So the light is on immediately. Read from the route's GEOMETRY, like every other
+  // route question in the sim, rather than from a list of route names.
+  if (p.routeTraits?.goesNowhere) return true
   return (p.routeWaypointIdx ?? 0) >= 1 || (p.routeElapsed ?? 0) >= OPENNESS_REVEAL_DELAY
 }
 
@@ -70,6 +75,10 @@ export function serializeGameState(state, viewerSlot) {
     // tells it whether openness colors will arrive at all (hard sends none to the offense).
     mode:       state.mode ?? 'automatic',
     difficulty: state.difficulty ?? 'easy',
+    // [offline] Is the other seat a computer? Sent so the client does not have to REMEMBER that it
+    // started a solo game — a refresh would otherwise lose the flag, and with it the Set Defense
+    // button, which is the same class of bug as the reconnect role drift.
+    solo: !!state.solo,
   }
 }
 

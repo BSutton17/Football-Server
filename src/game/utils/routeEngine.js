@@ -7,14 +7,18 @@ import { ratingOf, cutThresholdFromRating, cutSpeedRetentionFromRating } from '.
 // Called lazily the first time getRouteTarget is invoked for a player.
 // pivotX is the lateral reference that decides which way "outward" faces — the BALL'S spot (hash),
 // not the field's geometric middle, since the ball shifts laterally through the game.
-export function buildWaypoints(route, startX, losY, dir, scale, pivotX) {
+// [screen] startY is the receiver's own depth. A segment of [0, 0] — "stay exactly where you are" —
+// resolves to it instead of to the LOS, so a stand-still route really does stand still for a
+// receiver lined up off the ball rather than walking him up to the line. Every other segment is
+// measured from the LOS as it always was. Omitting startY keeps the old LOS-relative behaviour.
+export function buildWaypoints(route, startX, losY, dir, scale, pivotX, startY) {
   const s    = scale ?? 1
   const near = startX >= (pivotX ?? FIELD.WIDTH / 2) ? 1 : -1
   const segs = ROUTE_DEF[route] ?? [[0, 10]]
 
   return segs.map(([nearFactor, dd]) => ({
     x: Math.max(1, Math.min(FIELD.WIDTH - 1, startX + near * nearFactor)),
-    y: losY + dir * dd * s,
+    y: (nearFactor === 0 && dd === 0 && startY != null) ? startY : losY + dir * dd * s,
   }))
 }
 
@@ -32,7 +36,7 @@ export function getRouteTarget(player, losY, dir, dt, pivotX) {
 
   // Lazy init — build waypoints and timing state once on the first tick of live play.
   if (!player.routeWaypoints) {
-    player.routeWaypoints   = buildWaypoints(route, player.x, losY, dir, player.routeDepthScale, pivotX)
+    player.routeWaypoints   = buildWaypoints(route, player.x, losY, dir, player.routeDepthScale, pivotX, player.y)
     player.routeWaypointIdx = 0
     player.routeElapsed     = 0
     player.routePhase       = 'running'

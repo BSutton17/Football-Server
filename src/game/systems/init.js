@@ -2,6 +2,7 @@ import { FIELD } from '../../constants.js'
 import { sanitizeDrawnRoute, drawnRouteWaypoints, routeTraits } from '../utils/routeGeometry.js'
 import { buildWaypoints } from '../utils/routeEngine.js'
 import { resetThrowawayWindow } from './throwawayWindow.js'
+import { resetRpo } from './rpo.js'
 import { getLosY } from '../gameState.js'
 import { getRatings, ratingOf, speedFromRating } from '../../data/ratings.js'
 import { onSnapXFactors } from './xFactors.js'
@@ -53,6 +54,8 @@ export function initLivePhase(state) {
 
   // [187] Fresh play — the QB must hold the ball again before he may throw it away.
   resetThrowawayWindow(state)
+  // [rpo] Fresh play — reopen the read window (or clear a stale one from the last play).
+  resetRpo(state)
 
   const dir   = state.direction
   const isRun = state.playDesign.playType === 'run'
@@ -115,7 +118,7 @@ export function initLivePhase(state) {
     // building them lazily left every route unclassified on the opening tick of a play.
     else if (fp.route && fp.route !== 'block') {
       const losY = getLosY(state)
-      fp.routeWaypoints   = buildWaypoints(fp.route, fp.x, losY, dir, fp.routeDepthScale, state.ballX)
+      fp.routeWaypoints   = buildWaypoints(fp.route, fp.x, losY, dir, fp.routeDepthScale, state.ballX, fp.y)
       fp.routeWaypointIdx = 0
       fp.routeElapsed     = 0
       fp.routePhase       = 'running'

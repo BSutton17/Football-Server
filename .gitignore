@@ -20,3 +20,4 @@ dist
 .DS_Store
 *.suo
 *.sw?
+training-output/

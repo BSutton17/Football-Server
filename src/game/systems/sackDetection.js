@@ -1,6 +1,7 @@
 import { enqueue, EVENT } from '../eventQueue.js'
 import { getLosY }        from '../gameState.js'
 import { PLAYER }         from '../../constants.js'
+import { rngOf }          from '../utils/rng.js'
 import { shakeOffSack, SHAKE_IMMUNITY_S, SHAKE_KNOCKBACK_YD } from './xFactors.js'
 
 // A defender sacks the QB the instant their bodies touch. This MUST match the contact distance
@@ -8,7 +9,8 @@ import { shakeOffSack, SHAKE_IMMUNITY_S, SHAKE_KNOCKBACK_YD } from './xFactors.j
 // so a tighter threshold (the old 1.0) could never be reached and sacks never fired ([sack fix]).
 const SACK_RADIUS = PLAYER.CONTACT_RADIUS  // 1.5 yd — bodies touching, same as a tackle
 
-export function runSackDetection(state, io, dt, rng = Math.random) {
+export function runSackDetection(state, io, dt, rng = null) {
+  const roll = rngOf(state, rng)
   // Only check while the ball is still in the QB's hands. Once a scramble starts ([184])
   // ballCarrierId is the QB itself — it's a runner now, so overlap tackle detection brings
   // it down (a QB run tackled behind the LOS spots at the same place a sack would).
@@ -42,7 +44,7 @@ export function runSackDetection(state, io, dt, rng = Math.random) {
     if (dist <= SACK_RADIUS) {
       // [294] Shake It Off — an active-ability QB has a 50% chance to escape. On a shake-off the
       // play stays live: shove the rusher off the QB and grant a brief sack immunity.
-      if (shakeOffSack(state, qb, rng)) {
+      if (shakeOffSack(state, qb, roll)) {
         state.qbSackImmunity = SHAKE_IMMUNITY_S
         const sep = SACK_RADIUS + SHAKE_KNOCKBACK_YD
         const nx  = dist > 0.0001 ? dx / dist : 0

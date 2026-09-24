@@ -1,7 +1,9 @@
 import { FIELD, ROUTE_TYPES, COVERAGE_TYPES, ZONE_TYPES, MAN_COMMITS } from '../constants.js'
 import { PHASE } from './stateMachine.js'
 import { getGame } from './gameState.js'
+import { getRoom } from './roomManager.js'
 import { isManualPlay, isManualFrozen } from './manual.js'
+import { rpoReadOpen } from './systems/rpo.js'
 
 // ── Return convention ─────────────────────────────────────────────────────────
 //
@@ -10,6 +12,21 @@ import { isManualPlay, isManualFrozen } from './manual.js'
 //   string        — human-readable reason the action was rejected
 //
 // Callers check once: if (err) { reject(); return }
+
+// ── Is the ball still throwable? ([rpo]) ──────────────────────────────────────
+//
+// An RPO is a pass play right up until its read window closes; after that the ball is in the back's
+// hands and there is nothing left to throw. Every throw-shaped action asks here rather than
+// comparing playType to 'pass' itself, so the validators and the simulation can never disagree
+// about whether the option is still live.
+function throwableError(state, what = 'throw') {
+  const t = state.playDesign?.playType
+  if (t === 'pass') return null
+  if (t === 'rpo') {
+    return rpoReadOpen(state) ? null : `Too late to ${what} — the RPO handed the ball off`
+  }
+  return `Can only ${what} on a pass play`
+}
 // The game state is never modified unless validation returns null.
 
 // ── Private helpers ───────────────────────────────────────────────────────────
@@ -33,8 +50,38 @@ function checkPhase(state, ...allowed) {
   return null
 }
 
+// ── Whose side is this seat on? ([role drift]) ────────────────────────────────
+//
+// A seat's role is DERIVED state: you are the offense exactly when you have the ball.
+// `socket.data.role` is a CACHE of that, refreshed by notifyRoleSwap on every possession change,
+// and every bug in this area has been the cache going stale:
+//
+//   • a reconnect used to hand back the role from kickoff, so a player who had since lost the ball
+//     came back on the wrong side and had every action refused — a soft-lock with no error;
+//   • a VIRTUAL seat (an AI opponent) is not in io's socket registry at all, so notifyRoleSwap
+//     cannot reach it to refresh anything.
+//
+// Deriving it here takes the cache out of the decision path: the validators ask the game, and the
+// game always knows. `socket.data.role` is still maintained, because the client emits read it, but
+// nothing is RULED ON by it any more.
+function slotOf(socket, state) {
+  const room = getRoom(state.roomId)
+  if (!room) return null
+  const i = room.players.indexOf(socket.id)
+  return i === -1 ? null : i
+}
+
+export function roleOf(socket) {
+  const state = resolveState(socket)
+  // No game yet (lobby, team selection) — there is no ball to have, so the assigned role stands.
+  if (!state) return socket.data?.role ?? null
+  const slot = slotOf(socket, state)
+  if (slot == null) return socket.data?.role ?? null
+  return state.possession === slot ? 'offense' : 'defense'
+}
+
 function checkRole(socket, expected) {
-  if (socket.data?.role !== expected) {
+  if (roleOf(socket) !== expected) {
     return `Only the ${expected} team can do this`
   }
   return null
@@ -69,14 +116,21 @@ export function validatePlacePlayer(socket, payload) {
   if (!state) return 'No active game found for this room'
 
   const { id, x, y, label, team } = payload ?? {}
-  const expectedTeam = socket.data?.role === 'offense' ? 'o' : 'd'
-
-  const isDefense = socket.data?.role === 'defense'
+  const role = roleOf(socket)
+  const expectedTeam = role === 'offense' ? 'o' : 'd'
+  const isDefense = role === 'defense'
   return first(
     isDefense ? checkPhase(state, PHASE.PRE_SNAP, PHASE.COUNTDOWN) : checkPhase(state, PHASE.PRE_SNAP),
     checkString(id, 'id'),
     checkNumber(x, 'x', 0, FIELD.WIDTH),
-    checkNumber(y, 'y', 0, FIELD.LENGTH),
+    // ⚠️ `y` here is OFFENSE-RELATIVE (0 = the offense's own goal line, 100 = the one they are
+    // attacking), so the legal range runs from −10 to 110 — the end zones are on the field. The
+    // old 0..LENGTH bound rejected any placement INSIDE THE OFFENSE'S OWN END ZONE, which is
+    // exactly where receivers go when you are backed up on your own 5. The client has always
+    // allowed it (getPositionYBounds: "End zones are fair game"), so the two disagreed and the
+    // server silently refused the drag. Same fix, and the same reason, as the one already applied
+    // to zoneCenterY below.
+    checkNumber(y, 'y', -FIELD.END_ZONE_DEPTH, FIELD.PLAY_LENGTH + FIELD.END_ZONE_DEPTH),
     checkString(label, 'label'),
     team !== expectedTeam ? `team must be "${expectedTeam}" for your role` : null,
   )
@@ -88,14 +142,15 @@ export function validateRemovePlayer(socket, id) {
   const state = resolveState(socket)
   if (!state) return 'No active game found for this room'
 
-  const isDefense = socket.data?.role === 'defense'
+  const role = roleOf(socket)
+  const isDefense = role === 'defense'
   const baseErr = first(
     isDefense ? checkPhase(state, PHASE.PRE_SNAP, PHASE.COUNTDOWN) : checkPhase(state, PHASE.PRE_SNAP),
     checkString(id, 'id'),
   )
   if (baseErr) return baseErr
 
-  const myMap = socket.data?.role === 'offense' ? state.offensePlayers : state.defensePlayers
+  const myMap = role === 'offense' ? state.offensePlayers : state.defensePlayers
   if (!myMap.has(id)) return 'Player not found or does not belong to your team'
 
   return null
@@ -161,7 +216,10 @@ export function validateSetOffense(socket, payload) {
   if (playSerial != null && playSerial !== (state.playSerial ?? 0)) {
     return 'The play changed before your formation arrived — set again'
   }
-  if (playType !== 'run' && playType !== 'pass') return 'playType must be "run" or "pass"'
+  // [rpo] A third option alongside run and pass: a pass that becomes a run if nobody throws.
+  if (playType !== 'run' && playType !== 'pass' && playType !== 'rpo') {
+    return 'playType must be "run", "pass" or "rpo"'
+  }
 
   const angleErr = checkNumber(runAngle, 'runAngle', -60, 60)
   if (angleErr) return angleErr
@@ -292,7 +350,8 @@ export function validateThrowToReceiver(socket, receiverId) {
   if (baseErr) return baseErr
 
   // Throws only happen on a pass play, and only to an eligible receiver on the field.
-  if (state.playDesign?.playType !== 'pass') return 'Can only throw on a pass play'
+  const throwErr = throwableError(state)
+  if (throwErr) return throwErr
 
 
   // [manual] Throws are legal ONLY while the play is frozen with the GO button up. Reading the field
@@ -334,7 +393,8 @@ export function validateThrowAtDefender(socket, defenderId) {
     return 'Release GO to stop the play before throwing'
   }
 
-  if (state.playDesign?.playType !== 'pass') return 'Can only throw on a pass play'
+  const atDefErr = throwableError(state)
+  if (atDefErr) return atDefErr
   if (state.sackEnqueued) return 'Cannot throw — the QB was sacked'
   if (state.qbScrambling) return 'Cannot throw after committing to a scramble'
   if (!state.defensePlayers.get(defenderId)) return 'Defender not found'
@@ -354,7 +414,8 @@ export function validateScramble(socket) {
   )
   if (baseErr) return baseErr
 
-  if (state.playDesign?.playType !== 'pass') return 'Can only scramble on a pass play'
+  const scrambleErr = throwableError(state, 'scramble')
+  if (scrambleErr) return scrambleErr
   if (state.qbScrambling)      return 'Already scrambling'
   if (state.targetReceiverId)  return 'Cannot scramble after the ball is thrown'
 
@@ -385,7 +446,8 @@ export function validateThrowaway(socket) {
     return 'Release GO to stop the play before throwing'
   }
 
-  if (state.playDesign?.playType !== 'pass') return 'Can only throw the ball away on a pass play'
+  const awayErr = throwableError(state, 'throw the ball away')
+  if (awayErr) return awayErr
   if (state.sackEnqueued)     return 'Cannot throw the ball away — the QB was sacked'
   if (state.qbScrambling)     return 'Cannot throw the ball away while scrambling'
   if (state.targetReceiverId) return 'The ball has already been thrown'

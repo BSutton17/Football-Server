@@ -17,6 +17,7 @@
 // switch) is built to take RB/DB abilities later without reshaping anything.
 
 import { OPENNESS_OPEN, OPENNESS_RED } from '../utils/passOutcome.js'
+import { rngOf } from '../utils/rng.js'
 
 export const XF = {
   // QB
@@ -535,10 +536,10 @@ export function keepsSpeedOnBreak(state, carrier) {
 }
 
 // Shake It Off: a QB with the ACTIVE ability has a 50% chance to escape a would-be sack.
-export function shakeOffSack(state, qb, rng = Math.random) {
+export function shakeOffSack(state, qb, rng = null) {
   const r = getRecord(state, qb, false)
   if (!r || !r.active || r.ability !== XF.SHAKE_IT_OFF) return false
-  return rng() < SHAKE_OFF_CHANCE
+  return rngOf(state, rng)() < SHAKE_OFF_CHANCE
 }
 
 // Receiver-side window reclassification from an active WR ability — applied to the raw openness

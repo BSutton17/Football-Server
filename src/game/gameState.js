@@ -1,4 +1,5 @@
 import { RULES, FIELD, HASH, FIELD_CENTER_X, GAME_MODE, DIFFICULTY } from '../constants.js'
+import { makeRng } from './utils/rng.js'
 import { PHASE } from './stateMachine.js'
 
 // ── Coordinate system ────────────────────────────────────────────────────────
@@ -37,9 +38,17 @@ const gameStates = new Map()
 
 // [manual] `mode` / `difficulty` come from the room (fixed by its creator) and are constant for the
 // whole game. They default to the original automatic/easy behaviour when not supplied.
-export function initGame(roomId, offenseSlot, { mode, difficulty, quarterSeconds, defenseSeesOpenness } = {}) {
+export function initGame(roomId, offenseSlot, { mode, difficulty, quarterSeconds, defenseSeesOpenness, seed = null } = {}) {
   const state = {
     roomId,
+
+    // [determinism] Every random decision in the sim reaches its randomness through rngOf(state),
+    // so seeding a game is this one assignment. Ordinary play passes no seed and keeps Math.random,
+    // which is what production has always done. A seeded game is replayable tick for tick, which is
+    // what makes an AI's fitness score mean anything: the same call in the same situation has to
+    // produce the same play, or you are measuring luck.
+    rng: seed == null ? null : makeRng(seed),
+    seed,
 
     // ── Game mode ([manual]) ─────────────────────────────────────────────────
     mode:       mode === GAME_MODE.MANUAL ? GAME_MODE.MANUAL : GAME_MODE.AUTOMATIC,
@@ -292,6 +301,15 @@ export function resetPlay(state) {
   state.defenseCoverage  = new Map()
   state.playClock        = 25
   state.playClockRunning = true
+
+  // [offline] "The defense is ready" is a declaration about THIS play, not about the game. Leaving
+  // it set meant the Set Defense button worked exactly once: every later press was refused, and
+  // every later countdown was silently the short 3-second one, so the "Offense is set…" banner
+  // flashed past too quickly to read. Reset here, at the one place a new play begins.
+  if (state.solo) {
+    state.solo.defenseSet = false
+    state.solo.countdown  = null
+  }
 }
 
 // Advances down and distance after a play ends.
