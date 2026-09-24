@@ -19,6 +19,7 @@ import { createRoom, joinRoom, getRoom, leaveRoomBySlot } from '../game/roomMana
 import { initGame, getGame, deleteGame, resetPlay, getLosY } from '../game/gameState.js'
 import { beginTeamSelect, clearTeamSelect } from '../game/teamSelect.js'
 import { serializeGameState } from '../game/serialization.js'
+import { callOffense, chooseRunAngle } from '../ai/offense.js'
 import { PHASE, transition } from '../game/stateMachine.js'
 import { stopGameLoop } from '../game/simulation.js'
 import { makeRng } from '../game/utils/rng.js'
@@ -182,6 +183,23 @@ export function runPlay(ctx, situation) {
   // Over a real network both clients get the play boundary before either can act, so this is an
   // artifact of delivering in-process rather than a bug in the AI. Telling the defense first
   // reproduces the real ordering.
+  // [curriculum] A situation may DEMAND a run. Applied here rather than inside any one brain so it
+  // binds the heuristic and every trained offense identically — and so the baseline measures par
+  // against the same forcing the genomes face.
+  if (situation.forcePlayType) {
+    const off = seats[offenseSlot].onEventHandler ?? ctx.brains[offenseSlot]
+    if (off) {
+      const inner = off.overrideOffensiveCall
+      off.overrideOffensiveCall = (k, rng, ballX) => {
+        const call = inner ? inner(k, rng, ballX) : callOffense(k, rng, ballX)
+        if (situation.forcePlayType !== 'run') return { ...call, playType: situation.forcePlayType }
+        // A run needs a lane; a call that was going to be a pass carries no angle.
+        const lane = chooseRunAngle(k, ballX, rng)
+        return { ...call, playType: 'run', conceptId: null, conceptName: null, runAngle: lane.angle }
+      }
+    }
+  }
+
   io.clear()
   seats[defenseSlot].emit('game_state', serializeGameState(state, defenseSlot))
   seats[offenseSlot].emit('game_state', serializeGameState(state, offenseSlot))
@@ -211,6 +229,10 @@ export function runPlay(ctx, situation) {
   // reports a formation bug on every single play.
   problems.push(...inspectFormation(state))
 
+  // [spacing] How bunched the coverage is at the snap. Measured here because alignment is the one
+  // thing the pre-snap brain actually controls; where defenders end up later is the engine's doing.
+  const crowded = countCrowdedDefenders(state)
+
   const ticks = stepUntil(ctx.roomId, io, s => s.phase !== PHASE.LIVE, { maxTicks: MAX_PLAY_TICKS })
   const after = getGame(ctx.roomId)
 
@@ -230,12 +252,38 @@ export function runPlay(ctx, situation) {
     ticks,
     turnover,
     ...classify(io, ctx, offenseSlot, yards),
+    crowded,
     ok: problems.length === 0,
     problems,
     startYardLine,
     offenseSlot,
     defenseSlot,
   }
+}
+
+// ── Bunched coverage ([spacing]) ─────────────────────────────────────────────
+//
+// Pairs of COVERAGE defenders standing on top of each other at the snap. Two men occupying one
+// patch of grass cover one patch of grass, and the field they left is the field the offense throws
+// into — so this is a real defensive failing that yardage alone punishes only slowly and noisily.
+//
+// ⚠️ THE FOUR DOWN LINEMEN ARE EXCLUDED, and not as a convenience. They are auto-placed at fixed
+// spots exactly 2.0 yards apart (see autoDefense in ai/controller.js), so any threshold at or above
+// that flags the standard front on every single snap. They are also not the brain's decision, and
+// penalising a genome for something it did not choose teaches it nothing.
+const CROWD_DISTANCE = 2.2      // yards; closer than this and two defenders are effectively one
+
+export function countCrowdedDefenders(state) {
+  const cover = [...state.defensePlayers.values()].filter(d => !String(d.id).startsWith('auto_dl'))
+  let pairs = 0
+  for (let i = 0; i < cover.length; i++) {
+    for (let j = i + 1; j < cover.length; j++) {
+      const dx = cover[i].x - cover[j].x
+      const dy = cover[i].y - cover[j].y
+      if (dx * dx + dy * dy < CROWD_DISTANCE * CROWD_DISTANCE) pairs++
+    }
+  }
+  return pairs
 }
 
 // ⚠️ THE ENGINE HAS NO `pass_complete`, `sack` OR `interception` EVENT. Every scrimmage outcome

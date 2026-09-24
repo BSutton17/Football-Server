@@ -107,6 +107,17 @@ export function buildSlate({ size = 40, generation = 0, seed = 12345 } = {}) {
       score: gs.score,
       label: gs.label,
       possession: 0,
+      // ⚠️ SOME DOWNS ARE RUNS, WHETHER THE OFFENSE LIKES IT OR NOT.
+      //
+      // The slate used to leave play type entirely to the offense, and every trained offense
+      // converged on passing 100% of the time (the heuristic runs 13%). So a defense trained
+      // against a pool of them saw a run on roughly 3% of snaps and never learned to stop one —
+      // you could run the ball on it at will, which is exactly what playing it revealed.
+      //
+      // This is a curriculum guarantee, not a hint: a fixed share of the slate is a designed run,
+      // so the defense must answer both. Cycled rather than randomly drawn so every slate carries
+      // the same mix, and par is measured on the identical forcing.
+      forcePlayType: (i % 3 === 2) ? 'run' : null,
       seed: (rng() * 0xffffffff) >>> 0,
     })
   }

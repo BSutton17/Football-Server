@@ -104,6 +104,8 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     self.looks = 0
     self.liveFor = 0     // a fresh moment to set, chosen next time the offense thinks
     self.forceSet = false
+    self.alignedAgainst = null   // [twitch] the opponent formation this defense last answered
+    self.placedAt = new Map()    // …and where each defender was actually put
   }
 
   function say(...args) { if (log) console.log(`[ai:${slot}]`, ...args) }
@@ -272,6 +274,10 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     }
     if (warnings.length && log) say('warnings:', warnings.join('; '))
 
+    // What this alignment answered, so a later drag can tell whether anything really moved.
+    self.alignedAgainst = new Map(receivers.map(r => [r.id, { x: r.x, y: r.y }]))
+    self.placedAt ??= new Map()
+
     const byId = new Map(receivers.map(r => [r.id, r]))
     for (const [id, a] of assignments) {
       const player = onField.find(p => p.id === id)
@@ -283,10 +289,17 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
       const spot = slop(nudged)
       const placed = clampDefender(player.position, spot, losY)
 
-      socket.fire('place_player', {
-        id, x: placed.x, y: placed.y, label: player.position, team: 'd',
-        ratings: player.ratings, xFactor: player.xFactor,
-      })
+      // ⚠️ Only send a placement that actually MOVES him. Re-sending the same spot is what the
+      // player sees as the defense twitching: every re-align rebroadcast eleven positions, and the
+      // client redrew them all even when nothing had changed.
+      const was = self.placedAt.get(id)
+      if (!was || Math.abs(was.x - placed.x) > 0.05 || Math.abs(was.y - placed.y) > 0.05) {
+        self.placedAt.set(id, { x: placed.x, y: placed.y })
+        socket.fire('place_player', {
+          id, x: placed.x, y: placed.y, label: player.position, team: 'd',
+          ratings: player.ratings, xFactor: player.xFactor,
+        })
+      }
 
       // blitz and spy are coverage TYPES in this engine, not placements — they still go through
       // assign_coverage, just without a target or a landmark.
@@ -358,12 +371,32 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   // would be both expensive and twitchy, so the CALL is fixed and only the alignment follows: man
   // defenders travel with their receiver, zone defenders hold their landmark. That is also what a
   // real defense does — motion does not change the coverage, it changes who is standing where.
+  // How far a receiver must actually move before the defense bothers to re-align.
+  //
+  // ⚠️ NOT a timer. Dragging a receiver fires a `place_player` on every pointer move, and the AI
+  // re-aligned all eleven defenders on each one — which on screen is the whole defense twitching
+  // continuously while you drag. The obvious fix is to debounce, and it would be WRONG: the
+  // training harness drives plays synchronously, so a deferred realignment would land after the
+  // snap and the defense would line up against nothing. This stays synchronous and simply ignores
+  // movement too small to change anybody's job.
+  const MOTION_THRESHOLD = 1.5    // yards
+
   function onOpponentMoved(payload) {
     // Our own placements echo back through the room broadcast. Ignore them: reacting to yourself
     // is how the alignment loop became infinite.
     const mine = isOffense(k) ? 'o' : 'd'
     if (payload?.team === mine) return
     if (!isDefense(k)) return
+
+    const last = self.alignedAgainst
+    if (last) {
+      const receivers = oppSkill(k)
+      const changed = receivers.length !== last.size || receivers.some(r => {
+        const was = last.get(r.id)
+        return !was || Math.hypot(r.x - was.x, r.y - was.y) > MOTION_THRESHOLD
+      })
+      if (!changed) return
+    }
     playDefense()
   }
 

@@ -164,22 +164,30 @@ export function registerGameHandlers(io, socket) {
     if (roleOf(socket) !== 'defense') return
     if (state.phase !== PHASE.PRE_SNAP && state.phase !== PHASE.COUNTDOWN) return
 
-    // ⚠️ Ordering decides the length. In COUNTDOWN the offense already locked and its window — the
-    // ordinary 5 seconds — is running; pressing Set now is the defense volunteering to cut short
-    // the time it was given, which is not what the button is for. So it still registers (the button
-    // reads "Defense Set") but the clock is left exactly where it is. Announcing a 3 here was the
-    // bug: the countdown on screen kept running from 5 while the server claimed 3.
+    // Ordering decides what pressing Set means.
+    //
+    //   PRE-SNAP  — the defense got there first. The offense's countdown will be the short one.
+    //   COUNTDOWN — the offense already locked and its window is running. Pressing Set now means
+    //               "I am ready, snap it", so the window is CUT SHORT rather than ignored.
+    //
+    // ⚠️ It used to be ignored during COUNTDOWN, and the button was hidden outside pre-snap to
+    // match. That made it useless on most downs: the play clock is 45s on the first snap of a drive
+    // but 30s after, and the computer sets with 20-5s left — so from the second down onward the
+    // button could vanish ten seconds in, before the player had finished aligning. "The set defense
+    // button does not work on any down after the first play."
     const offenseAlreadySet = state.phase === PHASE.COUNTDOWN
     if (!markDefenseSet(state, { offenseAlreadySet })) return
 
-    const countdown = offenseAlreadySet
-      ? (state.solo.countdown ?? OFFENSE_SET_COUNTDOWN)
-      : DEFENSE_SET_COUNTDOWN
-    io.to(socket.data.roomId).emit('defense_set', { countdown })
-    console.log(
-      `[solo] ${socket.data.roomId} defense set ` +
-      (offenseAlreadySet ? `during countdown — ${countdown}s window already running` : `early — ${countdown}s countdown`)
-    )
+    if (offenseAlreadySet) {
+      // Zero unlocks the hike for a human offense and is what the AI's brain waits for to snap.
+      io.to(socket.data.roomId).emit('defense_set', { countdown: 0 })
+      io.to(socket.data.roomId).emit('hike_countdown', { count: 0 })
+      console.log(`[solo] ${socket.data.roomId} defense set during countdown — snapping now`)
+      return
+    }
+
+    io.to(socket.data.roomId).emit('defense_set', { countdown: DEFENSE_SET_COUNTDOWN })
+    console.log(`[solo] ${socket.data.roomId} defense set early — ${DEFENSE_SET_COUNTDOWN}s countdown`)
   })
 
   // ── Timeout ([69][70]) ─────────────────────────────────────────────────────

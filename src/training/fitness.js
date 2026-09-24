@@ -18,7 +18,7 @@
 //     coverage that concedes everything underneath in exchange for the occasional pick.
 //   • The result is CLAMPED. One freak 80-yard play should not swamp thirty-nine sound decisions.
 
-export const FITNESS_VERSION = 'v1'
+export const FITNESS_VERSION = 'v2'   // v2 adds the bunched-coverage penalty
 
 // Yards better than par, clamped to this, so a single outlier cannot dominate a slate.
 const YARDS_CLAMP = 15
@@ -35,6 +35,22 @@ const TOUCHDOWN_PENALTY = 10
 // A sack is a defensive win the yardage already partly captures; a small extra so pressure is not
 // invisible.
 const SACK_BONUS = 3
+
+// ── Bunched coverage ([spacing]) ─────────────────────────────────────────────
+//
+// Yards charged per pair of coverage defenders standing on top of each other at the snap. Two men
+// on one patch of grass cover one patch of grass, and the field they left is where the ball goes.
+//
+// ⚠️ THIS IS SHAPING, AND SHAPING IS DANGEROUS, so it is deliberately small and capped. Yardage
+// already punishes bunched coverage — just slowly and noisily, through the completions it gives up
+// several plays later. This makes the lesson immediate without letting it become the objective: a
+// genome must not find it profitable to spread out badly rather than cover well.
+//
+// It is also not a blanket ban on proximity. Real defenses DO stack — bracketing a receiver,
+// doubling, goal-line — so the threshold sits at 2.2 yards, which is bodies overlapping rather than
+// two defenders working the same area.
+const CROWD_PENALTY = 1.2      // yards charged per overlapping pair
+const CROWD_CAP = 5            // …and never more than this in total, whatever the pile-up
 
 // Scores ONE play from the defense's point of view. Positive is good defense.
 // `side` flips the whole scale. Everything below is written from the DEFENSE's point of view —
@@ -58,9 +74,16 @@ export function scorePlay(play, par = 0, { side = 'defense' } = {}) {
     turnover = Math.min(turnover, (other / (1 - TURNOVER_CAP)) * TURNOVER_CAP)
   }
 
+  // [spacing] Charged to the DEFENSE only — it is the defense's alignment. The offense is scored on
+  // the same play and must not be rewarded for the defense bunching, or the penalty would quietly
+  // become an offensive bonus and both sides would be chasing the same artefact.
+  const crowding = side === 'defense'
+    ? -Math.min(CROWD_CAP, (play.crowded ?? 0) * CROWD_PENALTY)
+    : 0
+
   return {
-    score: yardsVsPar + turnover + touchdown + sack,
-    terms: { yardsVsPar, turnover, touchdown, sack },
+    score: yardsVsPar + turnover + touchdown + sack + crowding,
+    terms: { yardsVsPar, turnover, touchdown, sack, crowding },
     invalid: false,
   }
 }
