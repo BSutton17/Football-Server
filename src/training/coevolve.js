@@ -114,23 +114,48 @@ export function shapes() {
 export function runJob(job) {
   const offScores = []
   const defScores = []          // [{ index, score }]
+  let attempted = 0, broken = 0
+
+  // ⚠️ A BROKEN SERIES IS EXCLUDED, NOT SCORED ZERO.
+  //
+  // Scoring it zero looks neutral and is not. Series scores are signed, so for whichever side is
+  // currently losing — a defense conceding drives scores negative — a zero is an IMPROVEMENT, and
+  // breaking the harness becomes the cheapest way to raise a fitness. An earlier fitness function
+  // had exactly this hole and made an unrunnable play strictly better than a play that conceded a
+  // single yard.
+  //
+  // Dropping it from the mean makes breaking worth nothing at all, and a genome that breaks most of
+  // its series ends up with no scores and takes the floor (see collectFitness).
+  const take = (r, into) => {
+    attempted++
+    if (!r.ok) { broken++; return }
+    into(r.score)
+  }
 
   job.foes.forEach((foe, k) => {
-    const { score } = playPairing(job.offGenome, foe.genome, job.situations[k])
-    offScores.push(score)
-    defScores.push({ index: foe.index, score: -score })
+    take(playPairing(job.offGenome, foe.genome, job.situations[k]), (score) => {
+      offScores.push(score)
+      defScores.push({ index: foe.index, score: -score })
+    })
   })
 
   // Anchors against the heuristic — `null` on either side means the hand-written AI plays it.
   for (let a = 0; a < job.anchors; a++) {
     const situation = job.situations[job.foes.length + a]
-    offScores.push(playPairing(job.offGenome, null, situation).score)
-    const asDefense = playPairing(null, job.anchorDefGenome, situation).score
-    defScores.push({ index: job.anchorDefIndex, score: -asDefense })
+    take(playPairing(job.offGenome, null, situation), (score) => offScores.push(score))
+    take(playPairing(null, job.anchorDefGenome, situation), (score) => {
+      defScores.push({ index: job.anchorDefIndex, score: -score })
+    })
   }
 
-  const mean = (a) => a.reduce((x, y) => x + y, 0) / (a.length || 1)
-  return { offIndex: job.offIndex, offScore: mean(offScores), defScores }
+  const mean = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null
+  return {
+    offIndex: job.offIndex,
+    offScore: mean(offScores),
+    defScores,
+    attempted,
+    broken,
+  }
 }
 
 // Turns raw job results into the two fitness arrays.
@@ -139,7 +164,7 @@ export function collectFitness(results, n) {
   const def = new Array(n).fill(null).map(() => [])
   for (const r of results) {
     if (!r) continue
-    off[r.offIndex].push(r.offScore)
+    if (r.offScore != null) off[r.offIndex].push(r.offScore)
     for (const d of r.defScores) def[d.index].push(d.score)
   }
   const mean = (a) => a.length ? a.reduce((x, y) => x + y, 0) / a.length : -FITNESS_OFFSET

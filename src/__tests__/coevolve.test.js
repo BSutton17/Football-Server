@@ -126,6 +126,18 @@ describe('turning results into fitness', () => {
     expect(fit.defense[0]).toBeGreaterThanOrEqual(0)
   })
 
+  it('EXCLUDES a broken series rather than scoring it zero', () => {
+    // Scoring zero looks neutral and is not. Series scores are signed, so for whichever side is
+    // losing — a defense conceding drives scores negative — zero is an IMPROVEMENT, and breaking
+    // the harness becomes the cheapest way to raise a fitness. An earlier fitness had exactly this
+    // hole and made an unrunnable play better than one that conceded a yard.
+    const conceded = collectFitness([{ offIndex: 0, offScore: null, defScores: [{ index: 0, score: -12 }] }], 1)
+    const nothing = collectFitness([{ offIndex: 0, offScore: null, defScores: [] }], 1)
+    // A defense that broke everything gets the FLOOR, not a better number than one that played and
+    // conceded.
+    expect(nothing.defense[0]).toBeLessThanOrEqual(conceded.defense[0])
+  })
+
   it('gives an unscored genome the floor rather than a free pass', () => {
     const fit = collectFitness([], 3)
     expect(fit.offense.every(v => v === 0)).toBe(true)
