@@ -269,15 +269,43 @@ describe('the ball is on a hash, not in the middle', () => {
     const HASH = 13
     relocateBall(HASH)
     // Give it an offense to line up against on the new hash.
-    for (const [id, label, x] of [['o_wr1', 'WR', HASH - 15], ['o_wr2', 'WR', HASH + 15], ['o_te1', 'TE', HASH + 6], ['o_rb1', 'RB', HASH]]) {
+    // ⚠️ SPLIT TOWARD THE FIELD. `HASH - 15` is x = -2 on this hash, which place_player refuses, so
+    // the wideout the defense was supposed to be lining up against never reached the field at all.
+    for (const [id, label, x] of [['o_wr1', 'WR', HASH - 8], ['o_wr2', 'WR', HASH + 20], ['o_te1', 'TE', HASH + 6], ['o_rb1', 'RB', HASH]]) {
       g.you.fire('place_player', { id, x, y: getGame(ROOM).yardLine, label, team: 'o' })
     }
 
+    // ⚠️ THE FRONT IS NO LONGER ALWAYS FOUR. An authored 3-4 or 3-3-5 fields three linemen and
+    // eight behind them; asserting four here was asserting that the hand-written shells were the
+    // only ones that existed. What must hold either way is that the front lines up ON THE BALL.
     const front = [...getGame(ROOM).defensePlayers.values()].filter(p => p.label === 'DL')
-    expect(front).toHaveLength(4)
+    expect(front.length).toBeGreaterThanOrEqual(3)
+    expect(front.length).toBeLessThanOrEqual(4)
     const centreOfFront = front.reduce((a, p) => a + p.x, 0) / front.length
     expect(Math.abs(centreOfFront - HASH)).toBeLessThan(1.5)
     expect(Math.abs(centreOfFront - MIDDLE)).toBeGreaterThan(10)
+  })
+
+  it('⚠️ PULLS A LINEMAN WHEN THE FRONT SHRINKS, instead of leaving him where he stood', () => {
+    // A four-man front going to a three-man one places DL1-3 and says nothing about DL4. Left on
+    // the field he still counts toward the eleven and still rushes, and after the ball moves he is
+    // standing at the OLD hash — which is how this was found: a front whose centre was four yards
+    // off the ball because a stranded lineman was dragging the average across the field.
+    const state = getGame(ROOM)
+    if (state.possession === 1) return
+
+    // The defense re-aligns when the OFFENSE moves, not when the ball does, so the ball is moved
+    // and then an offense is put down in front of it — which is what a real drive does too.
+    relocateBall(13)
+    for (const [id, label, x] of [['s_wr1', 'WR', 5], ['s_wr2', 'WR', 33], ['s_te1', 'TE', 19], ['s_rb1', 'RB', 13]]) {
+      g.you.fire('place_player', { id, x, y: getGame(ROOM).yardLine, label, team: 'o' })
+    }
+
+    const linemen = [...getGame(ROOM).defensePlayers.values()].filter(p => p.label === 'DL')
+    // Whatever the shell fields, every lineman on the field belongs to the CURRENT front: nobody is
+    // sitting more than a few yards from the ball.
+    for (const dl of linemen) expect(Math.abs(dl.x - 13)).toBeLessThan(6)
+    expect(getGame(ROOM).defensePlayers.size).toBe(11)
   })
 })
 

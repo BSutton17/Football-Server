@@ -374,9 +374,25 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     const frontSize = self.authoredCall
       ? (self.authoredCall.formation.spots ?? []).filter(sp => String(sp.slot).startsWith('DL')).length
       : 4
-    for (const dl of autoDefense(losY, ballX, frontSize)) {
-      socket.fire('place_player', dl)
+    const front = autoDefense(losY, ballX, frontSize)
+    for (const dl of front) socket.fire('place_player', dl)
+
+    // ⚠️ A SHRINKING FRONT LEAVES A LINEMAN BEHIND. Going from a four-man front to a three-man one
+    // places DL1-3 and says nothing about DL4 — who is still standing where the last shell put
+    // him, still counts toward the eleven, and still rushes. On a new hash he is visibly in the
+    // wrong place: the front's centre came out four yards off the ball.
+    const wanted = new Set(front.map(d => d.id))
+    for (const id of self.frontOnField ?? []) {
+      // ⚠️ WHICH LINEMEN ARE OUT THERE OUTLIVES THE PLAY, so this record has to as well. The first
+      // version of this guard asked `placedAt`, which is wiped at the start of every play — so by
+      // the time a four-man front shrank to three, the record of the fourth was already gone and
+      // the removal never fired at all. He stayed on the field, at the previous hash.
+      if (!wanted.has(id)) {
+        socket.fire('remove_player', id)   // the handler takes the id itself, not an object
+        self.placedAt.delete(id)
+      }
     }
+    self.frontOnField = [...wanted]
 
     // ⚠️ AN AUTHORED SHELL IS CHOSEN AFTER SEEING THE OFFENSE, which is why this sits inside
     // alignDefense rather than beside the offensive call: `receivers` is the whole input. The
