@@ -205,9 +205,15 @@ export function routeFor(play, slot, { mirror = false } = {}) {
 // table in Client/src/game/formation.ts both hard-code the same four linemen, and the comment
 // there says they must match. Authored DL spots have to feed BOTH or the two sides draw
 // different fronts.
-export const DEF_SLOT_POOL = { DL: 4, LB: 4, CB: 4, S: 3 }
-export const DEFENDERS = 11
-export const DL_COUNT = 4
+//
+// A defensive formation is the SEVEN coverage players. The four linemen are auto-placed and are
+// not authored, for the same reason the five offensive linemen and the quarterback are not:
+// formation.ts says it of the defensive line outright -- "always on the field and cannot be moved
+// by either player" -- and defense.js has always fielded COVERAGE_ON_FIELD = 7 on top of them.
+// They are DRAWN in the sandbox, because a formation you cannot see the front of is one you
+// cannot read, but they are not yours to move.
+export const DEF_SLOT_POOL = { LB: 4, CB: 4, S: 3 }
+export const COVERAGE_ON_FIELD = 7
 
 export const SHELL_KINDS = ['man', 'zone']
 export const JOBS = ['man', 'zone', 'rush', 'spy']
@@ -235,7 +241,9 @@ export function validateDefFormation(f) {
   if (!f.name || !String(f.name).trim()) err(errors, 'needs a name')
 
   const spots = Array.isArray(f.spots) ? f.spots : []
-  if (spots.length !== DEFENDERS) err(errors, `needs exactly ${DEFENDERS} defenders, got ${spots.length}`)
+  if (spots.length !== COVERAGE_ON_FIELD) {
+    err(errors, `needs exactly ${COVERAGE_ON_FIELD} coverage players, got ${spots.length} (the four linemen are auto-placed)`)
+  }
 
   const seen = new Set()
   const counts = {}
@@ -253,17 +261,12 @@ export function validateDefFormation(f) {
       err(errors, `${n} ${label}s exceeds the ${DEF_SLOT_POOL[label] ?? 0} a roster carries`)
     }
   }
-  // The engine builds exactly four linemen and the client draws the same four. A formation with a
-  // different number would put players on one screen that do not exist on the other.
-  if (spots.length === DEFENDERS && (counts.DL ?? 0) !== DL_COUNT) {
-    err(errors, `the front is ${DL_COUNT} linemen, got ${counts.DL ?? 0} -- a 3-4 front needs an engine change first`)
-  }
   return { ok: errors.length === 0, errors }
 }
 
 // Defensive personnel, DERIVED from who was placed. Three corners is nickel, four is dime.
 export function defPersonnelOf(formation) {
-  const out = { DL: 0, LB: 0, CB: 0, S: 0 }
+  const out = { LB: 0, CB: 0, S: 0 }
   for (const s of formation?.spots ?? []) {
     const label = slotLabel(s.slot)
     if (label in out) out[label]++
@@ -293,11 +296,9 @@ export function validateShell(s, formations) {
       if (a.target != null && !COVER_ROLES.includes(a.target)) {
         err(errors, `${slot} is manned on "${a.target}", which is not an alignment role`)
       }
-      if (slotLabel(slot) === 'DL') err(errors, `${slot} is a lineman and cannot be in man coverage`)
     } else if (a.job === 'zone') {
       covers++
       if (!ZONE_TYPES.includes(a.zone)) err(errors, `${slot} needs a zone type (${ZONE_TYPES.join(', ')})`)
-      if (slotLabel(slot) === 'DL') err(errors, `${slot} is a lineman and cannot drop into a zone`)
     }
   }
 

@@ -2,7 +2,7 @@ import { describe, it, expect } from '@jest/globals'
 import {
   validateFormation, validatePlay, layoutAuthored, personnelOf, routeFor, slotsFor, slotLabel,
   validateShell, shellOptions, validateDefFormation, defPersonnelOf, layoutDefense,
-  MAX_SKILL, SLOT_POOL, DEFENDERS, DL_COUNT,
+  MAX_SKILL, SLOT_POOL, COVERAGE_ON_FIELD,
 } from '../ai/playbook/authored.js'
 import { shadeWithLeverage, shadeFor } from '../ai/assignments.js'
 import { SHADE } from '../ai/playbook/coverages.js'
@@ -209,8 +209,6 @@ describe('⚠️ THE PROPERTY THE WHOLE DESIGN RESTS ON', () => {
 const nickel = {
   name: 'Nickel',
   spots: [
-    { slot: 'DL1', dx: -3.25, depth: 1 }, { slot: 'DL2', dx: -1.25, depth: 1 },
-    { slot: 'DL3', dx: 1.25, depth: 1 }, { slot: 'DL4', dx: 3.25, depth: 1 },
     { slot: 'LB1', dx: -4, depth: 5 }, { slot: 'LB2', dx: 4, depth: 5 },
     { slot: 'CB1', dx: -16, depth: 6 }, { slot: 'CB2', dx: 16, depth: 6 },
     { slot: 'CB3', dx: -8, depth: 5 },
@@ -238,34 +236,19 @@ describe('a defensive formation the sandbox would save', () => {
   it('DECLARES ITS PERSONNEL rather than storing it', () => {
     // Three corners is nickel, four is dime. That falls out of who was placed, and it is exactly
     // the signal the play-call solver conditions on, because personnel is public pre-snap.
-    expect(defPersonnelOf(nickel)).toEqual({ DL: 4, LB: 2, CB: 3, S: 2 })
+    expect(defPersonnelOf(nickel)).toEqual({ LB: 2, CB: 3, S: 2 })
   })
 
-  it('needs all eleven', () => {
-    expect(validateDefFormation({ ...nickel, spots: nickel.spots.slice(0, 9) }).errors.join(' '))
-      .toMatch(new RegExp(`exactly ${DEFENDERS} defenders`))
+  it('needs all seven coverage players', () => {
+    expect(validateDefFormation({ ...nickel, spots: nickel.spots.slice(0, 5) }).errors.join(' '))
+      .toMatch(new RegExp(`exactly ${COVERAGE_ON_FIELD} coverage players`))
   })
 
-  it('⚠️ holds the front to four, because two files hard-code the same four', () => {
-    // autoDefense in ai/controller.js and defenseAutoPlaced in Client/src/game/formation.ts both
-    // build the same four linemen. A formation with a different number would put players on one
-    // screen that do not exist on the other.
-    const threeFour = {
-      ...nickel,
-      spots: [...nickel.spots.filter(s => s.slot !== 'DL4'), { slot: 'LB3', dx: 0, depth: 5 }],
-    }
-    expect(threeFour.spots).toHaveLength(DEFENDERS)
-    expect(validateDefFormation(threeFour).errors.join(' '))
-      .toMatch(new RegExp(`front is ${DL_COUNT} linemen`))
-  })
-
-  it('refuses more at a position than a roster carries', () => {
-    const fiveCB = {
-      ...nickel,
-      spots: [...nickel.spots.filter(s => !['S1', 'S2'].includes(s.slot)),
-        { slot: 'CB4', dx: -12, depth: 8 }, { slot: 'S1', dx: 0, depth: 14 }],
-    }
-    expect(validateDefFormation(fiveCB).ok).toBe(true)   // 4 CB is exactly the pool
+  it('⚠️ does not let the four auto-placed linemen be authored', () => {
+    // formation.ts: the defensive line is "always on the field and cannot be moved by either
+    // player", exactly like the five offensive linemen and the quarterback.
+    const withLine = { ...nickel, spots: [...nickel.spots.slice(1), { slot: 'DL1', dx: -3, depth: 1 }] }
+    expect(validateDefFormation(withLine).errors.join(' ')).toMatch(/unknown slot "DL1"/)
   })
 })
 
@@ -276,13 +259,6 @@ describe('a defensive shell built on a formation', () => {
 
   it('refuses an unknown formation instead of guessing', () => {
     expect(validateShell({ ...cover3, formationId: 'nope' }, { nickel }).ok).toBe(false)
-  })
-
-  it('will not put a lineman in coverage', () => {
-    const silly = { ...cover3, assignments: { ...cover3.assignments, DL1: { job: 'man' } } }
-    expect(validateShell(silly, { nickel }).errors.join(' ')).toMatch(/lineman and cannot be in man/)
-    const sillier = { ...cover3, assignments: { ...cover3.assignments, DL2: { job: 'zone', zone: 'hook' } } }
-    expect(validateShell(sillier, { nickel }).errors.join(' ')).toMatch(/lineman and cannot drop/)
   })
 
   it('requires a zone to say which zone', () => {
