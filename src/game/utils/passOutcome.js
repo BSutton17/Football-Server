@@ -57,13 +57,18 @@ export function opennessTier(openness) {
 // completed 70% of them, and Jaxon Smith-Njigba / Sam Darnold 66.8%. At the current 45% those two
 // sit at 60.0% / 56.8%; dropping this to 0.35 would put them at 50.0% / 46.8% instead.
 //
+// ⚠️ THIS WAS SILENTLY REVERTED ONCE. The cut to 0.45 landed, and a later commit put the value
+// back to 0.55 while leaving every comment describing the cut in place — so the file documented
+// 45% and ran 55%, and the test pinning the balance target failed from then on. If these ever
+// disagree again, the comment is the intent and the number is the accident.
+//
 // This tier is the ONLY dial that moves the contested row on its own. The rating modifiers below are
 // tier-independent — they add the same amount to every tier — so `smothered` and `open` are
 // untouched by this change, and conversely no combination of rating dials could have moved
 // `covered` without dragging `smothered` along with it.
 export const TIER_ODDS = {
   open:      { catch: 0.95, int: 0.00 },
-  covered:   { catch: 0.55, int: 0.05 },
+  covered:   { catch: 0.45, int: 0.05 },
   smothered: { catch: 0.10, int: 0.20 },
 }
 
