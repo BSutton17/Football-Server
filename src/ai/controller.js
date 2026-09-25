@@ -14,6 +14,7 @@
 import { loadPlaybook } from '../playbook/store.js'
 import {
   hasAuthoredOffense, hasAuthoredDefense, callAuthoredOffense, buildAuthoredOffense,
+  callAuthoredDefense, buildAuthoredDefense,
 } from './playbook/runAuthored.js'
 import { createKnowledge, applyEvent, isOffense, isDefense, oppSkill } from './knowledge.js'
 import { callDefense, selectPlayers } from './defense.js'
@@ -125,6 +126,10 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   function resetPlay() {
     self.done = { personnel: false, formation: false, coverage: false, set: false, snapped: false }
     self.lastCall = null
+    // ⚠️ The authored shell is per PLAY. Left set, the defense would keep calling last down's
+    // coverage for the rest of the drive — and because alignDefense re-runs on every opponent
+    // placement, it would look like it was deciding afresh each time while never changing.
+    self.authoredCall = null
     self.players = []
     self.setAt = null
     self.manualFrozen = false
@@ -287,6 +292,35 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     try { alignDefense(receivers) } finally { aligning = false }
   }
 
+  // Put an authored shell on the grass. Deliberately the same two events the heuristic path
+  // fires — place_player and assign_coverage — so nothing downstream can tell them apart.
+  function placeAuthoredDefense(call, { losY, ballX, receivers }) {
+    const rows = buildAuthoredDefense(call, { losY, ballX, receivers, roster })
+    for (const d of rows) {
+      // ⚠️ Only a placement that actually MOVES him. Re-sending the same spot is what a player
+      // sees as the defense twitching: every re-align rebroadcast eleven positions and the client
+      // redrew them all even when nothing had changed.
+      const was = self.placedAt.get(d.id)
+      if (!was || Math.abs(was.x - d.x) > 0.05 || Math.abs(was.y - d.y) > 0.05) {
+        self.placedAt.set(d.id, { x: d.x, y: d.y })
+        socket.fire('place_player', {
+          id: d.id, x: d.x, y: d.y, label: d.label, team: 'd',
+          ratings: d.ratings, xFactor: d.xFactor,
+        })
+      }
+      socket.fire('assign_coverage', {
+        playerId: d.id,
+        type: d.coverage.type,
+        targetId: d.coverage.targetId ?? null,
+        zoneType: d.coverage.zoneType ?? null,
+        zoneCenterX: d.coverage.zoneCenterX ?? null,
+        zoneCenterY: d.coverage.zoneCenterY ?? null,
+        manCommit: d.coverage.manCommit ?? null,
+      })
+    }
+    self.done.coverage = true
+  }
+
   function alignDefense(receivers) {
     const losY = k.yardLine
     const ballX = k.ballX            // the front lines up on the hash, across from the offense
@@ -297,6 +331,24 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // play never ends. The end-to-end test found this by hanging for forty seconds of game time.
     for (const dl of autoDefense(losY, ballX)) {
       socket.fire('place_player', dl)
+    }
+
+    // ⚠️ AN AUTHORED SHELL IS CHOSEN AFTER SEEING THE OFFENSE, which is why this sits inside
+    // alignDefense rather than beside the offensive call: `receivers` is the whole input. The
+    // hand-written shells remain the fallback for an empty playbook, and an override still wins
+    // over both so a shell can be held fixed while it is measured.
+    const authoredD = self.overrideDefensiveCall ? null : authoredBook()
+    if (authoredD && hasAuthoredDefense(authoredD)) {
+      if (!self.authoredCall) {
+        self.authoredCall = callAuthoredDefense(authoredD, k, { ballX, receivers, rng })
+        if (self.authoredCall) {
+          say(`${self.authoredCall.shell.name} — ${self.authoredCall.formation.name} vs ${self.authoredCall.look.id}`)
+        }
+      }
+      if (self.authoredCall) {
+        placeAuthoredDefense(self.authoredCall, { losY, ballX, receivers })
+        return
+      }
     }
 
     if (!self.done.personnel) {
