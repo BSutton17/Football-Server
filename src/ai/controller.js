@@ -11,9 +11,13 @@
 // plays. Once the ball is snapped the engine takes over and the AI's only remaining job on offense
 // is deciding when to throw.
 
+import { loadPlaybook } from '../playbook/store.js'
+import {
+  hasAuthoredOffense, hasAuthoredDefense, callAuthoredOffense, buildAuthoredOffense,
+} from './playbook/runAuthored.js'
 import { createKnowledge, applyEvent, isOffense, isDefense, oppSkill } from './knowledge.js'
 import { callDefense, selectPlayers } from './defense.js'
-import { callOffense, buildFormation } from './offense.js'
+import { callOffense, buildFormation, chooseRunAngle } from './offense.js'
 import { expandShell, alignmentFor } from './assignments.js'
 import { legalSpot } from './playbook/formations.js'
 import { specialTeamsAction, fourthDownChoice } from './specialTeams.js'
@@ -43,6 +47,19 @@ const DL_SPACING = {
   3: [-3.0, 0, 3.0],
   4: [-3.25, -1.25, 1.25, 3.25],
 }
+
+// ⚠️ READ ONCE, NOT EVERY SNAP. The playbook is a file on disk and placeOffense runs on every
+// play; re-reading and re-parsing 126 plays each time would be pure waste. It is reloaded only
+// when the sandbox has written to it, which a dev session does and a game never does.
+let cachedBook = null
+function authoredBook() {
+  if (cachedBook === null) {
+    try { cachedBook = loadPlaybook() } catch { cachedBook = { formations: {}, plays: {}, defFormations: {}, shells: {} } }
+  }
+  return cachedBook
+}
+
+export function reloadAuthoredPlaybook() { cachedBook = null }
 
 export function createController({ socket, slot, roster, seed = 1, log = false }) {
   const k = createKnowledge(slot)
@@ -153,11 +170,37 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // [training] The offensive mirror of overrideDefensiveCall. Same contract: it replaces the CALL
     // and inherits the formation build, the legality clamps and the hash, so an overridden call is
     // as legal as a heuristic one. Used to hold a concept fixed while measuring what it is worth.
-    const call = self.overrideOffensiveCall
-      ? self.overrideOffensiveCall(k, rng, ballX)
-      : callOffense(k, rng, ballX)
+    // ⚠️ AN AUTHORED PLAY IS PREFERRED WHEN THERE IS ONE, and the hand-written concepts remain the
+    // fallback. They are not dead code: a fresh install has an empty playbook, and an AI that
+    // could not line up until somebody had drawn a hundred plays would be unusable. An override
+    // still wins over both — that is how a play is held fixed while it is being measured.
+    const authored = self.overrideOffensiveCall ? null : authoredBook()
+    const authoredCall = authored && hasAuthoredOffense(authored)
+      ? callAuthoredOffense(authored, k, { ballX, rng })
+      : null
+
+    let call
+    if (authoredCall) {
+      call = {
+        playType: authoredCall.playType,
+        formationName: authoredCall.formation.name,
+        conceptName: authoredCall.play.name,
+        why: 'authored',
+        // ⚠️ ALWAYS A NUMBER, even on a pass. `set_offense` validates runAngle unconditionally, so
+        // the hand-written path has always supplied one; a null here is refused outright and the
+        // offense simply never sets. An authored RUN stores no angle by design — the lane is read
+        // off the defensive front right here, which is what a real back is reading.
+        runAngle: chooseRunAngle(k, ballX, rng).angle,
+        authored: authoredCall,
+      }
+      self.players = buildAuthoredOffense(authoredCall, { losY, ballX, roster })
+    } else {
+      call = self.overrideOffensiveCall
+        ? self.overrideOffensiveCall(k, rng, ballX)
+        : callOffense(k, rng, ballX)
+      self.players = buildFormation(call, k, { losY, ballX, roster, rng })
+    }
     self.lastCall = call
-    self.players = buildFormation(call, k, { losY, ballX, roster, rng })
 
     // [deep] The offensive mirror of adjustAssignments. The concept has already handed every
     // receiver a route from the list; this lets a brain move him and lengthen or shorten his stem
@@ -173,6 +216,8 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
       socket.fire('place_player', {
         id: p.id, x: p.x, y: p.y, label: p.label, team: 'o',
         ratings: p.ratings, xFactor: p.xFactor,
+        // An authored play carries the shape somebody drew rather than a route name.
+        ...(p.drawnRoute ? { drawnRoute: p.drawnRoute } : {}),
       })
     }
     self.done.formation = true
@@ -198,6 +243,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
           id: p.id, x: p.x, y: p.y, label: p.label, team: 'o',
           route: p.route, routeDepthScale: p.routeDepthScale ?? 1,
           ratings: p.ratings, xFactor: p.xFactor,
+          ...(p.drawnRoute ? { drawnRoute: p.drawnRoute } : {}),
         })),
         ...autoOffense(losY, ballX),
       ],
