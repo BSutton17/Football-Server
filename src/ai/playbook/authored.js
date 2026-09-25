@@ -73,7 +73,7 @@ export function validateFormation(f) {
     counts[label] = (counts[label] ?? 0) + 1
     if (!Number.isFinite(s.dx)) err(errors, `${s.slot} dx must be a number`)
     if (!Number.isFinite(s.depth)) err(errors, `${s.slot} depth must be a number`)
-    else if (s.depth < 0) err(errors, `${s.slot} depth is yards BEHIND the line and cannot be negative`)
+    checkSpot(errors, s, 'offense')
   }
   for (const [label, n] of Object.entries(counts)) {
     if (n > (SLOT_POOL[label] ?? 0)) err(errors, `${n} ${label}s exceeds the roster pool of ${SLOT_POOL[label] ?? 0}`)
@@ -206,14 +206,13 @@ export function routeFor(play, slot, { mirror = false } = {}) {
 // there says they must match. Authored DL spots have to feed BOTH or the two sides draw
 // different fronts.
 //
-// ⚠️ THE FRONT IS CHOSEN, THE BACK SEVEN IS PLACED. A defensive formation picks a FRONT from the
-// list below — the offensive mirror of Gun/Pistol — and the front decides how many linemen the
-// engine puts out. The linemen themselves are never authored, for the same reason the five
-// offensive linemen and the quarterback are not: formation.ts says of the defensive line that it
-// is "always on the field and cannot be moved by either player". They are DRAWN in the sandbox,
-// because a formation you cannot see the front of is one you cannot read.
+// ⚠️ THE FRONT IS CHOSEN, THEN ALL ELEVEN ARE PLACED. A defensive formation picks a FRONT from the
+// list below — the offensive mirror of Gun/Pistol — and the front decides how many linemen it
+// fields. Those linemen are then PART OF THE FORMATION and can be slid along the line like any
+// other defender, because shifting the front is a real defensive adjustment.
 //
-// So what you place is 11 minus the front: seven behind a four-man front, eight behind a three.
+// (The five offensive linemen and the quarterback stay auto-placed: their spots are dictated by
+// the snap, not by the call.)
 //
 // ⚠️ NICKEL AND DIME ARE NOT FRONTS, they are personnel — five and six defensive backs behind the
 // same four linemen. They are listed as categories because that is how they are called, but the
@@ -232,12 +231,61 @@ export const DEF_FRONTS = {
 }
 
 export const DEFENDERS = 11
-export const DEF_SLOT_POOL = { LB: 5, CB: 4, S: 3 }
+export const DEF_SLOT_POOL = { DL: 5, LB: 5, CB: 4, S: 3 }
 
-// How many players a given front leaves you to place.
+// How many NON-lineman defenders a front leaves. The linemen are placed too, but their count is
+// fixed by the front rather than chosen.
 export function coverageFor(category) {
   const front = DEF_FRONTS[category]
   return front ? DEFENDERS - front.dl : DEFENDERS - 4
+}
+
+// ── Where a player may legally stand ────────────────────────────────────────
+//
+// ⚠️ MIRRORS `getPositionYBounds` IN Client/src/game/formation.ts, which is the rule the live game
+// already enforces on every drag. Expressed here in authored terms (depth from the line) so a
+// formation cannot be saved through the API that the game would never have let you drag into.
+//
+// The offense may not cross the line; the defense may not either, and its limit is a FULL PLAYER
+// RADIUS back — a circle centred exactly on the line sits halfway across it and is offside.
+const PLAYER_RADIUS = 0.5
+
+export function depthBounds(label, side) {
+  if (side === 'offense') {
+    switch (label) {
+      case 'WR': return { min: 0, max: 7 }
+      case 'TE': return { min: 0, max: 5 }
+      case 'RB': return { min: 2, max: 10 }
+      default:   return { min: 0, max: 15 }
+    }
+  }
+  switch (label) {
+    case 'DL': return { min: PLAYER_RADIUS, max: 5 }
+    case 'LB': return { min: PLAYER_RADIUS, max: 10 }
+    case 'CB': return { min: PLAYER_RADIUS, max: 20 }
+    case 'S':  return { min: PLAYER_RADIUS, max: 25 }
+    default:   return { min: PLAYER_RADIUS, max: 15 }
+  }
+}
+
+// Half the field either side of the ball, which is as far as anyone can be and still be on it.
+const MAX_DX = 26
+
+function checkSpot(errors, s, side) {
+  const label = slotLabel(s.slot)
+  const b = depthBounds(label, side)
+  if (Number.isFinite(s.depth)) {
+    if (s.depth < b.min) {
+      err(errors, side === 'offense'
+        ? `${s.slot} is across the line of scrimmage — the offense must stay behind it`
+        : `${s.slot} is offside — the defense must stay on its own side of the line`)
+    } else if (s.depth > b.max) {
+      err(errors, `${s.slot} is ${s.depth} yards off the line; a ${label} may go ${b.max}`)
+    }
+  }
+  if (Number.isFinite(s.dx) && Math.abs(s.dx) > MAX_DX) {
+    err(errors, `${s.slot} is off the field (${s.dx} yards from the ball)`)
+  }
 }
 
 export const SHELL_KINDS = ['man', 'zone']
@@ -269,10 +317,8 @@ export function validateDefFormation(f) {
   }
 
   const spots = Array.isArray(f.spots) ? f.spots : []
-  const wanted = coverageFor(f.category)
-  if (DEF_FRONTS[f.category] && spots.length !== wanted) {
-    const dl = DEF_FRONTS[f.category].dl
-    err(errors, `a ${f.category} front puts ${dl} linemen out, so place ${wanted} behind it — got ${spots.length}`)
+  if (spots.length !== DEFENDERS) {
+    err(errors, `needs all ${DEFENDERS} defenders, got ${spots.length}`)
   }
 
   const seen = new Set()
@@ -285,18 +331,24 @@ export function validateDefFormation(f) {
     counts[label] = (counts[label] ?? 0) + 1
     if (!Number.isFinite(s.dx)) err(errors, `${s.slot} dx must be a number`)
     if (!Number.isFinite(s.depth)) err(errors, `${s.slot} depth must be a number`)
+    checkSpot(errors, s, 'defense')
   }
   for (const [label, n] of Object.entries(counts)) {
     if (n > (DEF_SLOT_POOL[label] ?? 0)) {
       err(errors, `${n} ${label}s exceeds the ${DEF_SLOT_POOL[label] ?? 0} a roster carries`)
     }
   }
+  // The front is chosen, so the number of linemen is not free.
+  const front = DEF_FRONTS[f.category]
+  if (front && spots.length === DEFENDERS && (counts.DL ?? 0) !== front.dl) {
+    err(errors, `a ${f.category} fields ${front.dl} linemen, got ${counts.DL ?? 0}`)
+  }
   return { ok: errors.length === 0, errors }
 }
 
 // Defensive personnel, DERIVED from who was placed. Three corners is nickel, four is dime.
 export function defPersonnelOf(formation) {
-  const out = { LB: 0, CB: 0, S: 0 }
+  const out = { DL: 0, LB: 0, CB: 0, S: 0 }
   for (const s of formation?.spots ?? []) {
     const label = slotLabel(s.slot)
     if (label in out) out[label]++
@@ -343,6 +395,8 @@ export function validateShell(s, formations) {
   for (const [slot, at] of Object.entries(s.alignments ?? {})) {
     if (!slots.has(slot)) err(errors, `alignment for ${slot}, which is not in formation "${s.formationId}"`)
     else if (!Number.isFinite(at?.dx) || !Number.isFinite(at?.depth)) err(errors, `${slot} has a bad alignment`)
+    // A nudge can put a defender offside just as easily as the formation can.
+    else checkSpot(errors, { slot, dx: at.dx, depth: at.depth }, 'defense')
   }
   return { ok: errors.length === 0, errors }
 }

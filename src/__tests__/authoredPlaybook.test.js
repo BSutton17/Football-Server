@@ -73,6 +73,13 @@ describe('a formation the sandbox would save', () => {
     expect(SLOT_POOL).toEqual({ WR: 4, TE: 3, RB: 2 })
   })
 
+  it('⚠️ REFUSES A RECEIVER ACROSS THE LINE, or one off the field', () => {
+    const at = (patch) => ({ ...deuce, spots: [{ ...deuce.spots[0], ...patch }, ...deuce.spots.slice(1)] })
+    expect(validateFormation(at({ depth: -1 })).errors.join(' ')).toMatch(/across the line of scrimmage/)
+    expect(validateFormation(at({ depth: 12 })).errors.join(' ')).toMatch(/a WR may go 7/)
+    expect(validateFormation(at({ dx: -40 })).errors.join(' ')).toMatch(/off the field/)
+  })
+
   it('rejects the wrong number of skill players, a duplicate slot, and a negative depth', () => {
     expect(validateFormation({ ...deuce, spots: deuce.spots.slice(0, 4) }).errors.join(' '))
       .toMatch(new RegExp(`exactly ${MAX_SKILL}`))
@@ -80,7 +87,7 @@ describe('a formation the sandbox would save', () => {
     expect(dup.spots).toHaveLength(MAX_SKILL)
     expect(validateFormation(dup).errors.join(' ')).toMatch(/used twice/)
     const behind = { ...deuce, spots: [...deuce.spots.slice(0, 4), { slot: 'RB1', dx: -3, depth: -2 }] }
-    expect(validateFormation(behind).errors.join(' ')).toMatch(/cannot be negative/)
+    expect(validateFormation(behind).errors.join(' ')).toMatch(/across the line of scrimmage/)
   })
 })
 
@@ -211,6 +218,8 @@ const nickel = {
   name: 'Nickel',
   category: 'nickel',
   spots: [
+    { slot: 'DL1', dx: -3.25, depth: 1 }, { slot: 'DL2', dx: -1.25, depth: 1 },
+    { slot: 'DL3', dx: 1.25, depth: 1 }, { slot: 'DL4', dx: 3.25, depth: 1 },
     { slot: 'LB1', dx: -4, depth: 5 }, { slot: 'LB2', dx: 4, depth: 5 },
     { slot: 'CB1', dx: -16, depth: 6 }, { slot: 'CB2', dx: 16, depth: 6 },
     { slot: 'CB3', dx: -8, depth: 5 },
@@ -235,8 +244,8 @@ describe('a defensive formation the sandbox would save', () => {
     expect(validateDefFormation(nickel)).toEqual({ ok: true, errors: [] })
   })
 
-  it('⚠️ THE FRONT DECIDES HOW MANY YOU PLACE', () => {
-    // 11 minus the linemen. A 3-4 fields three down, so eight are yours to place.
+  it('⚠️ THE FRONT DECIDES HOW MANY LINEMEN, and the rest are yours', () => {
+    // 11 minus the linemen. A 3-4 fields three down, so eight others.
     expect(coverageFor('4-3')).toBe(7)
     expect(coverageFor('3-4')).toBe(8)
     expect(coverageFor('3-3-5')).toBe(8)
@@ -249,26 +258,38 @@ describe('a defensive formation the sandbox would save', () => {
   it('refuses a front it does not know, and the wrong number behind one it does', () => {
     expect(validateDefFormation({ ...nickel, category: '46' }).errors.join(' ')).toMatch(/front must be one of/)
     expect(validateDefFormation({ ...nickel, category: '3-4' }).errors.join(' '))
-      .toMatch(/a 3-4 front puts 3 linemen out, so place 8 behind it/)
+      .toMatch(/a 3-4 fields 3 linemen, got 4/)
   })
 
   it('DECLARES ITS PERSONNEL rather than storing it', () => {
     // Three corners is nickel, four is dime. That falls out of who was placed, and it is exactly
     // the signal the play-call solver conditions on, because personnel is public pre-snap.
-    expect(defPersonnelOf(nickel)).toEqual({ LB: 2, CB: 3, S: 2 })
+    expect(defPersonnelOf(nickel)).toEqual({ DL: 4, LB: 2, CB: 3, S: 2 })
   })
 
-  it('needs the whole back seven behind a four-man front', () => {
-    expect(validateDefFormation({ ...nickel, spots: nickel.spots.slice(0, 5) }).errors.join(' '))
-      .toMatch(/place 7 behind it/)
+  it('needs all eleven', () => {
+    expect(validateDefFormation({ ...nickel, spots: nickel.spots.slice(0, 9) }).errors.join(' '))
+      .toMatch(/needs all 11 defenders/)
   })
 
-  it('⚠️ does not let the four auto-placed linemen be authored', () => {
-    // formation.ts: the defensive line is "always on the field and cannot be moved by either
-    // player", exactly like the five offensive linemen and the quarterback.
-    const withLine = { ...nickel, spots: [...nickel.spots.slice(1), { slot: 'DL1', dx: -3, depth: 1 }] }
-    expect(validateDefFormation(withLine).errors.join(' ')).toMatch(/unknown slot "DL1"/)
+  it('holds the lineman count to the chosen front, but lets them SLIDE', () => {
+    expect(validateDefFormation({ ...nickel, category: '3-4' }).errors.join(' '))
+      .toMatch(/a 3-4 fields 3 linemen, got 4/)
+    // Shifting the front is a real adjustment, so moving one along the line is fine.
+    const shifted = { ...nickel, spots: nickel.spots.map(s => (s.slot === 'DL1' ? { ...s, dx: -6 } : s)) }
+    expect(validateDefFormation(shifted).ok).toBe(true)
   })
+
+  it('⚠️ REFUSES AN ILLEGAL SPOT — offside, too deep, or off the field', () => {
+    // Mirrors getPositionYBounds in the client, which is what the live game enforces on every
+    // drag. A defender centred exactly ON the line is already halfway across it.
+    const at = (slot, patch) => ({ ...nickel, spots: nickel.spots.map(s => (s.slot === slot ? { ...s, ...patch } : s)) })
+    expect(validateDefFormation(at('DL1', { depth: 0 })).errors.join(' ')).toMatch(/offside/)
+    expect(validateDefFormation(at('S1', { depth: 30 })).errors.join(' ')).toMatch(/a S may go 25/)
+    expect(validateDefFormation(at('CB1', { dx: -40 })).errors.join(' ')).toMatch(/off the field/)
+  })
+
+
 })
 
 describe('a defensive shell built on a formation', () => {
