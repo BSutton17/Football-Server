@@ -514,12 +514,6 @@
       "formationId": "gun_spread_y_slot",
       "playType": "run",
       "assignments": {}
-    },
-    "gun_trips_y_slot_wk_run": {
-      "name": "GUN TRIPS Y SLOT WK Run",
-      "formationId": "gun_trips_y_slot_wk",
-      "playType": "run",
-      "assignments": {}
     }
   },
   "defFormations": {

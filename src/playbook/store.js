@@ -18,7 +18,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   emptyPlaybook, validateFormation, validatePlay, validateDefFormation, validateShell, autoRunPlay,
-  autoShellsFor, PLAYBOOK_VERSION,
+  autoShellsFor, whyNoRun, PLAYBOOK_VERSION,
 } from '../ai/playbook/authored.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -189,6 +189,32 @@ function uniqueId(base, taken, keepId) {
 //
 // `id` present means EDIT (keep the id, so every play built on a formation still points at it);
 // absent means create.
+// ⚠️ AN EDIT CAN MAKE A RUN IMPOSSIBLE. A formation authored with a back gets a run play; move
+// that back out wide, or replace him with a fourth receiver, and the run is still sitting there —
+// a call that cannot be run, which the solver would include, lose with, and learn to avoid, when
+// the truth is it stopped being a play.
+//
+// This is exactly how GUN EMPTY CHIPS TE ended up with a run: it was authored as GUN TRIPS Y SLOT
+// WK, and its run play still carries that id.
+//
+// Only the GENERATED run is dropped — empty assignments, named "<formation> Run". A run somebody
+// drew themselves is their business and is reported by the audit instead of being deleted.
+function pruneImpossibleRun(book, formationId) {
+  const formation = book.formations?.[formationId]
+  if (!formation || !whyNoRun(formation)) return { book, dropped: null }
+
+  const entry = Object.entries(book.plays ?? {}).find(([, p]) =>
+    p.formationId === formationId
+    && p.playType === 'run'
+    && Object.keys(p.assignments ?? {}).length === 0
+    && / Run$/.test(p.name ?? ''))
+  if (!entry) return { book, dropped: null }
+
+  const plays = { ...book.plays }
+  delete plays[entry[0]]
+  return { book: { ...book, plays }, dropped: { id: entry[0], name: entry[1].name } }
+}
+
 export function upsert(kind, item, { id = null, path = PLAYBOOK_PATH, book = null } = {}) {
   const validate = KINDS[kind]
   if (!validate) throw new Error(`unknown playbook kind "${kind}"`)
@@ -198,9 +224,17 @@ export function upsert(kind, item, { id = null, path = PLAYBOOK_PATH, book = nul
   if (!result.ok) return { ok: false, errors: result.errors }
 
   const finalId = uniqueId(slugify(item.name), current[kind], id)
-  const next = { ...current, [kind]: { ...current[kind], [finalId]: item } }
-  savePlaybook(next, path)
-  return { ok: true, id: finalId, book: next }
+  let next = { ...current, [kind]: { ...current[kind], [finalId]: item } }
+
+  let droppedRun = null
+  if (kind === 'formations') {
+    const pruned = pruneImpossibleRun(next, finalId)
+    next = pruned.book
+    droppedRun = pruned.dropped
+  }
+
+  savePlaybook(next, path, { allowWipe: droppedRun != null })
+  return { ok: true, id: finalId, book: next, droppedRun }
 }
 
 // ── Creating a formation creates its run ────────────────────────────────────
@@ -215,8 +249,9 @@ export function createFormation(formation, { path = PLAYBOOK_PATH } = {}) {
   if (!made.ok) return made
 
   const run = autoRunPlay(formation, made.id)
-  // No back on the field: an empty set has nobody to hand it to. The formation is still created.
-  if (!run) return { ...made, runPlayId: null, runNote: 'no back in this formation, so no run play' }
+  // Nobody can take the handoff — an empty set, or a back split out wide. The formation is still
+  // created; only the run is skipped, and the reason is passed back so the sandbox can say which.
+  if (!run) return { ...made, runPlayId: null, runNote: `${whyNoRun(formation)}, so no run play` }
 
   // Pass the book forward so the run is written onto the formation that was just saved, rather
   // than re-reading a file that a second save would then race.

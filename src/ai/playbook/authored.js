@@ -138,12 +138,25 @@ export function validatePlay(p, formations) {
       err(errors, 'a run does not store an angle — the lane is chosen at the line from the defensive front')
     }
     if (carriers.length > 1) err(errors, `a run has one carrier, got ${carriers.length}`)
-    if (carriers.length === 0) {
+
+    // ⚠️ SOMEBODY HAS TO BE ABLE TO TAKE THE HANDOFF. An empty set has no back, and a back split
+    // out wide is a receiver whatever his label says — a run from either is a call that cannot be
+    // run, and it would sit in the playbook looking legitimate.
+    const eligible = backfieldBacks(formation)
+    const reason = whyNoRun(formation)
+    if (reason) {
+      err(errors, `this formation cannot run — ${reason}`)
+    } else if (carriers.length === 0) {
       // With one back there is nothing to say; with two, "run" is ambiguous and the sandbox has to
       // ask rather than guess which one gets it.
       const backs = (formation.spots ?? []).filter(s => slotLabel(s.slot) === 'RB')
       if (backs.length !== 1) {
         err(errors, `${backs.length} backs in this formation — mark which one carries`)
+      }
+    } else {
+      const [slot] = carriers[0]
+      if (!eligible.some(b => b.slot === slot)) {
+        err(errors, `${slot} is not in the backfield and cannot take the handoff`)
       }
     }
   }
@@ -449,26 +462,55 @@ export function shellOptions(shells) {
   return out
 }
 
-// ── Every formation can run the ball ────────────────────────────────────────
+// ── Not every formation can run the ball ────────────────────────────────────
 //
 // A run out of a formation carries no drawn information — no routes, and no lane, because the
 // lane is read off the defensive front at the line. So there is nothing for a human to author,
 // and making them create one by hand for every formation is fifteen identical clicks that can
-// only be got wrong. Creating a formation therefore creates its run play too, and the user is
-// left with the only job that actually needs a person: drawing the pass plays.
+// only be got wrong. Creating a formation therefore creates its run play too.
 //
-// Returns null when the formation fields no back. An empty set has nobody to hand it to, and a
-// run play that cannot name a carrier would fail validation the moment it was saved.
-export function autoRunPlay(formation, formationId) {
+// ⚠️ EXCEPT WHERE THERE IS NOBODY TO HAND IT TO. An empty set has no back at all, and a back
+// split out wide is a receiver who happens to be listed as an RB — neither can take a handoff. A
+// run play generated for either is a call that cannot be run, and it will sit in the playbook
+// looking legitimate: the solver will include it, lose with it, and learn to avoid it, when the
+// truth is it was never a play.
+//
+// "In the backfield" is both things at once. Behind the line, and inside the formation: the
+// tackles sit at ±3.5, so a back within about seven is still behind it and can be handed the ball.
+// Wider than that and he is split out, whatever his label says.
+const BACKFIELD_MIN_DEPTH = 2
+const BACKFIELD_MAX_DX = 7
+
+export function backfieldBacks(formation) {
+  return (formation?.spots ?? []).filter(s =>
+    slotLabel(s.slot) === 'RB'
+    && Number.isFinite(s.depth) && s.depth >= BACKFIELD_MIN_DEPTH
+    && Number.isFinite(s.dx) && Math.abs(s.dx) <= BACKFIELD_MAX_DX)
+}
+
+// Why this formation cannot run, in words, or null if it can.
+export function whyNoRun(formation) {
   const backs = (formation?.spots ?? []).filter(s => slotLabel(s.slot) === 'RB')
-  if (backs.length === 0) return null
+  if (backs.length === 0) return 'no back in this formation'
+  if (backfieldBacks(formation).length > 0) return null
+  // Say which it is. "Split out" and "up on the line" are different mistakes and the message is
+  // the only thing telling anyone what to move.
+  const wide = backs.every(b => Math.abs(b.dx ?? 0) > BACKFIELD_MAX_DX)
+  return wide ? 'the back is split out wide, not in the backfield'
+    : 'the back is not behind the line'
+}
+
+export function autoRunPlay(formation, formationId) {
+  if (whyNoRun(formation)) return null
+  const eligible = backfieldBacks(formation)
+  const allBacks = (formation?.spots ?? []).filter(s => slotLabel(s.slot) === 'RB')
   return {
     name: `${formation.name} Run`,
     formationId,
     playType: 'run',
-    // One back needs no carrier — the validator resolves it. Two is ambiguous, so the first is
-    // named and the user can change it or add a second run play for the other.
-    assignments: backs.length === 1 ? {} : { [backs[0].slot]: { kind: 'carry' } },
+    // One back and nothing to disambiguate: the validator resolves it. Otherwise name the carrier
+    // explicitly — including when there are two backs but only one of them is actually back there.
+    assignments: allBacks.length === 1 ? {} : { [eligible[0].slot]: { kind: 'carry' } },
   }
 }
 

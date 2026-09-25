@@ -308,3 +308,71 @@ describe('⚠️ NOT LOSING HOURS OF AUTHORED WORK', () => {
     expect(Object.keys(loadPlaybook(PATH).formations)).toEqual([])
   })
 })
+
+describe('⚠️ A FORMATION THAT CANNOT RUN DOES NOT GET A RUN PLAY', () => {
+  // An empty set has no back, and a back split out wide is a receiver whatever his label says.
+  // A run generated for either is a call that cannot be run, and it sits in the playbook looking
+  // legitimate: the solver includes it, loses with it, and learns to avoid it — when the truth is
+  // it was never a play.
+  const withBack = (rb) => ({
+    name: 'Set', category: 'gun',
+    spots: [
+      { slot: 'WR1', dx: -14, depth: 0 }, { slot: 'WR2', dx: -6, depth: 1 },
+      { slot: 'WR3', dx: 14, depth: 0 }, { slot: 'TE1', dx: 6, depth: 0 },
+      rb ?? { slot: 'WR4', dx: 18, depth: 0 },
+    ],
+  })
+
+  it('creates one when a back is actually back there', () => {
+    const r = createFormation(withBack({ slot: 'RB1', dx: -3, depth: 6 }), { path: PATH })
+    expect(r.runPlayId).toBeTruthy()
+  })
+
+  it('creates one for an OFFSET back, who can still take the handoff', () => {
+    const r = createFormation(withBack({ slot: 'RB1', dx: 2.5, depth: 5.9 }), { path: PATH })
+    expect(r.runPlayId).toBeTruthy()
+  })
+
+  it('does NOT when the back is split out wide', () => {
+    const r = createFormation(withBack({ slot: 'RB1', dx: -16, depth: 4 }), { path: PATH })
+    expect(r.runPlayId).toBeNull()
+    expect(r.runNote).toMatch(/split out wide/)
+    // The formation itself is still created — only the run is skipped.
+    expect(loadPlaybook(PATH).formations.set).toBeTruthy()
+  })
+
+  it('does NOT for an empty set', () => {
+    const r = createFormation(withBack(null), { path: PATH })
+    expect(r.runPlayId).toBeNull()
+    expect(r.runNote).toMatch(/no back/)
+  })
+
+  it('⚠️ DROPS THE RUN WHEN AN EDIT TAKES THE BACK AWAY', () => {
+    // How the real playbook ended up with one: a formation authored with a back, later edited into
+    // an empty set. The run stayed behind and could not be run.
+    const made = createFormation(withBack({ slot: 'RB1', dx: -3, depth: 6 }), { path: PATH })
+    expect(made.runPlayId).toBeTruthy()
+
+    const edited = upsert('formations', withBack(null), { id: made.id, path: PATH })
+    expect(edited.droppedRun).toMatchObject({ id: made.runPlayId })
+
+    const book = loadPlaybook(PATH)
+    expect(book.plays[made.runPlayId]).toBeUndefined()
+    expect(auditPlaybook(book).ok).toBe(true)
+  })
+
+  it('leaves a run somebody DREW alone, and lets the audit report it', () => {
+    // Deleting work a person did is a worse surprise than an audit warning.
+    const made = createFormation(withBack({ slot: 'RB1', dx: -3, depth: 6 }), { path: PATH })
+    upsert('plays', {
+      name: 'Power Right', formationId: made.id, playType: 'run',
+      assignments: { RB1: { kind: 'carry' } },
+    }, { path: PATH })
+
+    upsert('formations', withBack(null), { id: made.id, path: PATH })
+    const book = loadPlaybook(PATH)
+    expect(book.plays.power_right).toBeTruthy()
+    expect(auditPlaybook(book).ok).toBe(false)
+    expect(auditPlaybook(book).problems.join(' ')).toMatch(/cannot run/)
+  })
+})
