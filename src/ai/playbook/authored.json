@@ -6616,6 +6616,317 @@
         }
       },
       "alignments": {}
+    },
+    "fire_blitz_2": {
+      "name": "FIRE BLITZ",
+      "formationId": "2_4_single_mug",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "LB2": {
+          "job": "rush"
+        },
+        "LB1": {
+          "job": "man"
+        },
+        "CB3": {
+          "job": "man"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "S2": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 19.1
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "overstorm_brave": {
+      "name": "OVERSTORM BRAVE",
+      "formationId": "2_4_single_mug",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "LB2": {
+          "job": "rush"
+        },
+        "LB1": {
+          "job": "man"
+        },
+        "CB3": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "S2": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "man"
+        }
+      },
+      "alignments": {}
+    },
+    "will_go_fire_3": {
+      "name": "WILL GO FIRE 3",
+      "formationId": "wide",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "LB2": {
+          "job": "rush"
+        },
+        "LB1": {
+          "job": "man"
+        },
+        "CB3": {
+          "job": "man"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "S2": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -0.9,
+            "depth": 17.2
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "safety_blitz": {
+      "name": "SAFETY BLITZ",
+      "formationId": "wide",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB3": {
+          "job": "man"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "LB1": {
+          "job": "man"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "rush"
+        },
+        "CB2": {
+          "job": "man"
+        }
+      },
+      "alignments": {}
+    },
+    "mid_blitz_2": {
+      "name": "MID BLITZ",
+      "formationId": "3_3_mint",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "LB1": {
+          "job": "rush"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "CB3": {
+          "job": "man"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 17.5
+          }
+        },
+        "CB2": {
+          "job": "man"
+        }
+      },
+      "alignments": {}
+    },
+    "crash_blitz_2": {
+      "name": "CRASH BLITZ",
+      "formationId": "3_3_mint",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB3": {
+          "job": "rush"
+        },
+        "LB2": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "LB1": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "man"
+        },
+        "S2": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        }
+      },
+      "alignments": {}
+    },
+    "odd_blitz": {
+      "name": "ODD BLITZ",
+      "formationId": "3_2_odd",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "LB1": {
+          "job": "rush"
+        },
+        "CB3": {
+          "job": "man"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "CB4": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "S2": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0.4,
+            "depth": 17.1
+          }
+        }
+      },
+      "alignments": {}
     }
   }
 }
