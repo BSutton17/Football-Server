@@ -1,10 +1,530 @@
 {
   "version": 1,
-  "formations": {},
-  "plays": {},
+  "formations": {
+    "gun_deuce": {
+      "name": "GUN DEUCE",
+      "category": "gun",
+      "spots": [
+        {
+          "slot": "WR1",
+          "dx": -21.3,
+          "depth": 0.8
+        },
+        {
+          "slot": "WR2",
+          "dx": 22.9,
+          "depth": 0.9
+        },
+        {
+          "slot": "TE1",
+          "dx": -5,
+          "depth": 1.9
+        },
+        {
+          "slot": "TE2",
+          "dx": 5.3,
+          "depth": 1.9
+        },
+        {
+          "slot": "RB1",
+          "dx": 2.5,
+          "depth": 5.9
+        }
+      ]
+    },
+    "u_off_trips_wk": {
+      "name": "U OFF TRIPS WK",
+      "category": "gun",
+      "spots": [
+        {
+          "slot": "WR1",
+          "dx": -20.4,
+          "depth": 1
+        },
+        {
+          "slot": "WR2",
+          "dx": -15,
+          "depth": 1.8
+        },
+        {
+          "slot": "TE1",
+          "dx": -5.2,
+          "depth": 1.9
+        },
+        {
+          "slot": "TE2",
+          "dx": 5.1,
+          "depth": 1.9
+        },
+        {
+          "slot": "RB1",
+          "dx": -3,
+          "depth": 6
+        }
+      ]
+    },
+    "gun_wing_slot_offset": {
+      "name": "GUN WING SLOT OFFSET",
+      "category": "gun",
+      "spots": [
+        {
+          "slot": "WR1",
+          "dx": -19.6,
+          "depth": 1.1
+        },
+        {
+          "slot": "WR2",
+          "dx": -13.4,
+          "depth": 2.5
+        },
+        {
+          "slot": "TE2",
+          "dx": 5,
+          "depth": 1.2
+        },
+        {
+          "slot": "TE1",
+          "dx": 6.8,
+          "depth": 1.8
+        },
+        {
+          "slot": "RB1",
+          "dx": 2.6,
+          "depth": 6.2
+        }
+      ]
+    },
+    "gun_normal_y_off": {
+      "name": "GUN NORMAL Y OFF",
+      "category": "gun",
+      "spots": [
+        {
+          "slot": "WR1",
+          "dx": -19.8,
+          "depth": 1.2
+        },
+        {
+          "slot": "WR2",
+          "dx": -14.1,
+          "depth": 1.9
+        },
+        {
+          "slot": "WR3",
+          "dx": 17.9,
+          "depth": 1.3
+        },
+        {
+          "slot": "TE1",
+          "dx": 5.5,
+          "depth": 1.5
+        },
+        {
+          "slot": "RB1",
+          "dx": 2.9,
+          "depth": 6
+        }
+      ]
+    },
+    "gun_doubles_offset_wk": {
+      "name": "GUN DOUBLES OFFSET WK",
+      "category": "gun",
+      "spots": [
+        {
+          "slot": "WR1",
+          "dx": -20,
+          "depth": 1.2
+        },
+        {
+          "slot": "WR2",
+          "dx": -14.3,
+          "depth": 2.3
+        },
+        {
+          "slot": "RB1",
+          "dx": -3,
+          "depth": 6
+        },
+        {
+          "slot": "WR3",
+          "dx": 19.9,
+          "depth": 2
+        },
+        {
+          "slot": "TE1",
+          "dx": 5.2,
+          "depth": 1.5
+        }
+      ]
+    },
+    "gun_y_off_trips": {
+      "name": "GUN Y OFF TRIPS",
+      "category": "gun",
+      "spots": [
+        {
+          "slot": "WR1",
+          "dx": -19.6,
+          "depth": 1.1
+        },
+        {
+          "slot": "TE1",
+          "dx": 5.4,
+          "depth": 1.5
+        },
+        {
+          "slot": "WR2",
+          "dx": 15,
+          "depth": 1.9
+        },
+        {
+          "slot": "WR3",
+          "dx": 20.7,
+          "depth": 1.1
+        },
+        {
+          "slot": "RB1",
+          "dx": 3,
+          "depth": 6.1
+        }
+      ]
+    },
+    "gun_wing_trips_wk": {
+      "name": "GUN WING TRIPS WK",
+      "category": "gun",
+      "spots": [
+        {
+          "slot": "WR1",
+          "dx": -19.7,
+          "depth": 1.2
+        },
+        {
+          "slot": "WR2",
+          "dx": 20,
+          "depth": 1
+        },
+        {
+          "slot": "WR3",
+          "dx": 14.8,
+          "depth": 2.1
+        },
+        {
+          "slot": "TE1",
+          "dx": 5.3,
+          "depth": 1.8
+        },
+        {
+          "slot": "RB1",
+          "dx": -3,
+          "depth": 6
+        }
+      ]
+    },
+    "gun_trips_te_offset": {
+      "name": "GUN TRIPS TE OFFSET",
+      "category": "gun",
+      "spots": [
+        {
+          "slot": "WR1",
+          "dx": -21.8,
+          "depth": 1.1
+        },
+        {
+          "slot": "WR2",
+          "dx": -17.5,
+          "depth": 2
+        },
+        {
+          "slot": "WR3",
+          "dx": -13.2,
+          "depth": 2.1
+        },
+        {
+          "slot": "TE1",
+          "dx": 5.3,
+          "depth": 1.8
+        },
+        {
+          "slot": "RB1",
+          "dx": 3,
+          "depth": 6
+        }
+      ]
+    },
+    "gun_trio_hb_wk": {
+      "name": "GUN TRIO HB WK",
+      "category": "gun",
+      "spots": [
+        {
+          "slot": "WR1",
+          "dx": -21.1,
+          "depth": 2.1
+        },
+        {
+          "slot": "WR2",
+          "dx": -17.4,
+          "depth": 1.1
+        },
+        {
+          "slot": "WR3",
+          "dx": -12.8,
+          "depth": 2
+        },
+        {
+          "slot": "TE1",
+          "dx": 5.9,
+          "depth": 1.9
+        },
+        {
+          "slot": "RB1",
+          "dx": -3,
+          "depth": 6
+        }
+      ]
+    },
+    "gun_bunch": {
+      "name": "GUN BUNCH",
+      "category": "gun",
+      "spots": [
+        {
+          "slot": "WR1",
+          "dx": -20.1,
+          "depth": 1
+        },
+        {
+          "slot": "RB1",
+          "dx": -3,
+          "depth": 6
+        },
+        {
+          "slot": "TE1",
+          "dx": 5.3,
+          "depth": 1.8
+        },
+        {
+          "slot": "WR2",
+          "dx": 8.1,
+          "depth": 0.9
+        },
+        {
+          "slot": "WR3",
+          "dx": 10.3,
+          "depth": 2.1
+        }
+      ]
+    },
+    "bunch_quads_offset": {
+      "name": "BUNCH QUADS OFFSET",
+      "category": "gun",
+      "spots": [
+        {
+          "slot": "WR1",
+          "dx": 21.2,
+          "depth": 1.4
+        },
+        {
+          "slot": "TE1",
+          "dx": 5.5,
+          "depth": 1.8
+        },
+        {
+          "slot": "TE2",
+          "dx": 8.5,
+          "depth": 1
+        },
+        {
+          "slot": "WR2",
+          "dx": 11.1,
+          "depth": 2.6
+        },
+        {
+          "slot": "RB1",
+          "dx": 3,
+          "depth": 6
+        }
+      ]
+    },
+    "gun_tight_open": {
+      "name": "GUN TIGHT OPEN",
+      "category": "gun",
+      "spots": [
+        {
+          "slot": "WR1",
+          "dx": -21.2,
+          "depth": 2.1
+        },
+        {
+          "slot": "WR2",
+          "dx": 18.2,
+          "depth": 2.1
+        },
+        {
+          "slot": "TE1",
+          "dx": 13.7,
+          "depth": 0.9
+        },
+        {
+          "slot": "WR3",
+          "dx": -16.6,
+          "depth": 0.8
+        },
+        {
+          "slot": "RB1",
+          "dx": 2.8,
+          "depth": 6.2
+        }
+      ]
+    },
+    "gun_spread_y_slot": {
+      "name": "GUN SPREAD Y-SLOT",
+      "category": "gun",
+      "spots": [
+        {
+          "slot": "WR1",
+          "dx": -20.7,
+          "depth": 1
+        },
+        {
+          "slot": "WR3",
+          "dx": -15.3,
+          "depth": 1.9
+        },
+        {
+          "slot": "TE1",
+          "dx": 14.5,
+          "depth": 2.1
+        },
+        {
+          "slot": "WR2",
+          "dx": 20.2,
+          "depth": 0.9
+        },
+        {
+          "slot": "RB1",
+          "dx": 2.8,
+          "depth": 6
+        }
+      ]
+    },
+    "gun_trips_y_slot_wk": {
+      "name": "GUN EMPTY CHIPS TE",
+      "category": "gun",
+      "spots": [
+        {
+          "slot": "WR1",
+          "dx": -18.1,
+          "depth": 1.2
+        },
+        {
+          "slot": "TE1",
+          "dx": 5.5,
+          "depth": 1.7
+        },
+        {
+          "slot": "TE2",
+          "dx": -5.5,
+          "depth": 1.8
+        },
+        {
+          "slot": "WR2",
+          "dx": 14.7,
+          "depth": 1.1
+        },
+        {
+          "slot": "WR3",
+          "dx": 16.9,
+          "depth": 2.2
+        }
+      ]
+    }
+  },
+  "plays": {
+    "gun_deuce_run": {
+      "name": "GUN DEUCE Run",
+      "formationId": "gun_deuce",
+      "playType": "run",
+      "assignments": {}
+    },
+    "u_off_trips_wk_run": {
+      "name": "U OFF TRIPS WK Run",
+      "formationId": "u_off_trips_wk",
+      "playType": "run",
+      "assignments": {}
+    },
+    "gun_wing_slot_offset_run": {
+      "name": "GUN WING SLOT OFFSET Run",
+      "formationId": "gun_wing_slot_offset",
+      "playType": "run",
+      "assignments": {}
+    },
+    "gun_normal_y_off_run": {
+      "name": "GUN NORMAL Y OFF Run",
+      "formationId": "gun_normal_y_off",
+      "playType": "run",
+      "assignments": {}
+    },
+    "gun_doubles_offset_wk_run": {
+      "name": "GUN DOUBLES OFFSET WK Run",
+      "formationId": "gun_doubles_offset_wk",
+      "playType": "run",
+      "assignments": {}
+    },
+    "gun_y_off_trips_run": {
+      "name": "GUN Y OFF TRIPS Run",
+      "formationId": "gun_y_off_trips",
+      "playType": "run",
+      "assignments": {}
+    },
+    "gun_wing_trips_wk_run": {
+      "name": "GUN WING TRIPS WK Run",
+      "formationId": "gun_wing_trips_wk",
+      "playType": "run",
+      "assignments": {}
+    },
+    "gun_trips_te_offset_run": {
+      "name": "GUN TRIPS TE OFFSET Run",
+      "formationId": "gun_trips_te_offset",
+      "playType": "run",
+      "assignments": {}
+    },
+    "gun_trio_hb_wk_run": {
+      "name": "GUN TRIO HB WK Run",
+      "formationId": "gun_trio_hb_wk",
+      "playType": "run",
+      "assignments": {}
+    },
+    "gun_bunch_run": {
+      "name": "GUN BUNCH Run",
+      "formationId": "gun_bunch",
+      "playType": "run",
+      "assignments": {}
+    },
+    "bunch_quads_offset_run": {
+      "name": "BUNCH QUADS OFFSET Run",
+      "formationId": "bunch_quads_offset",
+      "playType": "run",
+      "assignments": {}
+    },
+    "gun_tight_open_run": {
+      "name": "GUN TIGHT OPEN Run",
+      "formationId": "gun_tight_open",
+      "playType": "run",
+      "assignments": {}
+    },
+    "gun_spread_y_slot_run": {
+      "name": "GUN SPREAD Y-SLOT Run",
+      "formationId": "gun_spread_y_slot",
+      "playType": "run",
+      "assignments": {}
+    },
+    "gun_trips_y_slot_wk_run": {
+      "name": "GUN TRIPS Y SLOT WK Run",
+      "formationId": "gun_trips_y_slot_wk",
+      "playType": "run",
+      "assignments": {}
+    }
+  },
   "defFormations": {
     "over": {
-      "name": "OVER",
+      "name": "4-3 OVER",
       "category": "4-3",
       "spots": [
         {
@@ -65,7 +585,7 @@
       ]
     },
     "over_solid": {
-      "name": "UNDER-SOLID",
+      "name": "4-3 UNDER-SOLID",
       "category": "4-3",
       "spots": [
         {
@@ -126,7 +646,7 @@
       ]
     },
     "under_wide": {
-      "name": "UNDER-WIDE",
+      "name": "4-3 UNDER-WIDE",
       "category": "4-3",
       "spots": [
         {
@@ -187,7 +707,7 @@
       ]
     },
     "tite": {
-      "name": "TITE",
+      "name": "3-4 TITE",
       "category": "3-4",
       "spots": [
         {
@@ -248,7 +768,7 @@
       ]
     },
     "grizzly": {
-      "name": "GRIZZLY",
+      "name": "3-4 GRIZZLY",
       "category": "3-4",
       "spots": [
         {
@@ -309,7 +829,7 @@
       ]
     },
     "normal": {
-      "name": "NORMAL",
+      "name": "5-3 NORMAL",
       "category": "5-2",
       "spots": [
         {
@@ -370,7 +890,7 @@
       ]
     },
     "mint": {
-      "name": "MINT",
+      "name": "3-3-5 MINT",
       "category": "3-3-5",
       "spots": [
         {
@@ -431,7 +951,7 @@
       ]
     },
     "over_flex": {
-      "name": "OVER FLEX",
+      "name": "3-3-5 OVER FLEX",
       "category": "3-3-5",
       "spots": [
         {
@@ -492,7 +1012,7 @@
       ]
     },
     "odd_ghost": {
-      "name": "ODD GHOST",
+      "name": "3-3-5 ODD GHOST",
       "category": "3-3-5",
       "spots": [
         {
@@ -553,7 +1073,7 @@
       ]
     },
     "2_4": {
-      "name": "2-4",
+      "name": "NICKEL 2-4",
       "category": "nickel",
       "spots": [
         {
@@ -614,7 +1134,7 @@
       ]
     },
     "2_4_single_mug": {
-      "name": "2-4 SINGLE MUG",
+      "name": "NICKEL 2-4 SINGLE MUG",
       "category": "nickel",
       "spots": [
         {
@@ -675,7 +1195,7 @@
       ]
     },
     "wide": {
-      "name": "WIDE",
+      "name": "NICKEL WIDE",
       "category": "nickel",
       "spots": [
         {
@@ -736,7 +1256,7 @@
       ]
     },
     "3_3_mint": {
-      "name": "3-3 MINT",
+      "name": "NICKEL 3-3 MINT",
       "category": "nickel",
       "spots": [
         {
@@ -797,7 +1317,7 @@
       ]
     },
     "3_2_odd": {
-      "name": "3-2 ODD",
+      "name": "DIME 3-2 ODD",
       "category": "dime",
       "spots": [
         {
@@ -1660,7 +2180,7 @@
           "zone": "flat",
           "center": {
             "dx": -16,
-            "depth": 4
+            "depth": 2.8
           }
         },
         "CB2": {
@@ -1676,12 +2196,12 @@
           "zone": "curl",
           "center": {
             "dx": -9,
-            "depth": 10
+            "depth": 5.5
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
             "dx": 0,
             "depth": 8
@@ -1691,8 +2211,8 @@
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 8,
+            "depth": 4.5
           }
         }
       },
@@ -2018,7 +2538,7 @@
           "zone": "curl",
           "center": {
             "dx": -9,
-            "depth": 10
+            "depth": 5
           }
         },
         "LB2": {
@@ -2031,18 +2551,18 @@
         },
         "LB4": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 0.1,
+            "depth": 10.5
           }
         },
         "LB3": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 9.1,
+            "depth": 5.2
           }
         }
       },
@@ -3590,34 +4110,34 @@
         },
         "S2": {
           "job": "zone",
-          "zone": "deep",
+          "zone": "hook",
           "center": {
-            "dx": -7,
-            "depth": 14
+            "dx": -16.6,
+            "depth": 5.8
           }
         },
         "S1": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 7,
-            "depth": 14
+            "dx": -5.6,
+            "depth": 15.5
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": -16.2,
-            "depth": 5.7
+            "dx": -5.4,
+            "depth": 7.4
           }
         },
         "LB2": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": -6,
-            "depth": 6.7
+            "dx": 5.6,
+            "depth": 8.2
           }
         },
         "LB3": {
@@ -3630,10 +4150,10 @@
         },
         "S3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "deep",
           "center": {
-            "dx": 4.7,
-            "depth": 6.9
+            "dx": 6.6,
+            "depth": 17.1
           }
         }
       },
@@ -3856,16 +4376,16 @@
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": -17,
-            "depth": 15
+            "dx": -17.1,
+            "depth": 18.1
           }
         },
         "CB2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 17,
-            "depth": 15
+            "dx": 16.6,
+            "depth": 17.7
           }
         },
         "S2": {
