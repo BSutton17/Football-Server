@@ -69,19 +69,53 @@ export function allSituations() {
 //
 // ⚠️ THIS IS A LEAN, NOT A RULE. It weights plays; it never forbids one. A defense that could rely
 // on "they never throw deep on the goal line" would be reading the prior rather than the offense.
+// ── How often the ball should be run here ───────────────────────────────────
+//
+// ⚠️ A SHARE, NOT A WEIGHT, AND THAT DISTINCTION IS THE WHOLE BUG. `runLean` returns a multiplier
+// applied to each run play, which only works if the two play types are authored in similar
+// numbers. They are not and never will be: the playbook holds 15 runs against 111 passes, because
+// ONE authored run covers every lane — the angle is chosen at the line — while every pass concept
+// has to be drawn separately.
+//
+// Weighting per play therefore made the run/pass mix an accident of how much drawing had been
+// done. On 1st and 10 the single run in a formation scored 0.47 against seven passes at 1.00, so
+// the offense threw 96% of the time; and the more pass plays get authored, the worse it gets.
+//
+// The mix is decided FIRST, from the situation alone, and the plays of each type then share out
+// what their type was given. Authoring twenty more pass concepts now changes WHICH pass is called
+// and not whether the team ever runs.
+export function runShare(situation) {
+  // League-ish baseline, then moved by the same reads `runLean` encodes. Expressed in odds so the
+  // multipliers compose without ever leaving 0..1.
+  const BASE_ODDS = 0.45 / 0.55
+  const odds = BASE_ODDS * runLean(situation)
+  const share = odds / (1 + odds)
+  // Never certain either way: a team that literally never runs on 3rd and 12 is one the defense can
+  // sit on, and the same in reverse on the goal line.
+  return Math.max(0.05, Math.min(0.92, share))
+}
+
 export function runLean({ down, distance, yardLine }) {
   const band = distanceBand(distance).id
   const zone = fieldZone(yardLine).id
 
   let lean = 1
   if (band === 'short') lean *= 2.6         // short yardage is a running down
-  else if (band === 'medium') lean *= 1.1
-  else if (band === 'long') lean *= 0.55
-  else lean *= 0.3                          // 13+ is a throwing down
+  else if (band === 'medium') lean *= 1.15
+  else if (band === 'long') lean *= 0.75
+  else lean *= 0.35                         // 13+ is a throwing down
+
+  // ⚠️ THE DOWN, WHICH THIS USED TO IGNORE outside short yardage — so 1st and 10 and 3rd and 12
+  // scored identically, both landing in the "7-12" band. They are not remotely the same call: one
+  // is the most balanced snap in football and the other is a throwing down. First down is where
+  // the run lives precisely BECAUSE the distance is usually ten; by third down the distance stops
+  // being context and becomes the whole problem.
+  if (down === 1) lean *= 1.65
+  else if (down === 2) lean *= 1.1
+  else lean *= band === 'short' ? 1.25 : 0.28   // third and fourth: convert, or give it up
 
   if (zone === 'goalline') lean *= 1.7      // the field is too short to throw over
   if (zone === 'backedup') lean *= 1.2      // a sack here is a safety
-  if (down >= 3 && band === 'short') lean *= 1.2
   return lean
 }
 

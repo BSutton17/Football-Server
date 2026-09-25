@@ -135,7 +135,17 @@ export function serializePositions(state, viewerSlot = null) {
   //   • the DEFENSE loses it only if the host turned its vision off ([defense vision]). It is on by
   //     default, because a defender who cannot see how open a receiver is has no way of knowing
   //     what his coverage needs to fix.
-  const isOffenseViewer = viewerSlot != null && viewerSlot === state.possession
+  // ⚠️ THE OFFENSE IS WHO SNAPPED IT, NOT WHO HOLDS IT NOW. `possession` flips the moment a pass is
+  // intercepted, and this gate read it live — so mid-play the thrower stopped counting as the
+  // offense, fell through to the DEFENCE rule (permissive by default), and started being sent the
+  // openness read that medium and hard exist to withhold. The leak only opened after a turnover,
+  // which is why it sat here unnoticed until a change to the run/pass mix made a pick show up in
+  // the fairness sample.
+  //
+  // `tendencySlot` is stamped at the snap for exactly this reason; before the snap there is no
+  // play yet and live possession is correct.
+  const offenseSlot = state.tendencySlot ?? state.possession
+  const isOffenseViewer = viewerSlot != null && viewerSlot === offenseSlot
   const hideOpenness = viewerSlot != null && (
     isOffenseViewer
       ? HIDES_OPENNESS.has(state.difficulty)

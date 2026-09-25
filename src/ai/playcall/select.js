@@ -15,7 +15,7 @@
 // two are never blended — a half-solved bucket that quietly leaned on a prior would be impossible
 // to reason about later.
 
-import { situationKey, runLean, depthLean } from './situation.js'
+import { situationKey, runLean, runShare, depthLean } from './situation.js'
 import { withMixingFloor } from './nash.js'
 import { shellFit } from './tendencies.js'
 
@@ -69,15 +69,32 @@ const DEEP_YARDS = 15
 //
 // What to call before anything has been simulated. Weights every available play by how well it
 // fits the situation: runs up in short yardage, deep shots down near the goal line.
+// ⚠️ TWO STAGES: the run/pass MIX comes from the situation, and only then do the plays of a type
+// share out what their type was given. See `runShare` for why weighting per play cannot work here.
 export function priorWeights(plays, situation) {
-  const run = runLean(situation)
   const depth = depthLean(situation)
-  return plays.map(p => {
-    let w = 1
-    if (p.playType === 'run') w *= run
-    else if (playDepth(p) >= DEEP_YARDS) w *= depth
+
+  // Stage 2 first: how the plays of each type rank against each other.
+  const within = plays.map(p => {
+    const w = p.playType !== 'run' && playDepth(p) >= DEEP_YARDS ? depth : 1
     return Math.pow(Math.max(w, 1e-6), 1 / PRIOR_TEMPERATURE)
   })
+
+  // Stage 1: the mix. Each type's plays are scaled so their shares sum to the type's target.
+  const share = runShare(situation)
+  const wantRun = plays.some(p => p.playType === 'run')
+  const wantPass = plays.some(p => p.playType !== 'run')
+  // A formation with only one kind of play gets all of the mass — there is nothing to mix with.
+  const runTarget = wantPass ? share : 1
+  const passTarget = wantRun ? 1 - share : 1
+
+  const sumOf = (isRun) => plays.reduce((a, p, i) => a + ((p.playType === 'run') === isRun ? within[i] : 0), 0)
+  const runSum = sumOf(true) || 1
+  const passSum = sumOf(false) || 1
+
+  return plays.map((p, i) => p.playType === 'run'
+    ? within[i] / runSum * runTarget
+    : within[i] / passSum * passTarget)
 }
 
 // ── The offense ─────────────────────────────────────────────────────────────
