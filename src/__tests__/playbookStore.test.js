@@ -2,7 +2,10 @@ import { describe, it, expect, beforeEach, afterAll } from '@jest/globals'
 import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { loadPlaybook, savePlaybook, upsert, remove, createFormation, auditPlaybook, slugify } from '../playbook/store.js'
+import {
+  loadPlaybook, savePlaybook, upsert, remove, createFormation, auditPlaybook, slugify,
+  listBackups, restoreBackup,
+} from '../playbook/store.js'
 import { isDevPlaybookEnabled, isLocalRequest, createPlaybookDevRouter } from '../playbook/devRoutes.js'
 import { emptyPlaybook } from '../ai/playbook/authored.js'
 
@@ -27,7 +30,7 @@ const mesh = {
   assignments: { WR1: { kind: 'route', points: [{ dx: 0, dd: 5 }] } },
 }
 
-beforeEach(() => savePlaybook(emptyPlaybook(), PATH))
+beforeEach(() => savePlaybook(emptyPlaybook(), PATH, { allowWipe: true }))
 
 describe('saving and loading', () => {
   it('starts empty rather than exploding when there is no file yet', () => {
@@ -244,5 +247,64 @@ describe('⚠️ the router has to answer a BROWSER, not just curl', () => {
 
   it('still parses JSON bodies after it', () => {
     expect(stack()).toContain('jsonParser')
+  })
+})
+
+describe('⚠️ NOT LOSING HOURS OF AUTHORED WORK', () => {
+  // This suite exists because a smoke test wrote an empty playbook over the live file and every
+  // formation and play the user had authored was gone — not in git, because the commits that
+  // followed had already staged the emptied file. Atomic writes protected against a HALF-written
+  // file and did nothing whatever about a fully-written wrong one.
+  it('REFUSES to replace a populated playbook with an empty one', () => {
+    createFormation(deuce, { path: PATH })
+    expect(() => savePlaybook(emptyPlaybook(), PATH)).toThrow(/refusing to overwrite/)
+    // And the work is still there afterwards.
+    expect(Object.keys(loadPlaybook(PATH).formations)).toEqual(['deuce'])
+  })
+
+  it('says how to do it on purpose, and lets you', () => {
+    createFormation(deuce, { path: PATH })
+    expect(() => savePlaybook(emptyPlaybook(), PATH)).toThrow(/allowWipe: true/)
+    savePlaybook(emptyPlaybook(), PATH, { allowWipe: true })
+    expect(Object.keys(loadPlaybook(PATH).formations)).toEqual([])
+  })
+
+  it('backs up before EVERY write, so a bad one is recoverable', () => {
+    createFormation(deuce, { path: PATH })
+    upsert('formations', { ...deuce, name: 'Trips' }, { path: PATH })
+    const saved = listBackups(PATH)
+    expect(saved.length).toBeGreaterThan(1)
+    // Newest first.
+    expect(saved[0].file > saved[1].file).toBe(true)
+  })
+
+  it('brings the work back', () => {
+    createFormation(deuce, { path: PATH })
+    createFormation({ ...deuce, name: 'Trips' }, { path: PATH })
+    expect(Object.keys(loadPlaybook(PATH).formations)).toHaveLength(2)
+
+    savePlaybook(emptyPlaybook(), PATH, { allowWipe: true })
+    expect(Object.keys(loadPlaybook(PATH).formations)).toHaveLength(0)
+
+    const best = listBackups(PATH).find(b => b.items >= 2)
+    expect(best).toBeTruthy()
+    const r = restoreBackup(best.file, PATH)
+    expect(r.ok).toBe(true)
+    expect(Object.keys(loadPlaybook(PATH).formations).sort()).toEqual(['deuce', 'trips'])
+  })
+
+  it('makes a RESTORE undoable too, by backing up what it replaces', () => {
+    createFormation(deuce, { path: PATH })
+    // Counting is no good once the rolling cap is reached, so check a NEW backup appeared.
+    const newestBefore = listBackups(PATH)[0].file
+    restoreBackup(listBackups(PATH)[0].file, PATH)
+    expect(listBackups(PATH)[0].file).not.toBe(newestBefore)
+  })
+
+  it('still lets a normal delete empty the playbook', () => {
+    // Removing the last thing you made is legitimate; the guard is about wholesale overwrites.
+    createFormation(deuce, { path: PATH })
+    expect(remove('formations', 'deuce', { path: PATH, force: true }).ok).toBe(true)
+    expect(Object.keys(loadPlaybook(PATH).formations)).toEqual([])
   })
 })

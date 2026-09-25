@@ -13,7 +13,7 @@
 // half-written playbook would be worse than no playbook: it takes the whole authored library with
 // it, which by then is hours of the user's drawing.
 
-import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync } from 'node:fs'
+import { readFileSync, writeFileSync, existsSync, renameSync, mkdirSync, readdirSync, unlinkSync, copyFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
@@ -57,11 +57,88 @@ export function loadPlaybook(path = PLAYBOOK_PATH) {
   }
 }
 
-export function savePlaybook(book, path = PLAYBOOK_PATH) {
+// ── Not losing hours of somebody's drawing ──────────────────────────────────
+//
+// ⚠️ THIS EXISTS BECAUSE I DESTROYED THE USER'S WORK. A smoke test wrote an empty playbook over
+// the live file and every formation and play they had authored was gone — not in git, because the
+// same commits that followed had already staged the emptied file. Atomic writes protected against
+// a HALF-written file and did nothing about a fully-written wrong one.
+//
+// Two guards, and they are deliberately different:
+//
+//   1. A BACKUP BEFORE EVERY WRITE. Cheap, and the only thing that helps once a bad write has
+//      already landed.
+//   2. A REFUSAL TO WIPE. A save that would drop everything is almost never what anyone meant, so
+//      it has to say so explicitly. This is the one that would have stopped it happening at all.
+export const BACKUP_DIR = 'backups'
+const KEEP_BACKUPS = 40
+
+const countItems = (book) =>
+  ['formations', 'plays', 'defFormations', 'shells']
+    .reduce((n, k) => n + Object.keys(book?.[k] ?? {}).length, 0)
+
+function backup(path) {
+  if (!existsSync(path)) return null
+  const dir = join(dirname(path), BACKUP_DIR)
+  mkdirSync(dir, { recursive: true })
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const dest = join(dir, `authored-${stamp}.json`)
+  copyFileSync(path, dest)
+
+  // Keep the most recent few. Names sort chronologically because the stamp is ISO.
+  const all = readdirSync(dir).filter(f => f.startsWith('authored-') && f.endsWith('.json')).sort()
+  for (const old of all.slice(0, Math.max(0, all.length - KEEP_BACKUPS))) {
+    try { unlinkSync(join(dir, old)) } catch { /* a stale backup is not worth failing a save over */ }
+  }
+  return dest
+}
+
+export function listBackups(path = PLAYBOOK_PATH) {
+  const dir = join(dirname(path), BACKUP_DIR)
+  if (!existsSync(dir)) return []
+  return readdirSync(dir)
+    .filter(f => f.startsWith('authored-') && f.endsWith('.json'))
+    .sort().reverse()
+    .map(f => {
+      const full = join(dir, f)
+      let items = 0
+      try { items = countItems(JSON.parse(readFileSync(full, 'utf8'))) } catch { /* unreadable */ }
+      return { file: f, path: full, items }
+    })
+}
+
+// Put a backup back. Takes a backup of the CURRENT file first, so an accidental restore is itself
+// undoable.
+export function restoreBackup(file, path = PLAYBOOK_PATH) {
+  const full = join(dirname(path), BACKUP_DIR, file)
+  if (!existsSync(full)) return { ok: false, errors: [`no backup named "${file}"`] }
+  const book = JSON.parse(readFileSync(full, 'utf8'))
+  savePlaybook(book, path, { allowWipe: true })
+  return { ok: true, items: countItems(book), book }
+}
+
+export function savePlaybook(book, path = PLAYBOOK_PATH, { allowWipe = false } = {}) {
   mkdirSync(dirname(path), { recursive: true })
+
+  // ⚠️ REFUSE TO WIPE. Every legitimate caller either adds something or removes ONE thing, so a
+  // write that empties a playbook holding work is a mistake by definition — a stray reset, a
+  // fixture leaking into the real file, a bad merge. It has to be asked for explicitly.
+  if (!allowWipe && existsSync(path)) {
+    let before = 0
+    try { before = countItems(JSON.parse(readFileSync(path, 'utf8'))) } catch { before = 0 }
+    const after = countItems(book)
+    if (before > 0 && after === 0) {
+      throw new Error(
+        `refusing to overwrite a playbook holding ${before} item(s) with an empty one. ` +
+        `If that is really the intent, pass { allowWipe: true }. Backups: ${join(dirname(path), BACKUP_DIR)}`,
+      )
+    }
+  }
+
+  backup(path)
   const tmp = `${path}.tmp`
   writeFileSync(tmp, JSON.stringify(book, null, 2))
-  renameSync(tmp, path)
+  renameSync(tmp, path)          // atomic: a truncated file would break the resume it exists for
   return book
 }
 
@@ -153,7 +230,7 @@ export function remove(kind, id, { path = PLAYBOOK_PATH, book = null, force = fa
       Object.entries(next[dep.kind] ?? {}).filter(([, x]) => x[dep.key] !== id),
     )
   }
-  savePlaybook(next, path)
+  savePlaybook(next, path, { allowWipe: true })
   return { ok: true, book: next }
 }
 

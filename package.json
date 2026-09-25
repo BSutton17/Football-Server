@@ -5,6 +5,9 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "dev:sandbox": "nodemon scripts/devSandbox.mjs",
+    "playbook": "node scripts/playbook.mjs show",
+    "playbook:backups": "node scripts/playbook.mjs backups",
+    "playbook:restore": "node scripts/playbook.mjs restore",
     "start": "node src/index.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },

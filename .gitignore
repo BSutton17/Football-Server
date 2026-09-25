@@ -21,3 +21,6 @@ dist
 *.suo
 *.sw?
 training-output/
+
+# [authored] Automatic playbook backups — local safety net, not history.
+src/ai/playbook/backups/
