@@ -19,7 +19,10 @@ import {
   isManualPlay, isManualFrozen,
 } from '../game/manual.js'
 import { cancelRpo } from '../game/systems/rpo.js'
-import { isSoloRoom, markDefenseSet, soloCountdownFor, DEFENSE_SET_COUNTDOWN, OFFENSE_SET_COUNTDOWN } from '../ai/timing.js'
+import {
+  isSoloRoom, markDefenseSet, soloCountdownFor, DEFENSE_SET_COUNTDOWN, OFFENSE_SET_COUNTDOWN,
+  ADJUST_WINDOW, ADJUST_WINDOW_NEW_DRIVE,
+} from '../ai/timing.js'
 import { transition, PHASE } from '../game/stateMachine.js'
 import { beginStoppage, STOPPAGE, beginPlayerPause, resumePlayerPause, isPlayerPaused } from '../game/pause.js'
 import { FIELD, RULES } from '../constants.js'
@@ -132,37 +135,67 @@ export function registerGameHandlers(io, socket) {
     io.to(socket.data.roomId).emit('offense_set', { playClockRemaining: Math.ceil(state.playClock) })
     console.log(`[game] ${socket.data.roomId} offense locked → countdown [${payload.playType}]`)
 
-    // Window for the defense to adjust — 10 s on the FIRST play of a drive (like the 40 s play clock),
-    // 5 s otherwise. Emit countdown ticks; at 0 the hike button unlocks.
+    // Window for the defense to adjust — longer on the FIRST play of a drive, like the 40 s play
+    // clock, because everything is being placed from scratch. Emit ticks; at 0 the hike unlocks.
     const roomId = socket.data.roomId
     // [offline] A solo defense that has already declared itself ready gets the short countdown —
     // it asked not to wait, so making it wait the full window would be the opposite of the feature.
-    // A solo defense that has NOT declared gets the ordinary 5-second window: the offense beat it
-    // to the punch, so it is still reading the formation and has earned the time to answer it.
+    // A solo defense that has NOT declared gets the ordinary window: the offense beat it to the
+    // punch, so it is still reading the formation and has earned the time to answer it.
     const start = isSoloRoom(state)
       ? soloCountdownFor(state)
-      : (state.newDrive ? 10 : 5)
+      : (state.newDrive ? ADJUST_WINDOW_NEW_DRIVE : ADJUST_WINDOW)
     if (isSoloRoom(state)) state.solo.countdown = start
+
+    // ⚠️ EVERY TICK IS SCHEDULED UP FRONT, so ending the countdown early cannot simply emit a zero
+    // — the already-queued ticks would keep arriving and the clock would appear to jump back to 4,
+    // 3, 2, 1 after it had finished. A token stamped on this countdown and checked by each tick is
+    // what actually cancels them: bump it and every pending tick becomes a no-op.
+    const token = (state.countdownToken ?? 0) + 1
+    state.countdownToken = token
     Array.from({ length: start + 1 }, (_, i) => start - i).forEach((count, i) => {
       setTimeout(() => {
         const s = getGame(roomId)
-        if (!s || s.phase !== PHASE.COUNTDOWN) return
+        if (!s || s.phase !== PHASE.COUNTDOWN || s.countdownToken !== token) return
         io.to(roomId).emit('hike_countdown', { count })
       }, i * 1000)
     })
   })
 
-  // ── Defense sets early ([offline]) ────────────────────────────────────────
+  // ── Defense declares itself ready ─────────────────────────────────────────
   //
-  // Solo only. Online, the defense's window is a gift from the offense and cannot be cut short —
-  // shortening it would let one player rush the other. Offline there is nobody to rush: the
-  // computer's offense sets at a randomly chosen moment, and a human defense that is already
-  // happy with its look has no reason to stand and wait for it.
+  // ⚠️ ONLINE, THIS ONLY WORKS DURING THE COUNTDOWN, and that distinction is the whole safety
+  // argument. During the countdown the defense is ending its OWN adjust window: the only side it
+  // can disadvantage is itself, and the offense merely gets to snap sooner. Before the offense has
+  // locked there is no window to decline, and letting the defense "set" then would be one player
+  // hurrying the other — which is why pre-snap stays solo-only.
+  //
+  // Offline both cases are open, because there is nobody to rush: the computer's offense sets at a
+  // randomly chosen moment and a human defense happy with its look has no reason to wait.
   socket.on('set_defense', () => {
     const state = getGame(socket.data.roomId)
-    if (!state || !isSoloRoom(state)) return
+    if (!state) return
     if (roleOf(socket) !== 'defense') return
     if (state.phase !== PHASE.PRE_SNAP && state.phase !== PHASE.COUNTDOWN) return
+
+    if (!isSoloRoom(state)) {
+      // Online: only during the countdown, and only once — a second press has nothing left to end.
+      if (state.phase !== PHASE.COUNTDOWN) return
+      if (state.countdownToken == null || state.countdownEnded === state.countdownToken) return
+      // Cancel every tick still queued, THEN zero it. Without the bump the old ticks would keep
+      // arriving and walk the countdown back up.
+      //
+      // ⚠️ RECORD THE ENDED TOKEN *AFTER* THE BUMP. Recording it first compares the old value
+      // against the new one on the next press, which never matches — so the guard let a second
+      // press straight through and fired another zero. A fresh countdown takes a higher token
+      // still, so this correctly stops blocking on the next play.
+      state.countdownToken += 1
+      state.countdownEnded = state.countdownToken
+      io.to(socket.data.roomId).emit('defense_set', { countdown: 0 })
+      io.to(socket.data.roomId).emit('hike_countdown', { count: 0 })
+      console.log(`[game] ${socket.data.roomId} defense ready — countdown ended early`)
+      return
+    }
 
     // Ordering decides what pressing Set means.
     //
@@ -179,6 +212,8 @@ export function registerGameHandlers(io, socket) {
     if (!markDefenseSet(state, { offenseAlreadySet })) return
 
     if (offenseAlreadySet) {
+      // Same cancellation as online: the queued ticks would otherwise walk the countdown back up.
+      if (state.countdownToken != null) state.countdownToken += 1
       // Zero unlocks the hike for a human offense and is what the AI's brain waits for to snap.
       io.to(socket.data.roomId).emit('defense_set', { countdown: 0 })
       io.to(socket.data.roomId).emit('hike_countdown', { count: 0 })

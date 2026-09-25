@@ -70,8 +70,19 @@ export function markDefenseSet(state, { offenseAlreadySet = false } = {}) {
   return true
 }
 
-// The window the defense gets once the offense locks, for a SOLO room. Online keeps its own rule
-// (10 s on a fresh drive, 5 otherwise), which is the offense's gift to give and is left alone.
+// ── The online adjust window ────────────────────────────────────────────────
+//
+// How long the defense gets to answer the formation once the offense locks. Longer on the first
+// play of a drive, for the same reason the play clock is: everything is being placed from scratch.
+//
+// ⚠️ THE DEFENSE CAN END IT EARLY, and that is not one player rushing another. It is the defense
+// declining its OWN time — the only side it can disadvantage is itself, and the offense only
+// benefits by getting to snap sooner. What would be unfair is the reverse: the offense shortening
+// the window it just handed over.
+export const ADJUST_WINDOW = 10
+export const ADJUST_WINDOW_NEW_DRIVE = 15
+
+// The window the defense gets once the offense locks, for a SOLO room.
 export function soloCountdownFor(state) {
   return state?.solo?.defenseSet ? DEFENSE_SET_COUNTDOWN : OFFENSE_SET_COUNTDOWN
 }
