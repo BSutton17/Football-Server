@@ -226,7 +226,6 @@ export const DEF_FRONTS = {
   // the fifth man on the ball is a LINEBACKER you align there and give a `rush` job — which is
   // what a real 5-2 does anyway. No roster change, no engine change.
   '5-2':   { name: '5-2',   dl: 4, blurb: 'Five on the ball — the fifth is a linebacker walked down.' },
-  '2-5':   { name: '2-5',   dl: 2, blurb: 'Two down, five off the ball. A pressure/coverage hybrid.' },
   '3-3-5': { name: '3-3-5', dl: 3, blurb: 'Three down, three linebackers, five defensive backs.' },
   'nickel': { name: 'Nickel', dl: 4, blurb: 'Four down with a fifth defensive back for the third receiver.' },
   'dime':   { name: 'Dime',   dl: 4, blurb: 'Four down with six defensive backs. Obvious passing down.' },

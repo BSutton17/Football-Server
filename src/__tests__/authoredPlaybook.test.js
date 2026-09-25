@@ -240,7 +240,6 @@ describe('a defensive formation the sandbox would save', () => {
     expect(coverageFor('4-3')).toBe(7)
     expect(coverageFor('3-4')).toBe(8)
     expect(coverageFor('3-3-5')).toBe(8)
-    expect(coverageFor('2-5')).toBe(9)
     // ⚠️ A 5-2 does NOT field five. Every roster carries exactly four linemen, so its fifth man on
     // the ball is a LINEBACKER walked down — which is what a real 5-2 does anyway.
     expect(DEF_FRONTS['5-2'].dl).toBe(4)
