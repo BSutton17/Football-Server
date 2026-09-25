@@ -8,6 +8,7 @@
     "playbook": "node scripts/playbook.mjs show",
     "playbook:backups": "node scripts/playbook.mjs backups",
     "playbook:restore": "node scripts/playbook.mjs restore",
+    "playbook:shells": "node scripts/playbook.mjs shells",
     "start": "node src/index.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },

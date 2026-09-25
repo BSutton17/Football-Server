@@ -19,7 +19,9 @@
 
 import express from 'express'
 import cors from 'cors'
-import { loadPlaybook, upsert, remove, createFormation, auditPlaybook, PLAYBOOK_PATH } from './store.js'
+import {
+  loadPlaybook, upsert, remove, createFormation, createDefFormation, auditPlaybook, PLAYBOOK_PATH,
+} from './store.js'
 
 const KINDS = new Set(['formations', 'plays', 'defFormations', 'shells'])
 
@@ -67,7 +69,11 @@ export function createPlaybookDevRouter() {
     if (!KINDS.has(kind)) return res.status(400).json({ error: `unknown kind "${kind}"` })
     // A new formation also gets its run play — there is nothing to draw on a run, so authoring
     // one by hand for every formation is pure clicking.
-    const result = kind === 'formations' ? createFormation(req.body) : upsert(kind, req.body)
+    // A new formation comes with what it always needs: an offensive one with its run play, a
+    // defensive one with its five base shells.
+    const result = kind === 'formations' ? createFormation(req.body)
+      : kind === 'defFormations' ? createDefFormation(req.body)
+      : upsert(kind, req.body)
     // 422, not 500: the payload is well-formed JSON that describes an illegal formation, and the
     // sandbox shows these strings to the user directly.
     if (!result.ok) return res.status(422).json({ errors: result.errors })
@@ -75,8 +81,10 @@ export function createPlaybookDevRouter() {
       id: result.id,
       runPlayId: result.runPlayId,
       runNote: result.runNote,
+      shellIds: result.shellIds,
       [kind]: result.book[kind],
       plays: result.book.plays,
+      shells: result.book.shells,
     })
   })
 

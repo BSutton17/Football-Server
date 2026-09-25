@@ -10,7 +10,7 @@
 // write and refuses to replace a populated playbook with an empty one; this is how you get at
 // those backups without needing me.
 
-import { loadPlaybook, listBackups, restoreBackup, PLAYBOOK_PATH } from '../src/playbook/store.js'
+import { loadPlaybook, listBackups, restoreBackup, backfillShells, PLAYBOOK_PATH } from '../src/playbook/store.js'
 
 const [, , cmd = 'show', arg] = process.argv
 
@@ -50,7 +50,45 @@ if (cmd === 'show') {
   // The current file was itself backed up first, so this is undoable.
   console.log(`\n  Restored ${r.items} item(s) from ${arg}.`)
   console.log('  The playbook that was there is now a backup of its own, if this was a mistake.\n')
+} else if (cmd === 'shells') {
+  // Give formations authored before the base shells came free the ones they are missing. Never
+  // overwrites: a shell whose NAME is already taken on that formation is left alone.
+  const book = loadPlaybook()
+  const ids = Object.keys(book.defFormations ?? {})
+  if (!ids.length) {
+    console.log('')
+    console.log('  No defensive formations yet.')
+    console.log('')
+    process.exit(0)
+  }
+
+  const dry = arg !== '--write'
+  console.log('')
+  if (dry) console.log('  DRY RUN - nothing written. Re-run with --write to apply.')
+  console.log('')
+
+  const BASE = ['COVER 2', 'COVER 3', 'COVER 4', 'COVER 1', '2 MAN']
+  let total = 0
+  for (const id of ids) {
+    const name = book.defFormations[id].name.padEnd(18)
+    if (dry) {
+      const own = Object.values(book.shells ?? {}).filter(sh => sh.formationId === id)
+      const missing = own.length > 0 ? [] : BASE
+      total += missing.length
+      console.log(own.length > 0
+        ? `    ${name} has ${own.length} already - left alone`
+        : `    ${name} would get ${missing.length}`)
+    } else {
+      const r = backfillShells(id)
+      const n = r.created?.length ?? 0
+      total += n
+      console.log(r.skipped ? `    ${name} left alone (${r.skipped})` : `    ${name} +${n}`)
+    }
+  }
+  console.log('')
+  console.log(`  ${dry ? 'Would add' : 'Added'} ${total} shell(s).`)
+  console.log('')
 } else {
-  console.error(`  Unknown command "${cmd}". Try: show | backups | restore <file>`)
+  console.error(`  Unknown command "${cmd}". Try: show | backups | restore <file> | shells [--write]`)
   process.exit(1)
 }

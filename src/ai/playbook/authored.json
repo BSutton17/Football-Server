@@ -858,5 +858,4928 @@
       ]
     }
   },
-  "shells": {}
+  "shells": {
+    "cover_2": {
+      "name": "COVER 2",
+      "formationId": "over",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13.332500000000003,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13.3325,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 19.732099999999996,
+            "depth": 3
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -19.7321,
+            "depth": 3
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 10.6,
+            "depth": 6.9
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -10.9,
+            "depth": 6.8
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -0.2,
+            "depth": 7.7
+          }
+        }
+      },
+      "alignments": {
+        "S1": {
+          "dx": -7.9,
+          "depth": 12.8
+        }
+      }
+    },
+    "tampa_2": {
+      "name": "TAMPA 2",
+      "formationId": "over",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13.3325,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13.332500000000003,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 19.732099999999996,
+            "depth": 3
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -19.7321,
+            "depth": 3
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 10.7,
+            "depth": 5.7
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9.9,
+            "depth": 6.5
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 0,
+            "depth": 13
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "cover_3": {
+      "name": "COVER 3",
+      "formationId": "over",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17.776666666666664,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17.776666666666667,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 15
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 6.221833333333329,
+            "depth": 7
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": -18.665499999999998,
+            "depth": 6
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 18.6655,
+            "depth": 6
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -6.221833333333333,
+            "depth": 7
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "cover_4": {
+      "name": "COVER 4",
+      "formationId": "over",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -19.99875,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 19.99875,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -6.666249999999998,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 6.666249999999998,
+            "depth": 15
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 0,
+            "depth": 7
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": -18.665499999999998,
+            "depth": 6
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 18.6655,
+            "depth": 6
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "cover_2_man": {
+      "name": "COVER 2 MAN",
+      "formationId": "over",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -11.9,
+            "depth": 17
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 12.8,
+            "depth": 16.9
+          }
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "LB1": {
+          "job": "man"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "LB3": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        }
+      },
+      "alignments": {}
+    },
+    "cover_1_robber": {
+      "name": "COVER 1 ROBBER",
+      "formationId": "over",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16.7
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 0,
+            "depth": 7.4
+          }
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "LB1": {
+          "job": "man"
+        },
+        "LB3": {
+          "job": "man"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        }
+      },
+      "alignments": {}
+    },
+    "over_solid_cover_2": {
+      "name": "COVER 2",
+      "formationId": "over_solid",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -16,
+            "depth": 4
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 16,
+            "depth": 4
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "over_solid_cover_3": {
+      "name": "COVER 3",
+      "formationId": "over_solid",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "over_solid_cover_4": {
+      "name": "COVER 4",
+      "formationId": "over_solid",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -18,
+            "depth": 14
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 18,
+            "depth": 14
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -7,
+            "depth": 14
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 7,
+            "depth": 14
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "over_solid_cover_1": {
+      "name": "COVER 1",
+      "formationId": "over_solid",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "S2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "spy"
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "over_solid_2_man": {
+      "name": "2 MAN",
+      "formationId": "over_solid",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "under_wide_cover_2": {
+      "name": "COVER 2",
+      "formationId": "under_wide",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -16,
+            "depth": 4
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 16,
+            "depth": 4
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "under_wide_cover_3": {
+      "name": "COVER 3",
+      "formationId": "under_wide",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "under_wide_cover_4": {
+      "name": "COVER 4",
+      "formationId": "under_wide",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -18,
+            "depth": 14
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 18,
+            "depth": 14
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -7,
+            "depth": 14
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 7,
+            "depth": 14
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "under_wide_cover_1": {
+      "name": "COVER 1",
+      "formationId": "under_wide",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "S2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "spy"
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "under_wide_2_man": {
+      "name": "2 MAN",
+      "formationId": "under_wide",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "tite_cover_2": {
+      "name": "COVER 2",
+      "formationId": "tite",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -16,
+            "depth": 4
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 16,
+            "depth": 4
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB4": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "tite_cover_3": {
+      "name": "COVER 3",
+      "formationId": "tite",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB4": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "tite_cover_4": {
+      "name": "COVER 4",
+      "formationId": "tite",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -18,
+            "depth": 14
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 18,
+            "depth": 14
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -7,
+            "depth": 14
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 7,
+            "depth": 14
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB4": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "tite_cover_1": {
+      "name": "COVER 1",
+      "formationId": "tite",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "S2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB4": {
+          "job": "spy"
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "tite_2_man": {
+      "name": "2 MAN",
+      "formationId": "tite",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB4": {
+          "job": "man",
+          "target": null
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "grizzly_cover_2": {
+      "name": "COVER 2",
+      "formationId": "grizzly",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -16,
+            "depth": 4
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 16,
+            "depth": 4
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB4": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "grizzly_cover_3": {
+      "name": "COVER 3",
+      "formationId": "grizzly",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB4": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "grizzly_cover_4": {
+      "name": "COVER 4",
+      "formationId": "grizzly",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -18,
+            "depth": 14
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 18,
+            "depth": 14
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -7,
+            "depth": 14
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 7,
+            "depth": 14
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB4": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "grizzly_cover_1": {
+      "name": "COVER 1",
+      "formationId": "grizzly",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "S2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB4": {
+          "job": "spy"
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "grizzly_2_man": {
+      "name": "2 MAN",
+      "formationId": "grizzly",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB4": {
+          "job": "man",
+          "target": null
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "normal_cover_2": {
+      "name": "COVER 2",
+      "formationId": "normal",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -16.3,
+            "depth": 4
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 16.2,
+            "depth": 4
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "normal_cover_3": {
+      "name": "COVER 3",
+      "formationId": "normal",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "normal_cover_4": {
+      "name": "COVER 4",
+      "formationId": "normal",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -18,
+            "depth": 14
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 18,
+            "depth": 14
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -7,
+            "depth": 14
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 7,
+            "depth": 14
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "normal_cover_1": {
+      "name": "COVER 1",
+      "formationId": "normal",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "S2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "spy"
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "normal_2_man": {
+      "name": "2 MAN",
+      "formationId": "normal",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "mint_cover_2": {
+      "name": "COVER 2",
+      "formationId": "mint",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -16,
+            "depth": 4
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 16,
+            "depth": 4
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "mint_cover_3": {
+      "name": "COVER 3",
+      "formationId": "mint",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "mint_cover_4": {
+      "name": "COVER 4",
+      "formationId": "mint",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -18,
+            "depth": 14
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 18,
+            "depth": 14
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -7,
+            "depth": 14
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 7,
+            "depth": 14
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "mint_cover_1": {
+      "name": "COVER 1",
+      "formationId": "mint",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "S1": {
+          "job": "man",
+          "target": null
+        },
+        "S3": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "spy"
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "mint_2_man": {
+      "name": "2 MAN",
+      "formationId": "mint",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        },
+        "S3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "over_flex_cover_2": {
+      "name": "COVER 2",
+      "formationId": "over_flex",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -16,
+            "depth": 4
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 16,
+            "depth": 4
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "over_flex_cover_3": {
+      "name": "COVER 3",
+      "formationId": "over_flex",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "over_flex_cover_4": {
+      "name": "COVER 4",
+      "formationId": "over_flex",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -18,
+            "depth": 14
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 18,
+            "depth": 14
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -7,
+            "depth": 14
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 7,
+            "depth": 14
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "over_flex_cover_1": {
+      "name": "COVER 1",
+      "formationId": "over_flex",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "S1": {
+          "job": "man",
+          "target": null
+        },
+        "S3": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "spy"
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "over_flex_2_man": {
+      "name": "2 MAN",
+      "formationId": "over_flex",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        },
+        "S3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "odd_ghost_cover_2": {
+      "name": "COVER 2",
+      "formationId": "odd_ghost",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -16.3,
+            "depth": 4
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 16.1,
+            "depth": 4
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "odd_ghost_cover_3": {
+      "name": "COVER 3",
+      "formationId": "odd_ghost",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "odd_ghost_cover_4": {
+      "name": "COVER 4",
+      "formationId": "odd_ghost",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -18,
+            "depth": 14
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 18,
+            "depth": 14
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -7,
+            "depth": 14
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 7,
+            "depth": 14
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB3": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "odd_ghost_cover_1": {
+      "name": "COVER 1",
+      "formationId": "odd_ghost",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "S1": {
+          "job": "man",
+          "target": null
+        },
+        "S3": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "spy"
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "odd_ghost_2_man": {
+      "name": "2 MAN",
+      "formationId": "odd_ghost",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB3": {
+          "job": "man",
+          "target": null
+        },
+        "S3": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "2_4_cover_2": {
+      "name": "COVER 2",
+      "formationId": "2_4",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -16,
+            "depth": 4
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -9.4,
+            "depth": 4
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 16,
+            "depth": 4
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "2_4_cover_3": {
+      "name": "COVER 3",
+      "formationId": "2_4",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "2_4_cover_4": {
+      "name": "COVER 4",
+      "formationId": "2_4",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -18,
+            "depth": 14
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 18,
+            "depth": 14
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -7,
+            "depth": 14
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 7,
+            "depth": 14
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "2_4_cover_1": {
+      "name": "COVER 1",
+      "formationId": "2_4",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB3": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "S2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "spy"
+        }
+      },
+      "alignments": {}
+    },
+    "2_4_2_man": {
+      "name": "2 MAN",
+      "formationId": "2_4",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB3": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "2_4_single_mug_cover_2": {
+      "name": "COVER 2",
+      "formationId": "2_4_single_mug",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -16,
+            "depth": 4
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -9.2,
+            "depth": 4
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 16,
+            "depth": 4
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "2_4_single_mug_cover_3": {
+      "name": "COVER 3",
+      "formationId": "2_4_single_mug",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "2_4_single_mug_cover_4": {
+      "name": "COVER 4",
+      "formationId": "2_4_single_mug",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -18,
+            "depth": 14
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 18,
+            "depth": 14
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -7,
+            "depth": 14
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 7,
+            "depth": 14
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "2_4_single_mug_cover_1": {
+      "name": "COVER 1",
+      "formationId": "2_4_single_mug",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB3": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "S2": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "spy"
+        }
+      },
+      "alignments": {}
+    },
+    "2_4_single_mug_2_man": {
+      "name": "2 MAN",
+      "formationId": "2_4_single_mug",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB3": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "wide_cover_2": {
+      "name": "COVER 2",
+      "formationId": "wide",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -16,
+            "depth": 4
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -6.8,
+            "depth": 4
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 16,
+            "depth": 4
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "wide_cover_3": {
+      "name": "COVER 3",
+      "formationId": "wide",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "wide_cover_4": {
+      "name": "COVER 4",
+      "formationId": "wide",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -18,
+            "depth": 14
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 18,
+            "depth": 14
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -7,
+            "depth": 14
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 7,
+            "depth": 14
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "wide_cover_1": {
+      "name": "COVER 1",
+      "formationId": "wide",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB3": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "S2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "spy"
+        }
+      },
+      "alignments": {}
+    },
+    "wide_2_man": {
+      "name": "2 MAN",
+      "formationId": "wide",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB3": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "3_3_mint_cover_2": {
+      "name": "COVER 2",
+      "formationId": "3_3_mint",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -16,
+            "depth": 4
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -9.5,
+            "depth": 4
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 16,
+            "depth": 4
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "3_3_mint_cover_3": {
+      "name": "COVER 3",
+      "formationId": "3_3_mint",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "3_3_mint_cover_4": {
+      "name": "COVER 4",
+      "formationId": "3_3_mint",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -18,
+            "depth": 14
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 18,
+            "depth": 14
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -7,
+            "depth": 14
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 7,
+            "depth": 14
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "3_3_mint_cover_1": {
+      "name": "COVER 1",
+      "formationId": "3_3_mint",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB3": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "S2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "spy"
+        }
+      },
+      "alignments": {}
+    },
+    "3_3_mint_2_man": {
+      "name": "2 MAN",
+      "formationId": "3_3_mint",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB3": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        },
+        "LB2": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "3_2_odd_cover_2": {
+      "name": "COVER 2",
+      "formationId": "3_2_odd",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -16,
+            "depth": 4
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": -9.7,
+            "depth": 4
+          }
+        },
+        "CB4": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 10,
+            "depth": 4
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "flat",
+          "center": {
+            "dx": 16,
+            "depth": 4
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "3_2_odd_cover_3": {
+      "name": "COVER 3",
+      "formationId": "3_2_odd",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17,
+            "depth": 15
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "CB4": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "3_2_odd_cover_4": {
+      "name": "COVER 4",
+      "formationId": "3_2_odd",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -18,
+            "depth": 14
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 18,
+            "depth": 14
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -7,
+            "depth": 14
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 7,
+            "depth": 14
+          }
+        },
+        "CB3": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -9,
+            "depth": 10
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 0,
+            "depth": 8
+          }
+        },
+        "CB4": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 9,
+            "depth": 10
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "3_2_odd_cover_1": {
+      "name": "COVER 1",
+      "formationId": "3_2_odd",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 16
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB3": {
+          "job": "man",
+          "target": null
+        },
+        "CB4": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "S2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "spy"
+        }
+      },
+      "alignments": {}
+    },
+    "3_2_odd_2_man": {
+      "name": "2 MAN",
+      "formationId": "3_2_odd",
+      "kind": "man",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -13,
+            "depth": 15
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 13,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "man",
+          "target": null
+        },
+        "CB3": {
+          "job": "man",
+          "target": null
+        },
+        "CB4": {
+          "job": "man",
+          "target": null
+        },
+        "CB2": {
+          "job": "man",
+          "target": null
+        },
+        "LB1": {
+          "job": "man",
+          "target": null
+        }
+      },
+      "alignments": {}
+    }
+  }
 }

@@ -475,6 +475,109 @@ export function autoRunPlay(formation, formationId) {
 // `formations` and `plays` are the OFFENSE; `defFormations` and `shells` are the defense. They are
 // kept apart because they validate against completely different rules — five skill players against
 // eleven defenders — and because a play must only ever be built on an offensive formation.
+// ── The five shells every formation starts with ─────────────────────────────
+//
+// A defensive formation is worth nothing until something is called out of it, and the first five
+// calls are always the same five. Authoring them by hand for fourteen formations is seventy
+// identical sittings, so they come free — and then they are ordinary shells, editable and
+// deletable like any other. This is the defensive twin of the run play that comes with an
+// offensive formation.
+//
+// ⚠️ THE LINEMEN ALWAYS RUSH. A down lineman dropping is a specific, unusual call; rushing is what
+// he does unless told otherwise, so every generated shell starts him there and the editor seeds
+// the same default. Nobody should have to click `rush` four times to describe a normal defense.
+//
+// The zone CENTRES here are ordinary landmarks — deep halves a quarter of the way out, thirds a
+// third of the way out — not anything clever. Pressing Cover 2/3/4 in the editor recomputes them
+// from where the defenders actually stand, which is better; these just make the saved shell look
+// like the coverage it claims to be before anyone touches it.
+
+const DEEP = 15
+const UNDER_CURL = 10
+const UNDER_HOOK = 8
+const FLAT = 4
+
+const byDx = (a, b) => a.dx - b.dx
+const zone = (kind, dx, depth) => ({ job: 'zone', zone: kind, center: { dx, depth } })
+const man = () => ({ job: 'man', target: null })
+
+// Underneath work for whoever is left after the deep players are spoken for.
+function fillUnderneath(out, players) {
+  players.sort(byDx).forEach((p, i, all) => {
+    if (all.length === 1) { out[p.slot] = zone('hook', 0, UNDER_HOOK); return }
+    if (i === 0) out[p.slot] = zone('curl', -9, UNDER_CURL)
+    else if (i === all.length - 1) out[p.slot] = zone('curl', 9, UNDER_CURL)
+    else out[p.slot] = zone('hook', 0, UNDER_HOOK)
+  })
+}
+
+export function autoShellsFor(formation, formationId) {
+  const spots = formation?.spots ?? []
+  const of = (label) => spots.filter(s => slotLabel(s.slot) === label).sort(byDx)
+  const dl = of('DL'), cbs = of('CB'), safeties = of('S'), lbs = of('LB')
+  if (!cbs.length && !safeties.length && !lbs.length) return []
+
+  const rushers = () => Object.fromEntries(dl.map(d => [d.slot, { job: 'rush' }]))
+  const shells = []
+  const add = (name, kind, assignments) =>
+    shells.push({ name, formationId, kind, forcedLeverage: null, assignments, alignments: {} })
+
+  // COVER 2 — two deep halves, corners in the flats, everyone else underneath.
+  {
+    const a = rushers()
+    const [s1, s2] = safeties
+    if (s1) a[s1.slot] = zone('deep', s2 ? -13 : 0, DEEP)
+    if (s2) a[s2.slot] = zone('deep', 13, DEEP)
+    for (const cb of cbs) a[cb.slot] = zone('flat', cb.dx, FLAT)
+    fillUnderneath(a, [...lbs, ...safeties.slice(2)])
+    add('COVER 2', 'zone', a)
+  }
+
+  // COVER 3 — three deep thirds: both corners and a single high safety.
+  {
+    const a = rushers()
+    const outside = [cbs[0], cbs[cbs.length - 1]].filter(Boolean)
+    for (const cb of outside) a[cb.slot] = zone('deep', cb.dx < 0 ? -17 : 17, DEEP)
+    const [free, ...rest] = safeties
+    if (free) a[free.slot] = zone('deep', 0, DEEP + 1)
+    fillUnderneath(a, [...lbs, ...rest, ...cbs.slice(1, -1)])
+    add('COVER 3', 'zone', a)
+  }
+
+  // COVER 4 — four deep quarters: corners outside, safeties inside.
+  {
+    const a = rushers()
+    const outside = [cbs[0], cbs[cbs.length - 1]].filter(Boolean)
+    for (const cb of outside) a[cb.slot] = zone('deep', cb.dx < 0 ? -18 : 18, DEEP - 1)
+    safeties.slice(0, 2).forEach((s, i) => { a[s.slot] = zone('deep', i === 0 ? -7 : 7, DEEP - 1) })
+    fillUnderneath(a, [...lbs, ...safeties.slice(2), ...cbs.slice(1, -1)])
+    add('COVER 4', 'zone', a)
+  }
+
+  // COVER 1 — man across the board with a single free safety over the top.
+  {
+    const a = rushers()
+    const [free, ...rest] = safeties
+    if (free) a[free.slot] = zone('deep', 0, DEEP + 1)
+    for (const p of [...cbs, ...rest]) a[p.slot] = man()
+    // One linebacker spies rather than chasing; the rest take a man.
+    lbs.forEach((lb, i) => { a[lb.slot] = i === Math.floor(lbs.length / 2) ? { job: 'spy' } : man() })
+    add('COVER 1', 'man', a)
+  }
+
+  // 2 MAN — man underneath, two safeties over the top.
+  {
+    const a = rushers()
+    const [s1, s2] = safeties
+    if (s1) a[s1.slot] = zone('deep', s2 ? -13 : 0, DEEP)
+    if (s2) a[s2.slot] = zone('deep', 13, DEEP)
+    for (const p of [...cbs, ...lbs, ...safeties.slice(2)]) a[p.slot] = man()
+    add('2 MAN', 'man', a)
+  }
+
+  return shells
+}
+
 export function emptyPlaybook() {
   return { version: PLAYBOOK_VERSION, formations: {}, plays: {}, defFormations: {}, shells: {} }
 }

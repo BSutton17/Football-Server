@@ -18,7 +18,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import {
   emptyPlaybook, validateFormation, validatePlay, validateDefFormation, validateShell, autoRunPlay,
-  PLAYBOOK_VERSION,
+  autoShellsFor, PLAYBOOK_VERSION,
 } from '../ai/playbook/authored.js'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
@@ -138,8 +138,37 @@ export function savePlaybook(book, path = PLAYBOOK_PATH, { allowWipe = false } =
   backup(path)
   const tmp = `${path}.tmp`
   writeFileSync(tmp, JSON.stringify(book, null, 2))
-  renameSync(tmp, path)          // atomic: a truncated file would break the resume it exists for
+  renameReplacing(tmp, path)     // atomic: a truncated file would break the resume it exists for
   return book
+}
+
+// ⚠️ THE ATOMIC RENAME IS NOT RELIABLE ON WINDOWS. This repo lives in OneDrive, which opens files
+// to sync them, and an open handle makes a replace fail with EPERM or EBUSY — not because anything
+// is wrong, but because the sync client happened to be reading at that instant. A backfill writing
+// a dozen times in a row hit it on the tenth and stopped halfway through.
+//
+// The write itself stayed safe — that is what the temp-and-rename is for, and the playbook was
+// never corrupt. But losing the rest of a batch to a transient lock is not acceptable, so it
+// retries briefly before giving up, and says WHAT is probably holding the file when it does.
+function renameReplacing(tmp, path, tries = 6) {
+  for (let attempt = 0; attempt < tries; attempt++) {
+    try {
+      renameSync(tmp, path)
+      return
+    } catch (err) {
+      const transient = err.code === 'EPERM' || err.code === 'EBUSY' || err.code === 'EACCES'
+      if (!transient || attempt === tries - 1) {
+        try { unlinkSync(tmp) } catch { /* leaving a .tmp behind is the lesser problem */ }
+        if (!transient) throw err
+        throw new Error(
+          `could not replace ${path} after ${tries} attempts (${err.code}). ` +
+          'Something is holding it open — OneDrive syncing, an editor, or a running dev server.',
+        )
+      }
+      // A real sleep, not a spin: savePlaybook is synchronous and everything else here is too.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 40 * (attempt + 1))
+    }
+  }
 }
 
 // `U Off Trips Wk` -> `u_off_trips_wk`. Ids are derived from the name so the file reads like the
@@ -194,6 +223,54 @@ export function createFormation(formation, { path = PLAYBOOK_PATH } = {}) {
   const play = upsert('plays', run, { path, book: made.book })
   if (!play.ok) return { ...made, runPlayId: null, runNote: play.errors.join('; ') }
   return { ok: true, id: made.id, runPlayId: play.id, book: play.book }
+}
+
+// ── Creating a defensive formation creates its base shells ──────────────────
+//
+// The defensive twin of the run play that comes with an offensive formation. A formation is worth
+// nothing until something is called out of it, and the first five calls are always the same five,
+// so they come free. They are ordinary shells afterwards — rename, edit, delete.
+//
+// ⚠️ ON CREATE ONLY, never on edit, or every nudge of a safety would add five more.
+export function createDefFormation(formation, { path = PLAYBOOK_PATH } = {}) {
+  const made = upsert('defFormations', formation, { path })
+  if (!made.ok) return made
+
+  let book = made.book
+  const created = []
+  for (const shell of autoShellsFor(formation, made.id)) {
+    // ⚠️ The id is scoped to the formation. Fourteen formations each wanting a "COVER 2" would
+    // otherwise collide into cover_2, cover_2_2, cover_2_3 ... and nobody could tell them apart.
+    const id = `${made.id}_${slugify(shell.name)}`
+    const r = upsert('shells', shell, { id, path, book })
+    if (r.ok) { book = r.book; created.push(r.id) }
+  }
+  return { ok: true, id: made.id, shellIds: created, book }
+}
+
+// Give an EXISTING formation the base shells it is missing. Used to backfill formations authored
+// before they came free; skips any whose name is already taken, so it never overwrites real work.
+export function backfillShells(formationId, { path = PLAYBOOK_PATH, book = null } = {}) {
+  let current = book ?? loadPlaybook(path)
+  const formation = current.defFormations?.[formationId]
+  if (!formation) return { ok: false, errors: [`no defensive formation "${formationId}"`] }
+
+  const own = Object.values(current.shells ?? {}).filter(sh => sh.formationId === formationId)
+
+  // ⚠️ LEAVE A FORMATION THAT HAS BEEN WORKED ON ALONE. Somebody who has already built six shells
+  // out of a front has decided what they want out of it; adding two more because their names did
+  // not match a canned list is clutter, not help. Backfill is for the formations still empty.
+  if (own.length > 0) return { ok: true, created: [], skipped: 'already has shells', book: current }
+
+  const existing = new Set(own.map(sh => String(sh.name).toUpperCase()))
+  const created = []
+  for (const shell of autoShellsFor(formation, formationId)) {
+    if (existing.has(shell.name.toUpperCase())) continue
+    const id = `${formationId}_${slugify(shell.name)}`
+    const r = upsert('shells', shell, { id, path, book: current })
+    if (r.ok) { current = r.book; created.push(r.id) }
+  }
+  return { ok: true, created, book: current }
 }
 
 // ── Deleting ────────────────────────────────────────────────────────────────
