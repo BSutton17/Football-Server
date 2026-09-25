@@ -858,45 +858,5 @@
       ]
     }
   },
-  "shells": {
-    "cover_3": {
-      "name": "Cover 3",
-      "formationId": "over",
-      "kind": "zone",
-      "assignments": {
-        "CB1": {
-          "job": "zone",
-          "zone": "deep",
-          "center": {
-            "dx": -14,
-            "depth": 18
-          }
-        },
-        "CB2": {
-          "job": "zone",
-          "zone": "deep",
-          "center": {
-            "dx": 14,
-            "depth": 18
-          }
-        },
-        "S1": {
-          "job": "zone",
-          "zone": "deep",
-          "center": {
-            "dx": 0,
-            "depth": 20
-          }
-        },
-        "LB1": {
-          "job": "zone",
-          "zone": "hook",
-          "center": {
-            "dx": -6,
-            "depth": 8
-          }
-        }
-      }
-    }
-  }
+  "shells": {}
 }
