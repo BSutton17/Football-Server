@@ -1397,34 +1397,34 @@
         },
         "LB1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -18.1,
+            "depth": 5.1
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -6.1,
+            "depth": 6.5
           }
         },
         "LB3": {
           "job": "zone",
           "zone": "hook",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 18.1,
+            "depth": 7
           }
         },
         "S2": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 7.5,
+            "depth": 6.5
           }
         }
       },
@@ -1452,56 +1452,56 @@
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": -18,
-            "depth": 14
+            "dx": -18.3,
+            "depth": 18.5
           }
         },
         "CB2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 18,
-            "depth": 14
+            "dx": 18.8,
+            "depth": 18.1
           }
         },
         "S1": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": -7,
-            "depth": 14
+            "dx": -6.4,
+            "depth": 18.2
           }
         },
         "S2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 7,
-            "depth": 14
+            "dx": 7.2,
+            "depth": 17.8
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -14.5,
+            "depth": 6.1
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -0.6,
+            "depth": 7.6
           }
         },
         "LB3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 15.6,
+            "depth": 7
           }
         }
       },
@@ -1550,7 +1550,12 @@
           "target": null
         },
         "LB2": {
-          "job": "spy"
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 0.2,
+            "depth": 8.7
+          }
         },
         "LB3": {
           "job": "man",
@@ -1737,34 +1742,34 @@
         },
         "LB1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -16,
+            "depth": 6
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -3.7,
+            "depth": 8.3
           }
         },
         "LB3": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 8.1,
+            "depth": 7.2
           }
         },
         "S2": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 17.4,
+            "depth": 5.5
           }
         }
       },
@@ -1792,45 +1797,45 @@
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": -18,
-            "depth": 14
+            "dx": -17.4,
+            "depth": 18.7
           }
         },
         "CB2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 18,
-            "depth": 14
+            "dx": 17.5,
+            "depth": 19.1
           }
         },
         "S1": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": -7,
-            "depth": 14
+            "dx": -6.1,
+            "depth": 18.6
           }
         },
         "S2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 7,
-            "depth": 14
+            "dx": 6.9,
+            "depth": 18.4
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -15.5,
+            "depth": 5.7
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
             "dx": 0,
             "depth": 8
@@ -1838,10 +1843,10 @@
         },
         "LB3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 15.7,
+            "depth": 7
           }
         }
       },
@@ -1890,7 +1895,12 @@
           "target": null
         },
         "LB2": {
-          "job": "spy"
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 0.4,
+            "depth": 7.7
+          }
         },
         "LB3": {
           "job": "man",
@@ -2012,11 +2022,11 @@
           }
         },
         "LB2": {
-          "job": "zone",
+          "job": "rush",
           "zone": "hook",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 0.1,
+            "depth": 13
           }
         },
         "LB4": {
@@ -2057,16 +2067,16 @@
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": -17,
-            "depth": 15
+            "dx": -16.9,
+            "depth": 16.7
           }
         },
         "CB2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 17,
-            "depth": 15
+            "dx": 16.8,
+            "depth": 16.6
           }
         },
         "S1": {
@@ -2079,42 +2089,42 @@
         },
         "LB1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -16.1,
+            "depth": 6.3
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -5.5,
+            "depth": 7.4
           }
         },
         "LB4": {
-          "job": "zone",
+          "job": "rush",
           "zone": "hook",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 5.8,
+            "depth": 8.1
           }
         },
         "LB3": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 5.2,
+            "depth": 7.2
           }
         },
         "S2": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 15.4,
+            "depth": 7.2
           }
         }
       },
@@ -2140,59 +2150,59 @@
           "zone": "deep",
           "center": {
             "dx": -18,
-            "depth": 14
+            "depth": 17.9
           }
         },
         "CB2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 18,
-            "depth": 14
+            "dx": 18.1,
+            "depth": 17.6
           }
         },
         "S1": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": -7,
-            "depth": 14
+            "dx": -6.2,
+            "depth": 18.3
           }
         },
         "S2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 7,
-            "depth": 14
+            "dx": 6.8,
+            "depth": 18.2
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -15.4,
+            "depth": 5.1
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 0.5,
+            "depth": 8.3
           }
         },
         "LB4": {
           "job": "zone",
           "zone": "hook",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 13.9,
+            "depth": 6.3
           }
         },
         "LB3": {
-          "job": "zone",
+          "job": "rush",
           "zone": "curl",
           "center": {
             "dx": 9,
@@ -2246,10 +2256,15 @@
           "target": null
         },
         "LB4": {
-          "job": "spy"
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -0.5,
+            "depth": 8
+          }
         },
         "LB3": {
-          "job": "man",
+          "job": "rush",
           "target": null
         }
       },
@@ -2295,7 +2310,7 @@
           "target": null
         },
         "LB1": {
-          "job": "man",
+          "job": "rush",
           "target": null
         },
         "LB2": {
@@ -2332,16 +2347,16 @@
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": -13,
-            "depth": 15
+            "dx": -13.7,
+            "depth": 17.2
           }
         },
         "S2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 13,
-            "depth": 15
+            "dx": 13.8,
+            "depth": 17
           }
         },
         "CB1": {
@@ -2361,7 +2376,7 @@
           }
         },
         "LB1": {
-          "job": "zone",
+          "job": "rush",
           "zone": "curl",
           "center": {
             "dx": -9,
@@ -2370,26 +2385,26 @@
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -8.3,
+            "depth": 7.6
           }
         },
         "LB4": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -0.4,
+            "depth": 10.5
           }
         },
         "LB3": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 9.1,
+            "depth": 7
           }
         }
       },
@@ -2436,38 +2451,38 @@
         },
         "LB1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -15.3,
+            "depth": 5.6
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -6.6,
+            "depth": 6.7
           }
         },
         "LB4": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 6.4,
+            "depth": 7.9
           }
         },
         "S2": {
           "job": "zone",
           "zone": "hook",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 17.1,
+            "depth": 5.9
           }
         },
         "LB3": {
-          "job": "zone",
+          "job": "rush",
           "zone": "curl",
           "center": {
             "dx": 9,
@@ -2526,30 +2541,30 @@
         },
         "LB1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -16.2,
+            "depth": 5.3
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -0.3,
+            "depth": 9
           }
         },
         "LB4": {
           "job": "zone",
           "zone": "hook",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 16.3,
+            "depth": 6.7
           }
         },
         "LB3": {
-          "job": "zone",
+          "job": "rush",
           "zone": "curl",
           "center": {
             "dx": 9,
@@ -2603,10 +2618,11 @@
           "target": null
         },
         "LB4": {
-          "job": "spy"
+          "job": "zone",
+          "zone": "curl"
         },
         "LB3": {
-          "job": "man",
+          "job": "rush",
           "target": null
         }
       },
@@ -2724,13 +2740,13 @@
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -10.1,
+            "depth": 7
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
             "dx": 0,
             "depth": 8
@@ -2740,8 +2756,8 @@
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 9.2,
+            "depth": 6.3
           }
         }
       },
@@ -2791,34 +2807,34 @@
         },
         "LB1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -16.7,
+            "depth": 6.3
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -4.2,
+            "depth": 7.2
           }
         },
         "LB3": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 5.3,
+            "depth": 7
           }
         },
         "S2": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 16.2,
+            "depth": 5.8
           }
         }
       },
@@ -2876,15 +2892,15 @@
         },
         "LB1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -15.8,
+            "depth": 6.2
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
             "dx": 0,
             "depth": 8
@@ -2892,10 +2908,10 @@
         },
         "LB3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 16.2,
+            "depth": 6
           }
         }
       },
@@ -2944,7 +2960,12 @@
           "target": null
         },
         "LB2": {
-          "job": "spy"
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 0,
+            "depth": 7.2
+          }
         },
         "LB3": {
           "job": "man",
@@ -3011,7 +3032,7 @@
       "alignments": {}
     },
     "mint_cover_2": {
-      "name": "COVER 2",
+      "name": "COVER 2 INVERT",
       "formationId": "mint",
       "kind": "zone",
       "forcedLeverage": null,
@@ -3027,18 +3048,18 @@
         },
         "S2": {
           "job": "zone",
-          "zone": "deep",
+          "zone": "curl",
           "center": {
-            "dx": -13,
-            "depth": 15
+            "dx": -9.8,
+            "depth": 7.2
           }
         },
         "S1": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 13,
-            "depth": 15
+            "dx": -10.8,
+            "depth": 18.5
           }
         },
         "CB1": {
@@ -3046,35 +3067,35 @@
           "zone": "flat",
           "center": {
             "dx": -16,
-            "depth": 4
+            "depth": 3.1
           }
         },
         "CB2": {
           "job": "zone",
-          "zone": "flat",
+          "zone": "deep",
           "center": {
-            "dx": 16,
-            "depth": 4
+            "dx": 13.7,
+            "depth": 19.5
           }
         },
         "LB1": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": 1.6,
+            "depth": 9.7
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 12.7,
+            "depth": 7.1
           }
         },
         "LB3": {
-          "job": "zone",
+          "job": "rush",
           "zone": "hook",
           "center": {
             "dx": 0,
@@ -3083,10 +3104,10 @@
         },
         "S3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "flat",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 16.6,
+            "depth": 3.1
           }
         }
       },
@@ -3133,30 +3154,30 @@
         },
         "S1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -17,
+            "depth": 6.3
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -5.7,
+            "depth": 7.2
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 5.6,
+            "depth": 7.4
           }
         },
         "LB3": {
-          "job": "zone",
+          "job": "rush",
           "zone": "hook",
           "center": {
             "dx": 0,
@@ -3165,17 +3186,17 @@
         },
         "S3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 16.7,
+            "depth": 6.7
           }
         }
       },
       "alignments": {}
     },
     "mint_cover_4": {
-      "name": "COVER 4",
+      "name": "COVER 4 DROP",
       "formationId": "mint",
       "kind": "zone",
       "forcedLeverage": null,
@@ -3223,34 +3244,34 @@
         },
         "LB1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -16.1,
+            "depth": 5.7
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -7.1,
+            "depth": 6
           }
         },
         "LB3": {
           "job": "zone",
           "zone": "hook",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 16.8,
+            "depth": 5.6
           }
         },
         "S3": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 4.9,
+            "depth": 5.8
           }
         }
       },
@@ -3300,10 +3321,15 @@
           "target": null
         },
         "LB2": {
-          "job": "spy"
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 0.3,
+            "depth": 7.5
+          }
         },
         "LB3": {
-          "job": "man",
+          "job": "rush",
           "target": null
         }
       },
@@ -3384,26 +3410,26 @@
         },
         "S2": {
           "job": "zone",
-          "zone": "deep",
+          "zone": "curl",
           "center": {
-            "dx": -13,
-            "depth": 15
+            "dx": -12,
+            "depth": 8.6
           }
         },
         "S1": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 13,
-            "depth": 15
+            "dx": -12.7,
+            "depth": 18.4
           }
         },
         "CB1": {
           "job": "zone",
           "zone": "flat",
           "center": {
-            "dx": -16,
-            "depth": 4
+            "dx": -16.2,
+            "depth": 2.9
           }
         },
         "CB2": {
@@ -3418,13 +3444,13 @@
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -0.9,
+            "depth": 12
           }
         },
         "LB2": {
-          "job": "zone",
-          "zone": "hook",
+          "job": "rush",
+          "zone": "curl",
           "center": {
             "dx": 0,
             "depth": 8
@@ -3432,25 +3458,25 @@
         },
         "LB3": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 11.8,
+            "depth": 7.8
           }
         },
         "S3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "deep",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 13.3,
+            "depth": 17.6
           }
         }
       },
       "alignments": {}
     },
     "over_flex_cover_3": {
-      "name": "COVER 3",
+      "name": "COVER 3 BLITZ",
       "formationId": "over_flex",
       "kind": "zone",
       "forcedLeverage": null,
@@ -3490,22 +3516,22 @@
         },
         "S1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -13.3,
+            "depth": 6.6
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -0.1,
+            "depth": 7.2
           }
         },
         "LB2": {
-          "job": "zone",
+          "job": "rush",
           "zone": "hook",
           "center": {
             "dx": 0,
@@ -3513,7 +3539,7 @@
           }
         },
         "LB3": {
-          "job": "zone",
+          "job": "rush",
           "zone": "hook",
           "center": {
             "dx": 0,
@@ -3522,17 +3548,17 @@
         },
         "S3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 13.6,
+            "depth": 6.9
           }
         }
       },
       "alignments": {}
     },
     "over_flex_cover_4": {
-      "name": "COVER 4",
+      "name": "COVER 4 DROP",
       "formationId": "over_flex",
       "kind": "zone",
       "forcedLeverage": null,
@@ -3580,34 +3606,34 @@
         },
         "LB1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -16.2,
+            "depth": 5.7
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -6,
+            "depth": 6.7
           }
         },
         "LB3": {
           "job": "zone",
           "zone": "hook",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 17.6,
+            "depth": 5.2
           }
         },
         "S3": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 4.7,
+            "depth": 6.9
           }
         }
       },
@@ -3657,10 +3683,15 @@
           "target": null
         },
         "LB2": {
-          "job": "spy"
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 0.6,
+            "depth": 7.4
+          }
         },
         "LB3": {
-          "job": "man",
+          "job": "rush",
           "target": null
         }
       },
@@ -3775,13 +3806,13 @@
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -11.2,
+            "depth": 5.9
           }
         },
         "LB2": {
-          "job": "zone",
-          "zone": "hook",
+          "job": "rush",
+          "zone": "curl",
           "center": {
             "dx": 0,
             "depth": 8
@@ -3789,18 +3820,18 @@
         },
         "LB3": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -0.4,
+            "depth": 9.7
           }
         },
         "S3": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 10,
+            "depth": 5.4
           }
         }
       },
@@ -3839,22 +3870,22 @@
         },
         "S2": {
           "job": "zone",
-          "zone": "deep",
+          "zone": "hook",
           "center": {
-            "dx": 0,
-            "depth": 16
+            "dx": -16.8,
+            "depth": 6
           }
         },
         "LB1": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -5.5,
+            "depth": 7.6
           }
         },
         "LB2": {
-          "job": "zone",
+          "job": "rush",
           "zone": "hook",
           "center": {
             "dx": 0,
@@ -3863,33 +3894,33 @@
         },
         "S1": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "deep",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 0.3,
+            "depth": 18.4
           }
         },
         "LB3": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 5.8,
+            "depth": 7.6
           }
         },
         "S3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 18.3,
+            "depth": 6.8
           }
         }
       },
       "alignments": {}
     },
     "odd_ghost_cover_4": {
-      "name": "COVER 4",
+      "name": "COVER 4 DROP",
       "formationId": "odd_ghost",
       "kind": "zone",
       "forcedLeverage": null,
@@ -3937,34 +3968,34 @@
         },
         "LB1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -17.6,
+            "depth": 6.5
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -5.8,
+            "depth": 6.3
           }
         },
         "LB3": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 5.9,
+            "depth": 6.1
           }
         },
         "S3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 19.5,
+            "depth": 5.1
           }
         }
       },
@@ -4014,10 +4045,15 @@
           "target": null
         },
         "LB2": {
-          "job": "spy"
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 0.9,
+            "depth": 7.6
+          }
         },
         "LB3": {
-          "job": "man",
+          "job": "rush",
           "target": null
         }
       },
@@ -4071,7 +4107,7 @@
           "target": null
         },
         "LB3": {
-          "job": "man",
+          "job": "rush",
           "target": null
         },
         "S3": {
@@ -4125,10 +4161,10 @@
         },
         "CB3": {
           "job": "zone",
-          "zone": "flat",
+          "zone": "curl",
           "center": {
-            "dx": -9.4,
-            "depth": 4
+            "dx": 0.6,
+            "depth": 12.9
           }
         },
         "CB2": {
@@ -4143,16 +4179,16 @@
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -10.5,
+            "depth": 7.5
           }
         },
         "LB2": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 8.3,
+            "depth": 6.6
           }
         }
       },
@@ -4202,34 +4238,34 @@
         },
         "CB3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -16.1,
+            "depth": 6.1
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -5.8,
+            "depth": 7
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 6.1,
+            "depth": 6.9
           }
         },
         "S2": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 18,
+            "depth": 6.1
           }
         }
       },
@@ -4257,45 +4293,45 @@
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": -18,
-            "depth": 14
+            "dx": -18.2,
+            "depth": 18.3
           }
         },
         "CB2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 18,
-            "depth": 14
+            "dx": 18.3,
+            "depth": 17.2
           }
         },
         "S1": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": -7,
-            "depth": 14
+            "dx": -6.2,
+            "depth": 18
           }
         },
         "S2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 7,
-            "depth": 14
+            "dx": 6.5,
+            "depth": 17.5
           }
         },
         "CB3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -17.5,
+            "depth": 6.2
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
             "dx": 0,
             "depth": 8
@@ -4303,10 +4339,10 @@
         },
         "LB2": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 17.2,
+            "depth": 7.8
           }
         }
       },
@@ -4359,7 +4395,12 @@
           "target": null
         },
         "LB2": {
-          "job": "spy"
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 0.5,
+            "depth": 8
+          }
         }
       },
       "alignments": {}
@@ -4465,10 +4506,10 @@
         },
         "CB3": {
           "job": "zone",
-          "zone": "flat",
+          "zone": "curl",
           "center": {
-            "dx": -9.2,
-            "depth": 4
+            "dx": -9.1,
+            "depth": 6.5
           }
         },
         "CB2": {
@@ -4483,16 +4524,16 @@
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -0.1,
+            "depth": 12
           }
         },
         "LB1": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 8.4,
+            "depth": 6.8
           }
         }
       },
@@ -4542,34 +4583,34 @@
         },
         "CB3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -18.5,
+            "depth": 6.9
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -6.4,
+            "depth": 7.4
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
+            "dx": 5.8,
             "depth": 8
           }
         },
         "S2": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 18,
+            "depth": 7
           }
         }
       },
@@ -4627,15 +4668,15 @@
         },
         "CB3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -16.8,
+            "depth": 5.9
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
             "dx": 0,
             "depth": 8
@@ -4643,10 +4684,10 @@
         },
         "LB1": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 15,
+            "depth": 6.5
           }
         }
       },
@@ -4695,11 +4736,21 @@
           "target": null
         },
         "LB2": {
-          "job": "man",
-          "target": null
+          "job": "zone",
+          "target": null,
+          "center": {
+            "dx": -0.1,
+            "depth": 7.1
+          },
+          "zone": "curl"
         },
         "LB1": {
-          "job": "spy"
+          "job": "man",
+          "zone": "curl",
+          "center": {
+            "dx": 0.4,
+            "depth": 7.1
+          }
         }
       },
       "alignments": {}
@@ -4799,40 +4850,40 @@
           "job": "zone",
           "zone": "flat",
           "center": {
-            "dx": -16,
-            "depth": 4
+            "dx": -16.2,
+            "depth": 3
           }
         },
         "CB3": {
           "job": "zone",
-          "zone": "flat",
+          "zone": "curl",
           "center": {
-            "dx": -6.8,
-            "depth": 4
+            "dx": -11.5,
+            "depth": 6.4
           }
         },
         "CB2": {
           "job": "zone",
           "zone": "flat",
           "center": {
-            "dx": 16,
-            "depth": 4
+            "dx": 16.6,
+            "depth": 2.9
           }
         },
         "LB1": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -0.4,
+            "depth": 10.8
           }
         },
         "LB2": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 10.7,
+            "depth": 6.9
           }
         }
       },
@@ -4882,34 +4933,34 @@
         },
         "CB3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -15.6,
+            "depth": 5.9
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -4.4,
+            "depth": 7.6
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 4.9,
+            "depth": 6.9
           }
         },
         "S2": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 16.9,
+            "depth": 5.8
           }
         }
       },
@@ -4937,45 +4988,45 @@
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": -18,
-            "depth": 14
+            "dx": -17.6,
+            "depth": 18.9
           }
         },
         "CB2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 18,
-            "depth": 14
+            "dx": 17.7,
+            "depth": 17.5
           }
         },
         "S1": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": -7,
-            "depth": 14
+            "dx": -6.1,
+            "depth": 18.7
           }
         },
         "S2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 7,
-            "depth": 14
+            "dx": 6.9,
+            "depth": 18.5
           }
         },
         "CB3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -14.4,
+            "depth": 7.5
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
             "dx": 0,
             "depth": 8
@@ -4983,10 +5034,10 @@
         },
         "LB2": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 14.9,
+            "depth": 8.1
           }
         }
       },
@@ -5039,7 +5090,12 @@
           "target": null
         },
         "LB2": {
-          "job": "spy"
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 0,
+            "depth": 7.6
+          }
         }
       },
       "alignments": {}
@@ -5139,40 +5195,40 @@
           "job": "zone",
           "zone": "flat",
           "center": {
-            "dx": -16,
-            "depth": 4
+            "dx": -16.7,
+            "depth": 2.9
           }
         },
         "CB3": {
           "job": "zone",
-          "zone": "flat",
+          "zone": "curl",
           "center": {
-            "dx": -9.5,
-            "depth": 4
+            "dx": -0.4,
+            "depth": 10.4
           }
         },
         "CB2": {
           "job": "zone",
           "zone": "flat",
           "center": {
-            "dx": 16,
-            "depth": 4
+            "dx": 16.1,
+            "depth": 2.5
           }
         },
         "LB1": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -9.7,
+            "depth": 6.6
           }
         },
         "LB2": {
           "job": "zone",
           "zone": "curl",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 8.9,
+            "depth": 5.9
           }
         }
       },
@@ -5222,34 +5278,34 @@
         },
         "CB3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -16.4,
+            "depth": 5.4
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -5.4,
+            "depth": 6.6
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 6.3,
+            "depth": 6.4
           }
         },
         "S2": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 16.7,
+            "depth": 5.8
           }
         }
       },
@@ -5278,55 +5334,55 @@
           "zone": "deep",
           "center": {
             "dx": -18,
-            "depth": 14
+            "depth": 17.4
           }
         },
         "CB2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 18,
-            "depth": 14
+            "dx": 18.1,
+            "depth": 16.7
           }
         },
         "S1": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": -7,
-            "depth": 14
+            "dx": -6.4,
+            "depth": 17.2
           }
         },
         "S2": {
           "job": "zone",
           "zone": "deep",
           "center": {
-            "dx": 7,
-            "depth": 14
+            "dx": 6.3,
+            "depth": 16.4
           }
         },
         "CB3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -16.8,
+            "depth": 6.5
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -0.7,
+            "depth": 7.2
           }
         },
         "LB2": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 15.5,
+            "depth": 7
           }
         }
       },
@@ -5379,7 +5435,12 @@
           "target": null
         },
         "LB2": {
-          "job": "spy"
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 0.3,
+            "depth": 7.4
+          }
         }
       },
       "alignments": {}
@@ -5485,18 +5546,18 @@
         },
         "CB3": {
           "job": "zone",
-          "zone": "flat",
+          "zone": "curl",
           "center": {
-            "dx": -9.7,
-            "depth": 4
+            "dx": -8.9,
+            "depth": 4.7
           }
         },
         "CB4": {
           "job": "zone",
-          "zone": "flat",
+          "zone": "curl",
           "center": {
-            "dx": 10,
-            "depth": 4
+            "dx": 9,
+            "depth": 5.4
           }
         },
         "CB2": {
@@ -5509,10 +5570,10 @@
         },
         "LB1": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 0.1,
+            "depth": 9.1
           }
         }
       },
@@ -5562,34 +5623,34 @@
         },
         "CB3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -17.3,
+            "depth": 5.9
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": -6.3,
+            "depth": 6
           }
         },
         "S2": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
-            "dx": 0,
-            "depth": 8
+            "dx": 5.2,
+            "depth": 6.4
           }
         },
         "CB4": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 17.4,
+            "depth": 6.4
           }
         }
       },
@@ -5647,15 +5708,15 @@
         },
         "CB3": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": -9,
-            "depth": 10
+            "dx": -17.4,
+            "depth": 6.2
           }
         },
         "LB1": {
           "job": "zone",
-          "zone": "hook",
+          "zone": "curl",
           "center": {
             "dx": 0,
             "depth": 8
@@ -5663,10 +5724,10 @@
         },
         "CB4": {
           "job": "zone",
-          "zone": "curl",
+          "zone": "hook",
           "center": {
-            "dx": 9,
-            "depth": 10
+            "dx": 16.8,
+            "depth": 5.2
           }
         }
       },
@@ -5719,7 +5780,8 @@
           "target": null
         },
         "LB1": {
-          "job": "spy"
+          "job": "zone",
+          "zone": "curl"
         }
       },
       "alignments": {}
@@ -5777,6 +5839,780 @@
         "LB1": {
           "job": "man",
           "target": null
+        }
+      },
+      "alignments": {}
+    },
+    "sam_blitz": {
+      "name": "SAM BLITZ",
+      "formationId": "over",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "LB1": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "LB3": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "S2": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -0.3,
+            "depth": 19.5
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "saftey_blitz": {
+      "name": "SAFTEY BLITZ",
+      "formationId": "over",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "LB1": {
+          "job": "man"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "LB3": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        }
+      },
+      "alignments": {}
+    },
+    "pinch_blitz": {
+      "name": "PINCH BLITZ",
+      "formationId": "over_solid",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "LB3": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -0.5,
+            "depth": 18.1
+          }
+        },
+        "S2": {
+          "job": "man"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "LB1": {
+          "job": "man"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        }
+      },
+      "alignments": {}
+    },
+    "pinch_blitz_2": {
+      "name": "PINCH BLITZ",
+      "formationId": "under_wide",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "LB1": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "LB3": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0.4,
+            "depth": 19.2
+          }
+        },
+        "S2": {
+          "job": "man"
+        }
+      },
+      "alignments": {}
+    },
+    "cover_1_robber_2": {
+      "name": "COVER 1 ROBBER",
+      "formationId": "under_wide",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "LB1": {
+          "job": "man"
+        },
+        "LB3": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 0.2,
+            "depth": 7.7
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -0.4,
+            "depth": 19.4
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "cover_1_robber_3": {
+      "name": "COVER 1 ROBBER",
+      "formationId": "over_solid",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -0.6,
+            "depth": 20
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": 0.6,
+            "depth": 9.4
+          }
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "LB1": {
+          "job": "man"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        }
+      },
+      "alignments": {}
+    },
+    "mid_blitz": {
+      "name": "MID BLITZ",
+      "formationId": "tite",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "LB3": {
+          "job": "rush"
+        },
+        "LB1": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 20
+          }
+        },
+        "S2": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "LB4": {
+          "job": "man"
+        }
+      },
+      "alignments": {}
+    },
+    "fire_blitz": {
+      "name": "FIRE BLITZ",
+      "formationId": "tite",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 17.776666666666664,
+            "depth": 15
+          }
+        },
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -17.776666666666667,
+            "depth": 15
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 15
+          }
+        },
+        "LB4": {
+          "job": "rush",
+          "zone": "curl",
+          "center": {
+            "dx": 0,
+            "depth": 10
+          }
+        },
+        "S2": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": 18.6655,
+            "depth": 6
+          }
+        },
+        "LB2": {
+          "job": "zone",
+          "zone": "curl",
+          "center": {
+            "dx": -0.9,
+            "depth": 7.6
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": -18.665499999999998,
+            "depth": 6
+          }
+        },
+        "LB3": {
+          "job": "rush",
+          "zone": "curl",
+          "center": {
+            "dx": 9.332749999999997,
+            "depth": 7
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "grizzly_blitz": {
+      "name": "GRIZZLY BLITZ",
+      "formationId": "grizzly",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "LB1": {
+          "job": "rush"
+        },
+        "LB3": {
+          "job": "rush"
+        },
+        "LB4": {
+          "job": "rush"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "S2": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "man"
+        }
+      },
+      "alignments": {}
+    },
+    "edge_blitz": {
+      "name": "EDGE BLITZ",
+      "formationId": "normal",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "LB1": {
+          "job": "rush"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "LB3": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "S2": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0.6,
+            "depth": 16.7
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "all_out_blitz": {
+      "name": "ALL OUT BLITZ",
+      "formationId": "normal",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "LB1": {
+          "job": "rush"
+        },
+        "LB2": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "man"
+        },
+        "LB3": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "S2": {
+          "job": "man"
+        }
+      },
+      "alignments": {}
+    },
+    "slot_blitz": {
+      "name": "SLOT BLITZ",
+      "formationId": "mint",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "LB3": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "LB1": {
+          "job": "man"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "S3": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0.9,
+            "depth": 18.8
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "nickel_blitz": {
+      "name": "NICKEL BLITZ",
+      "formationId": "over_flex",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "rush"
+        },
+        "LB3": {
+          "job": "rush"
+        },
+        "LB1": {
+          "job": "man"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "S3": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 17.3
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "crash_blitz": {
+      "name": "CRASH BLITZ",
+      "formationId": "over_flex",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "S2": {
+          "job": "rush"
+        },
+        "LB3": {
+          "job": "rush"
+        },
+        "LB1": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "S3": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "man"
+        }
+      },
+      "alignments": {}
+    },
+    "ghost_blitz": {
+      "name": "GHOST BLITZ",
+      "formationId": "odd_ghost",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "LB2": {
+          "job": "rush"
+        },
+        "LB3": {
+          "job": "rush"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "S2": {
+          "job": "man"
+        },
+        "LB1": {
+          "job": "man"
+        },
+        "S3": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -0.2,
+            "depth": 19
+          }
+        }
+      },
+      "alignments": {}
+    },
+    "sam_blitz_2": {
+      "name": "SAM BLITZ",
+      "formationId": "2_4",
+      "kind": "zone",
+      "forcedLeverage": null,
+      "assignments": {
+        "DL1": {
+          "job": "rush"
+        },
+        "DL2": {
+          "job": "rush"
+        },
+        "DL3": {
+          "job": "rush"
+        },
+        "DL4": {
+          "job": "rush"
+        },
+        "LB1": {
+          "job": "rush"
+        },
+        "LB2": {
+          "job": "man"
+        },
+        "CB3": {
+          "job": "man"
+        },
+        "CB1": {
+          "job": "man"
+        },
+        "CB2": {
+          "job": "man"
+        },
+        "S2": {
+          "job": "man"
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -0.1,
+            "depth": 17.7
+          }
         }
       },
       "alignments": {}
