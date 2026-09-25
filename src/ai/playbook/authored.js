@@ -206,14 +206,40 @@ export function routeFor(play, slot, { mirror = false } = {}) {
 // there says they must match. Authored DL spots have to feed BOTH or the two sides draw
 // different fronts.
 //
-// A defensive formation is the SEVEN coverage players. The four linemen are auto-placed and are
-// not authored, for the same reason the five offensive linemen and the quarterback are not:
-// formation.ts says it of the defensive line outright -- "always on the field and cannot be moved
-// by either player" -- and defense.js has always fielded COVERAGE_ON_FIELD = 7 on top of them.
-// They are DRAWN in the sandbox, because a formation you cannot see the front of is one you
-// cannot read, but they are not yours to move.
-export const DEF_SLOT_POOL = { LB: 4, CB: 4, S: 3 }
-export const COVERAGE_ON_FIELD = 7
+// ⚠️ THE FRONT IS CHOSEN, THE BACK SEVEN IS PLACED. A defensive formation picks a FRONT from the
+// list below — the offensive mirror of Gun/Pistol — and the front decides how many linemen the
+// engine puts out. The linemen themselves are never authored, for the same reason the five
+// offensive linemen and the quarterback are not: formation.ts says of the defensive line that it
+// is "always on the field and cannot be moved by either player". They are DRAWN in the sandbox,
+// because a formation you cannot see the front of is one you cannot read.
+//
+// So what you place is 11 minus the front: seven behind a four-man front, eight behind a three.
+//
+// ⚠️ NICKEL AND DIME ARE NOT FRONTS, they are personnel — five and six defensive backs behind the
+// same four linemen. They are listed as categories because that is how they are called, but the
+// difference between them and 4-3 is WHO you place, not how many, and it is already derived from
+// the slots you pick.
+export const DEF_FRONTS = {
+  '4-3':   { name: '4-3',   dl: 4, blurb: 'Four down, three linebackers. The base front.' },
+  '3-4':   { name: '3-4',   dl: 3, blurb: 'Three down, four linebackers — one of them usually rushing.' },
+  // ⚠️ FIVE DOWN, FOUR LINEMEN. The engine fields four and every roster carries exactly four, so
+  // the fifth man on the ball is a LINEBACKER you align there and give a `rush` job — which is
+  // what a real 5-2 does anyway. No roster change, no engine change.
+  '5-2':   { name: '5-2',   dl: 4, blurb: 'Five on the ball — the fifth is a linebacker walked down.' },
+  '2-5':   { name: '2-5',   dl: 2, blurb: 'Two down, five off the ball. A pressure/coverage hybrid.' },
+  '3-3-5': { name: '3-3-5', dl: 3, blurb: 'Three down, three linebackers, five defensive backs.' },
+  'nickel': { name: 'Nickel', dl: 4, blurb: 'Four down with a fifth defensive back for the third receiver.' },
+  'dime':   { name: 'Dime',   dl: 4, blurb: 'Four down with six defensive backs. Obvious passing down.' },
+}
+
+export const DEFENDERS = 11
+export const DEF_SLOT_POOL = { LB: 5, CB: 4, S: 3 }
+
+// How many players a given front leaves you to place.
+export function coverageFor(category) {
+  const front = DEF_FRONTS[category]
+  return front ? DEFENDERS - front.dl : DEFENDERS - 4
+}
 
 export const SHELL_KINDS = ['man', 'zone']
 export const JOBS = ['man', 'zone', 'rush', 'spy']
@@ -239,10 +265,15 @@ export function validateDefFormation(f) {
   const errors = []
   if (!f || typeof f !== 'object') return { ok: false, errors: ['formation is not an object'] }
   if (!f.name || !String(f.name).trim()) err(errors, 'needs a name')
+  if (!DEF_FRONTS[f.category]) {
+    err(errors, `front must be one of ${Object.keys(DEF_FRONTS).join(', ')}`)
+  }
 
   const spots = Array.isArray(f.spots) ? f.spots : []
-  if (spots.length !== COVERAGE_ON_FIELD) {
-    err(errors, `needs exactly ${COVERAGE_ON_FIELD} coverage players, got ${spots.length} (the four linemen are auto-placed)`)
+  const wanted = coverageFor(f.category)
+  if (DEF_FRONTS[f.category] && spots.length !== wanted) {
+    const dl = DEF_FRONTS[f.category].dl
+    err(errors, `a ${f.category} front puts ${dl} linemen out, so place ${wanted} behind it — got ${spots.length}`)
   }
 
   const seen = new Set()

@@ -2,7 +2,8 @@ import { describe, it, expect } from '@jest/globals'
 import {
   validateFormation, validatePlay, layoutAuthored, personnelOf, routeFor, slotsFor, slotLabel,
   validateShell, shellOptions, validateDefFormation, defPersonnelOf, layoutDefense,
-  MAX_SKILL, SLOT_POOL, COVERAGE_ON_FIELD,
+  DEF_FRONTS, coverageFor,
+  MAX_SKILL, SLOT_POOL,
 } from '../ai/playbook/authored.js'
 import { shadeWithLeverage, shadeFor } from '../ai/assignments.js'
 import { SHADE } from '../ai/playbook/coverages.js'
@@ -208,6 +209,7 @@ describe('⚠️ THE PROPERTY THE WHOLE DESIGN RESTS ON', () => {
 
 const nickel = {
   name: 'Nickel',
+  category: 'nickel',
   spots: [
     { slot: 'LB1', dx: -4, depth: 5 }, { slot: 'LB2', dx: 4, depth: 5 },
     { slot: 'CB1', dx: -16, depth: 6 }, { slot: 'CB2', dx: 16, depth: 6 },
@@ -233,15 +235,33 @@ describe('a defensive formation the sandbox would save', () => {
     expect(validateDefFormation(nickel)).toEqual({ ok: true, errors: [] })
   })
 
+  it('⚠️ THE FRONT DECIDES HOW MANY YOU PLACE', () => {
+    // 11 minus the linemen. A 3-4 fields three down, so eight are yours to place.
+    expect(coverageFor('4-3')).toBe(7)
+    expect(coverageFor('3-4')).toBe(8)
+    expect(coverageFor('3-3-5')).toBe(8)
+    expect(coverageFor('2-5')).toBe(9)
+    // ⚠️ A 5-2 does NOT field five. Every roster carries exactly four linemen, so its fifth man on
+    // the ball is a LINEBACKER walked down — which is what a real 5-2 does anyway.
+    expect(DEF_FRONTS['5-2'].dl).toBe(4)
+    expect(coverageFor('5-2')).toBe(7)
+  })
+
+  it('refuses a front it does not know, and the wrong number behind one it does', () => {
+    expect(validateDefFormation({ ...nickel, category: '46' }).errors.join(' ')).toMatch(/front must be one of/)
+    expect(validateDefFormation({ ...nickel, category: '3-4' }).errors.join(' '))
+      .toMatch(/a 3-4 front puts 3 linemen out, so place 8 behind it/)
+  })
+
   it('DECLARES ITS PERSONNEL rather than storing it', () => {
     // Three corners is nickel, four is dime. That falls out of who was placed, and it is exactly
     // the signal the play-call solver conditions on, because personnel is public pre-snap.
     expect(defPersonnelOf(nickel)).toEqual({ LB: 2, CB: 3, S: 2 })
   })
 
-  it('needs all seven coverage players', () => {
+  it('needs the whole back seven behind a four-man front', () => {
     expect(validateDefFormation({ ...nickel, spots: nickel.spots.slice(0, 5) }).errors.join(' '))
-      .toMatch(new RegExp(`exactly ${COVERAGE_ON_FIELD} coverage players`))
+      .toMatch(/place 7 behind it/)
   })
 
   it('⚠️ does not let the four auto-placed linemen be authored', () => {

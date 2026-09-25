@@ -33,6 +33,18 @@ const DEF_MIN_DEPTH = 0.75      // a full player radius off the ball, or it is o
 // through a freeze or a pause because a held tick sends nothing.
 const TICK_SECONDS = 0.05
 
+// Where the down linemen line up, by how many of them there are. Spacing is listed per count
+// rather than computed, because the alignments genuinely differ: two sit outside the tackles,
+// three is a nose with two ends, four is the base front.
+//
+// ⚠️ MUST MATCH `DL_SPACING` in Client/src/game/formation.ts, or the two screens draw a different
+// defense. The four-man row is byte-identical to what shipped before this became variable.
+const DL_SPACING = {
+  2: [-3.0, 3.0],
+  3: [-3.0, 0, 3.0],
+  4: [-3.25, -1.25, 1.25, 3.25],
+}
+
 export function createController({ socket, slot, roster, seed = 1, log = false }) {
   const k = createKnowledge(slot)
   const rng = makeRng(seed)
@@ -354,15 +366,16 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     }
   }
 
-  // The four down linemen, at the spots the client generates. Must match the defenseAutoPlaced
-  // table in Client/src/game/formation.ts — both sides draw the same front.
-  function autoDefense(losY, centerX) {
-    return [
-      { id: 'auto_dl1', x: centerX - 3.25, y: losY + 1, team: 'd', label: 'DL' },
-      { id: 'auto_dl2', x: centerX - 1.25, y: losY + 1, team: 'd', label: 'DL' },
-      { id: 'auto_dl3', x: centerX + 1.25, y: losY + 1, team: 'd', label: 'DL' },
-      { id: 'auto_dl4', x: centerX + 3.25, y: losY + 1, team: 'd', label: 'DL' },
-    ]
+  // The down linemen, at the spots the client generates. Must match the DL_SPACING table in
+  // Client/src/game/formation.ts — both sides draw the same front.
+  //
+  // ⚠️ THE COUNT IS VARIABLE BUT DEFAULTS TO FOUR, so nothing about the live game moves. An
+  // authored 3-4 or 3-3-5 front asks for fewer; a 5-2 does NOT ask for five, because every roster
+  // carries exactly four linemen — its fifth man on the ball is a linebacker walked down.
+  function autoDefense(losY, centerX, count = 4) {
+    return DL_SPACING[count].map((dx, i) => (
+      { id: `auto_dl${i + 1}`, x: centerX + dx, y: losY + 1, team: 'd', label: 'DL' }
+    ))
   }
 
   // ── Motion ────────────────────────────────────────────────────────────────
