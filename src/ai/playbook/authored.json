@@ -2,6 +2,901 @@
   "version": 1,
   "formations": {},
   "plays": {},
-  "defFormations": {},
-  "shells": {}
+  "defFormations": {
+    "over": {
+      "name": "OVER",
+      "category": "4-3",
+      "spots": [
+        {
+          "slot": "DL1",
+          "dx": -3.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL2",
+          "dx": -1.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL3",
+          "dx": 1.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL4",
+          "dx": 3.25,
+          "depth": 1
+        },
+        {
+          "slot": "LB1",
+          "dx": -5,
+          "depth": 5
+        },
+        {
+          "slot": "LB2",
+          "dx": 0,
+          "depth": 5
+        },
+        {
+          "slot": "LB3",
+          "dx": 5,
+          "depth": 5
+        },
+        {
+          "slot": "CB1",
+          "dx": -16,
+          "depth": 6
+        },
+        {
+          "slot": "CB2",
+          "dx": 16,
+          "depth": 6
+        },
+        {
+          "slot": "S1",
+          "dx": -8,
+          "depth": 13
+        },
+        {
+          "slot": "S2",
+          "dx": 8,
+          "depth": 13
+        }
+      ]
+    },
+    "over_solid": {
+      "name": "UNDER-SOLID",
+      "category": "4-3",
+      "spots": [
+        {
+          "slot": "DL1",
+          "dx": -3.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL2",
+          "dx": -1.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL3",
+          "dx": 1.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL4",
+          "dx": 3.25,
+          "depth": 1
+        },
+        {
+          "slot": "LB1",
+          "dx": -2,
+          "depth": 5.1
+        },
+        {
+          "slot": "LB2",
+          "dx": 2.2,
+          "depth": 5
+        },
+        {
+          "slot": "LB3",
+          "dx": 5.1,
+          "depth": 0.8
+        },
+        {
+          "slot": "CB1",
+          "dx": -16,
+          "depth": 6
+        },
+        {
+          "slot": "CB2",
+          "dx": 16,
+          "depth": 6
+        },
+        {
+          "slot": "S1",
+          "dx": -8,
+          "depth": 13
+        },
+        {
+          "slot": "S2",
+          "dx": 8,
+          "depth": 13
+        }
+      ]
+    },
+    "under_wide": {
+      "name": "UNDER-WIDE",
+      "category": "4-3",
+      "spots": [
+        {
+          "slot": "DL1",
+          "dx": -3.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL2",
+          "dx": -1.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL3",
+          "dx": 1.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL4",
+          "dx": 3.25,
+          "depth": 1
+        },
+        {
+          "slot": "LB1",
+          "dx": -6.1,
+          "depth": 0.8
+        },
+        {
+          "slot": "LB2",
+          "dx": -4.2,
+          "depth": 5
+        },
+        {
+          "slot": "LB3",
+          "dx": 1.1,
+          "depth": 4.9
+        },
+        {
+          "slot": "CB1",
+          "dx": -16,
+          "depth": 6
+        },
+        {
+          "slot": "CB2",
+          "dx": 16,
+          "depth": 6
+        },
+        {
+          "slot": "S1",
+          "dx": -8,
+          "depth": 13
+        },
+        {
+          "slot": "S2",
+          "dx": 8,
+          "depth": 13
+        }
+      ]
+    },
+    "tite": {
+      "name": "TITE",
+      "category": "3-4",
+      "spots": [
+        {
+          "slot": "DL1",
+          "dx": -3,
+          "depth": 1
+        },
+        {
+          "slot": "DL2",
+          "dx": 0,
+          "depth": 1
+        },
+        {
+          "slot": "DL3",
+          "dx": 3,
+          "depth": 1
+        },
+        {
+          "slot": "LB1",
+          "dx": -5.6,
+          "depth": 0.8
+        },
+        {
+          "slot": "LB2",
+          "dx": -2.5,
+          "depth": 4.8
+        },
+        {
+          "slot": "LB3",
+          "dx": 5.5,
+          "depth": 0.8
+        },
+        {
+          "slot": "CB1",
+          "dx": -16,
+          "depth": 6
+        },
+        {
+          "slot": "CB2",
+          "dx": 16,
+          "depth": 6
+        },
+        {
+          "slot": "S1",
+          "dx": -8,
+          "depth": 13
+        },
+        {
+          "slot": "S2",
+          "dx": 8,
+          "depth": 13
+        },
+        {
+          "slot": "LB4",
+          "dx": 2.9,
+          "depth": 5.1
+        }
+      ]
+    },
+    "grizzly": {
+      "name": "GRIZZLY",
+      "category": "3-4",
+      "spots": [
+        {
+          "slot": "DL1",
+          "dx": -3,
+          "depth": 1
+        },
+        {
+          "slot": "DL2",
+          "dx": 0,
+          "depth": 1
+        },
+        {
+          "slot": "DL3",
+          "dx": 3,
+          "depth": 1
+        },
+        {
+          "slot": "LB1",
+          "dx": -6.5,
+          "depth": 0.8
+        },
+        {
+          "slot": "LB2",
+          "dx": -3.2,
+          "depth": 4.9
+        },
+        {
+          "slot": "LB3",
+          "dx": 6.7,
+          "depth": 0.8
+        },
+        {
+          "slot": "CB1",
+          "dx": -16,
+          "depth": 6
+        },
+        {
+          "slot": "CB2",
+          "dx": 16,
+          "depth": 6
+        },
+        {
+          "slot": "S1",
+          "dx": 0,
+          "depth": 12.2
+        },
+        {
+          "slot": "S2",
+          "dx": 3.7,
+          "depth": 4.8
+        },
+        {
+          "slot": "LB4",
+          "dx": 0,
+          "depth": 5
+        }
+      ]
+    },
+    "normal": {
+      "name": "NORMAL",
+      "category": "5-2",
+      "spots": [
+        {
+          "slot": "DL1",
+          "dx": -2.6,
+          "depth": 1
+        },
+        {
+          "slot": "DL2",
+          "dx": -0.2,
+          "depth": 1.1
+        },
+        {
+          "slot": "DL3",
+          "dx": 2.2,
+          "depth": 1.1
+        },
+        {
+          "slot": "DL4",
+          "dx": 4.8,
+          "depth": 1.2
+        },
+        {
+          "slot": "LB1",
+          "dx": -5.2,
+          "depth": 1
+        },
+        {
+          "slot": "LB2",
+          "dx": -2.5,
+          "depth": 4.3
+        },
+        {
+          "slot": "LB3",
+          "dx": 2.2,
+          "depth": 4.3
+        },
+        {
+          "slot": "CB1",
+          "dx": -16.3,
+          "depth": 7
+        },
+        {
+          "slot": "CB2",
+          "dx": 16.2,
+          "depth": 7
+        },
+        {
+          "slot": "S1",
+          "dx": -8,
+          "depth": 9.1
+        },
+        {
+          "slot": "S2",
+          "dx": 8,
+          "depth": 9
+        }
+      ]
+    },
+    "mint": {
+      "name": "MINT",
+      "category": "3-3-5",
+      "spots": [
+        {
+          "slot": "DL1",
+          "dx": -3,
+          "depth": 1
+        },
+        {
+          "slot": "DL2",
+          "dx": 0,
+          "depth": 1
+        },
+        {
+          "slot": "DL3",
+          "dx": 3,
+          "depth": 1
+        },
+        {
+          "slot": "LB1",
+          "dx": -2.2,
+          "depth": 4.9
+        },
+        {
+          "slot": "LB2",
+          "dx": 2,
+          "depth": 4.7
+        },
+        {
+          "slot": "LB3",
+          "dx": 5.7,
+          "depth": 1.6
+        },
+        {
+          "slot": "CB1",
+          "dx": -16,
+          "depth": 6
+        },
+        {
+          "slot": "CB2",
+          "dx": 16,
+          "depth": 6
+        },
+        {
+          "slot": "S1",
+          "dx": -8,
+          "depth": 13
+        },
+        {
+          "slot": "S2",
+          "dx": -9.8,
+          "depth": 3.6
+        },
+        {
+          "slot": "S3",
+          "dx": 8.3,
+          "depth": 13.1
+        }
+      ]
+    },
+    "over_flex": {
+      "name": "OVER FLEX",
+      "category": "3-3-5",
+      "spots": [
+        {
+          "slot": "DL1",
+          "dx": -4.4,
+          "depth": 1
+        },
+        {
+          "slot": "DL2",
+          "dx": -1.2,
+          "depth": 0.8
+        },
+        {
+          "slot": "DL3",
+          "dx": 1.8,
+          "depth": 0.9
+        },
+        {
+          "slot": "LB1",
+          "dx": -1.8,
+          "depth": 4.7
+        },
+        {
+          "slot": "LB2",
+          "dx": 2.8,
+          "depth": 4.6
+        },
+        {
+          "slot": "LB3",
+          "dx": 6.1,
+          "depth": 1.4
+        },
+        {
+          "slot": "CB1",
+          "dx": -16,
+          "depth": 6
+        },
+        {
+          "slot": "CB2",
+          "dx": 16,
+          "depth": 6
+        },
+        {
+          "slot": "S1",
+          "dx": -8,
+          "depth": 13
+        },
+        {
+          "slot": "S2",
+          "dx": -9.7,
+          "depth": 3.4
+        },
+        {
+          "slot": "S3",
+          "dx": 7.9,
+          "depth": 13.2
+        }
+      ]
+    },
+    "odd_ghost": {
+      "name": "ODD GHOST",
+      "category": "3-3-5",
+      "spots": [
+        {
+          "slot": "DL1",
+          "dx": -3,
+          "depth": 1
+        },
+        {
+          "slot": "DL2",
+          "dx": 0,
+          "depth": 1
+        },
+        {
+          "slot": "DL3",
+          "dx": 3,
+          "depth": 1
+        },
+        {
+          "slot": "LB1",
+          "dx": -6.8,
+          "depth": 6
+        },
+        {
+          "slot": "LB2",
+          "dx": -1.8,
+          "depth": 3.8
+        },
+        {
+          "slot": "LB3",
+          "dx": 1.8,
+          "depth": 3.8
+        },
+        {
+          "slot": "CB1",
+          "dx": -16.3,
+          "depth": 4.2
+        },
+        {
+          "slot": "CB2",
+          "dx": 16.1,
+          "depth": 4.2
+        },
+        {
+          "slot": "S1",
+          "dx": 0,
+          "depth": 14.4
+        },
+        {
+          "slot": "S2",
+          "dx": -10.3,
+          "depth": 3.1
+        },
+        {
+          "slot": "S3",
+          "dx": 9.8,
+          "depth": 6.2
+        }
+      ]
+    },
+    "2_4": {
+      "name": "2-4",
+      "category": "nickel",
+      "spots": [
+        {
+          "slot": "DL1",
+          "dx": -3.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL2",
+          "dx": -1.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL3",
+          "dx": 1.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL4",
+          "dx": 3.25,
+          "depth": 1
+        },
+        {
+          "slot": "LB1",
+          "dx": -1.7,
+          "depth": 4.7
+        },
+        {
+          "slot": "LB2",
+          "dx": 1.9,
+          "depth": 4.8
+        },
+        {
+          "slot": "CB1",
+          "dx": -16,
+          "depth": 6
+        },
+        {
+          "slot": "CB2",
+          "dx": 16,
+          "depth": 6
+        },
+        {
+          "slot": "S1",
+          "dx": -8,
+          "depth": 13
+        },
+        {
+          "slot": "S2",
+          "dx": 8,
+          "depth": 13
+        },
+        {
+          "slot": "CB3",
+          "dx": -9.4,
+          "depth": 3.4
+        }
+      ]
+    },
+    "2_4_single_mug": {
+      "name": "2-4 SINGLE MUG",
+      "category": "nickel",
+      "spots": [
+        {
+          "slot": "DL1",
+          "dx": -4.4,
+          "depth": 1.1
+        },
+        {
+          "slot": "DL2",
+          "dx": -2.3,
+          "depth": 1.2
+        },
+        {
+          "slot": "DL3",
+          "dx": 1.7,
+          "depth": 1.2
+        },
+        {
+          "slot": "DL4",
+          "dx": 3.7,
+          "depth": 1
+        },
+        {
+          "slot": "LB1",
+          "dx": 1.9,
+          "depth": 4.8
+        },
+        {
+          "slot": "LB2",
+          "dx": -0.3,
+          "depth": 1.3
+        },
+        {
+          "slot": "CB1",
+          "dx": -16,
+          "depth": 6
+        },
+        {
+          "slot": "CB2",
+          "dx": 16,
+          "depth": 6
+        },
+        {
+          "slot": "S1",
+          "dx": -8,
+          "depth": 13
+        },
+        {
+          "slot": "S2",
+          "dx": 8,
+          "depth": 13
+        },
+        {
+          "slot": "CB3",
+          "dx": -9.2,
+          "depth": 3
+        }
+      ]
+    },
+    "wide": {
+      "name": "WIDE",
+      "category": "nickel",
+      "spots": [
+        {
+          "slot": "DL1",
+          "dx": -3.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL2",
+          "dx": -1.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL3",
+          "dx": 1.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL4",
+          "dx": 3.25,
+          "depth": 1
+        },
+        {
+          "slot": "LB1",
+          "dx": -2.1,
+          "depth": 4.8
+        },
+        {
+          "slot": "LB2",
+          "dx": 2.3,
+          "depth": 4.7
+        },
+        {
+          "slot": "CB1",
+          "dx": -16,
+          "depth": 6
+        },
+        {
+          "slot": "CB2",
+          "dx": 16,
+          "depth": 6
+        },
+        {
+          "slot": "S1",
+          "dx": -8,
+          "depth": 13
+        },
+        {
+          "slot": "S2",
+          "dx": 8,
+          "depth": 13
+        },
+        {
+          "slot": "CB3",
+          "dx": -6.8,
+          "depth": 4.4
+        }
+      ]
+    },
+    "3_3_mint": {
+      "name": "3-3 MINT",
+      "category": "nickel",
+      "spots": [
+        {
+          "slot": "DL1",
+          "dx": -3.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL2",
+          "dx": -1.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL3",
+          "dx": 1.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL4",
+          "dx": 3.25,
+          "depth": 1
+        },
+        {
+          "slot": "LB1",
+          "dx": -2.4,
+          "depth": 4.6
+        },
+        {
+          "slot": "LB2",
+          "dx": 1.2,
+          "depth": 4.4
+        },
+        {
+          "slot": "CB1",
+          "dx": -16,
+          "depth": 6
+        },
+        {
+          "slot": "CB2",
+          "dx": 16,
+          "depth": 6
+        },
+        {
+          "slot": "S1",
+          "dx": -8,
+          "depth": 13
+        },
+        {
+          "slot": "S2",
+          "dx": 8,
+          "depth": 13
+        },
+        {
+          "slot": "CB3",
+          "dx": -9.5,
+          "depth": 2.7
+        }
+      ]
+    },
+    "3_2_odd": {
+      "name": "3-2 ODD",
+      "category": "dime",
+      "spots": [
+        {
+          "slot": "DL1",
+          "dx": -3.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL2",
+          "dx": -1.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL3",
+          "dx": 1.25,
+          "depth": 1
+        },
+        {
+          "slot": "DL4",
+          "dx": 3.25,
+          "depth": 1
+        },
+        {
+          "slot": "LB1",
+          "dx": 0.7,
+          "depth": 4.7
+        },
+        {
+          "slot": "CB1",
+          "dx": -16,
+          "depth": 6
+        },
+        {
+          "slot": "CB2",
+          "dx": 16,
+          "depth": 6
+        },
+        {
+          "slot": "S1",
+          "dx": -8,
+          "depth": 13
+        },
+        {
+          "slot": "S2",
+          "dx": 8,
+          "depth": 13
+        },
+        {
+          "slot": "CB3",
+          "dx": -9.7,
+          "depth": 2.7
+        },
+        {
+          "slot": "CB4",
+          "dx": 10,
+          "depth": 3.9
+        }
+      ]
+    }
+  },
+  "shells": {
+    "cover_3": {
+      "name": "Cover 3",
+      "formationId": "over",
+      "kind": "zone",
+      "assignments": {
+        "CB1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": -14,
+            "depth": 18
+          }
+        },
+        "CB2": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 14,
+            "depth": 18
+          }
+        },
+        "S1": {
+          "job": "zone",
+          "zone": "deep",
+          "center": {
+            "dx": 0,
+            "depth": 20
+          }
+        },
+        "LB1": {
+          "job": "zone",
+          "zone": "hook",
+          "center": {
+            "dx": -6,
+            "depth": 8
+          }
+        }
+      }
+    }
+  }
 }

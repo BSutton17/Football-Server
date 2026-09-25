@@ -271,6 +271,10 @@ export function depthBounds(label, side) {
 // Half the field either side of the ball, which is as far as anyone can be and still be on it.
 const MAX_DX = 26
 
+// A zone is a LANDMARK, not a player, so it is not bound by where a defender may line up — a deep
+// third sits further downfield than the corner playing it ever starts.
+const MAX_ZONE_DEPTH = 35
+
 function checkSpot(errors, s, side) {
   const label = slotLabel(s.slot)
   const b = depthBounds(label, side)
@@ -381,6 +385,21 @@ export function validateShell(s, formations) {
     } else if (a.job === 'zone') {
       covers++
       if (!ZONE_TYPES.includes(a.zone)) err(errors, `${slot} needs a zone type (${ZONE_TYPES.join(', ')})`)
+      // ⚠️ WHERE the zone sits, not just what kind it is. A hook zone over the left hash and one
+      // over the right are different coverages, and the shape of a shell is exactly the set of
+      // these. Optional: without one the engine falls back to the landmark it would have computed.
+      if (a.center != null) {
+        if (!Number.isFinite(a.center.dx) || !Number.isFinite(a.center.depth)) {
+          err(errors, `${slot} has a bad zone centre`)
+        } else if (a.center.depth < 0) {
+          // A zone may sit ON the line — a flat zone does — but never behind it.
+          err(errors, `${slot}'s zone is behind the line of scrimmage`)
+        } else if (a.center.depth > MAX_ZONE_DEPTH) {
+          err(errors, `${slot}'s zone is ${a.center.depth} yards deep; ${MAX_ZONE_DEPTH} is the limit`)
+        } else if (Math.abs(a.center.dx) > MAX_DX) {
+          err(errors, `${slot}'s zone is off the field`)
+        }
+      }
     }
   }
 
