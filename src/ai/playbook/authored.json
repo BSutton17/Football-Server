@@ -7045,6 +7045,1891 @@
           ]
         }
       }
+    },
+    "double_slant": {
+      "name": "DOUBLE SLANT",
+      "formationId": "gun_spread_y_slot",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 1.4,
+              "dd": 4.71
+            },
+            {
+              "dx": 8.71,
+              "dd": 7.74
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 1.31,
+              "dd": 3.97
+            },
+            {
+              "dx": 9.42,
+              "dd": 5.26
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.69,
+              "dd": 3.64
+            },
+            {
+              "dx": -6.78,
+              "dd": 5.37
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 7.87,
+              "dd": 3.58
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "block"
+        }
+      }
+    },
+    "r_cross_hb_rail": {
+      "name": "R CROSS HB RAIL",
+      "formationId": "gun_spread_y_slot",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.48,
+              "dd": 14.54
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 1.39,
+              "dd": 4.84
+            },
+            {
+              "dx": 19.47,
+              "dd": 12.44
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.33,
+              "dd": 3.71
+            },
+            {
+              "dx": -0.07,
+              "dd": 7.39
+            },
+            {
+              "dx": -1.94,
+              "dd": 10.57
+            },
+            {
+              "dx": -15.93,
+              "dd": 13.75
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.12,
+              "dd": 7.81
+            },
+            {
+              "dx": -9.23,
+              "dd": 17.04
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 5.19,
+              "dd": 1
+            },
+            {
+              "dx": 8.92,
+              "dd": 2.66
+            },
+            {
+              "dx": 12.34,
+              "dd": 4.81
+            },
+            {
+              "dx": 14.24,
+              "dd": 8.1
+            },
+            {
+              "dx": 15.28,
+              "dd": 11.81
+            },
+            {
+              "dx": 16.11,
+              "dd": 15.58
+            },
+            {
+              "dx": 16.68,
+              "dd": 19.4
+            }
+          ]
+        }
+      }
+    },
+    "all_go_5": {
+      "name": "ALL GO",
+      "formationId": "gun_spread_y_slot",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.5,
+              "dd": 19.59
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 1.18,
+              "dd": 15.18
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -7.19,
+              "dd": 21.19
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.16,
+              "dd": 15.64
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.44,
+              "dd": 6.33
+            },
+            {
+              "dx": 5.21,
+              "dd": 6.12
+            }
+          ]
+        }
+      }
+    },
+    "shift_dagger": {
+      "name": "SHIFT DAGGER",
+      "formationId": "gun_trips_y_slot_wk",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.1,
+              "dd": 9.32
+            },
+            {
+              "dx": -4.48,
+              "dd": 13.82
+            }
+          ]
+        },
+        "TE2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 1.35,
+              "dd": 2.9
+            },
+            {
+              "dx": 8.18,
+              "dd": 3.59
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.04,
+              "dd": 6.25
+            },
+            {
+              "dx": -2.08,
+              "dd": 4.51
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.02,
+              "dd": 13.89
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.01,
+              "dd": 10.88
+            },
+            {
+              "dx": -9.13,
+              "dd": 11.07
+            }
+          ]
+        }
+      }
+    },
+    "shift_mesh_outs": {
+      "name": "SHIFT MESH OUTS",
+      "formationId": "gun_trips_y_slot_wk",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.14,
+              "dd": 9.46
+            },
+            {
+              "dx": -6.66,
+              "dd": 9.93
+            }
+          ]
+        },
+        "TE2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 1.51,
+              "dd": 3.4
+            },
+            {
+              "dx": 11.18,
+              "dd": 4.38
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.78,
+              "dd": 4.18
+            },
+            {
+              "dx": -10.03,
+              "dd": 4.09
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -11.42,
+              "dd": 7.54
+            },
+            {
+              "dx": -12.25,
+              "dd": 4.69
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.85,
+              "dd": 10.96
+            },
+            {
+              "dx": 8.69,
+              "dd": 11.07
+            }
+          ]
+        }
+      }
+    },
+    "post_cross": {
+      "name": "POST CROSS",
+      "formationId": "gun_trips_y_slot_wk",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.1,
+              "dd": 12.45
+            },
+            {
+              "dx": 9.77,
+              "dd": 16.41
+            }
+          ]
+        },
+        "TE2": {
+          "kind": "block"
+        },
+        "TE1": {
+          "kind": "block"
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.19,
+              "dd": 8.96
+            },
+            {
+              "dx": -2.82,
+              "dd": 10.94
+            },
+            {
+              "dx": -6.36,
+              "dd": 11.89
+            },
+            {
+              "dx": -9.98,
+              "dd": 12.19
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.97,
+              "dd": 12.04
+            },
+            {
+              "dx": -14.86,
+              "dd": 11.81
+            }
+          ]
+        }
+      }
+    },
+    "out": {
+      "name": "OUT",
+      "formationId": "gun_trips_y_slot_wk",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.08,
+              "dd": 3.67
+            },
+            {
+              "dx": -0.09,
+              "dd": 7.34
+            },
+            {
+              "dx": 1.26,
+              "dd": 10.64
+            },
+            {
+              "dx": 10.96,
+              "dd": 10.67
+            }
+          ]
+        },
+        "TE2": {
+          "kind": "block"
+        },
+        "TE1": {
+          "kind": "block"
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.17,
+              "dd": 10.25
+            },
+            {
+              "dx": 8.49,
+              "dd": 11.36
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.98,
+              "dd": 21.2
+            }
+          ]
+        }
+      }
+    },
+    "dagger_2": {
+      "name": "DAGGER",
+      "formationId": "gun_trips_y_slot_wk",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 4.05,
+              "dd": 3.5
+            },
+            {
+              "dx": 4.89,
+              "dd": 8.68
+            },
+            {
+              "dx": -1.99,
+              "dd": 13.22
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -1.1,
+              "dd": 6.49
+            },
+            {
+              "dx": -1.98,
+              "dd": 3.81
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.39,
+              "dd": 16.31
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.21,
+              "dd": 12.15
+            },
+            {
+              "dx": -6.16,
+              "dd": 12.74
+            }
+          ]
+        }
+      }
+    },
+    "double_7_stop": {
+      "name": "DOUBLE 7 STOP",
+      "formationId": "gun_trips_y_slot_wk",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.16,
+              "dd": 10.97
+            },
+            {
+              "dx": -3.35,
+              "dd": 13.77
+            },
+            {
+              "dx": -5.69,
+              "dd": 10.53
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.61,
+              "dd": 6.33
+            },
+            {
+              "dx": -7.48,
+              "dd": 8.79
+            },
+            {
+              "dx": -9.01,
+              "dd": 6.18
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.1,
+              "dd": 8.76
+            },
+            {
+              "dx": 3.68,
+              "dd": 12.56
+            },
+            {
+              "dx": 6.89,
+              "dd": 11.49
+            }
+          ]
+        },
+        "TE2": {
+          "kind": "block"
+        },
+        "TE1": {
+          "kind": "block"
+        }
+      }
+    },
+    "shift_double_in": {
+      "name": "SHIFT DOUBLE IN",
+      "formationId": "gun_empty_base_trio",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.59,
+              "dd": 17.39
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 1.42,
+              "dd": 10.6
+            },
+            {
+              "dx": 10.64,
+              "dd": 13.11
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -3.06,
+              "dd": 2.12
+            },
+            {
+              "dx": -4.4,
+              "dd": 6.3
+            },
+            {
+              "dx": -10.49,
+              "dd": 7.99
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.83,
+              "dd": 3.7
+            },
+            {
+              "dx": 3.8,
+              "dd": 6.75
+            },
+            {
+              "dx": 6.23,
+              "dd": 10.26
+            },
+            {
+              "dx": 3.26,
+              "dd": 6.13
+            },
+            {
+              "dx": 5.53,
+              "dd": 9.06
+            },
+            {
+              "dx": 7.36,
+              "dd": 12.28
+            },
+            {
+              "dx": 8.88,
+              "dd": 15.65
+            },
+            {
+              "dx": 9.44,
+              "dd": 19.31
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 2.86,
+              "dd": 1.57
+            },
+            {
+              "dx": 5.32,
+              "dd": 3.83
+            },
+            {
+              "dx": 6.73,
+              "dd": 6.61
+            },
+            {
+              "dx": -6.98,
+              "dd": 6.06
+            }
+          ]
+        }
+      }
+    },
+    "shift_rz_z_under": {
+      "name": "SHIFT RZ Z UNDER",
+      "formationId": "gun_empty_base_trio",
+      "playType": "pass",
+      "assignments": {
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.31,
+              "dd": 5.92
+            },
+            {
+              "dx": -7.04,
+              "dd": 6.03
+            }
+          ]
+        },
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 2.16,
+              "dd": 6.15
+            },
+            {
+              "dx": 5.38,
+              "dd": 6.56
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -3.52,
+              "dd": 5.91
+            },
+            {
+              "dx": -15.41,
+              "dd": 9.16
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.75,
+              "dd": 9.82
+            },
+            {
+              "dx": 9.62,
+              "dd": 11.26
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 1.81,
+              "dd": 10.7
+            },
+            {
+              "dx": 5.99,
+              "dd": 13.83
+            },
+            {
+              "dx": 8.84,
+              "dd": 12.17
+            }
+          ]
+        }
+      }
+    },
+    "slot_fade_cross": {
+      "name": "SLOT FADE CROSS",
+      "formationId": "gun_empty_base_trio",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.04,
+              "dd": 4.73
+            },
+            {
+              "dx": 2.7,
+              "dd": 2.35
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -3.29,
+              "dd": 5.08
+            },
+            {
+              "dx": -4.52,
+              "dd": 8.55
+            },
+            {
+              "dx": -5.32,
+              "dd": 12.13
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.31,
+              "dd": 6.23
+            },
+            {
+              "dx": -1.78,
+              "dd": 9.25
+            },
+            {
+              "dx": -10.92,
+              "dd": 11.71
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.65,
+              "dd": 8.98
+            },
+            {
+              "dx": -6.8,
+              "dd": 16.72
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -3.09,
+              "dd": 0.18
+            }
+          ]
+        }
+      }
+    },
+    "all_curl_2": {
+      "name": "ALL CURL",
+      "formationId": "gun_empty_base_trio",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 2.65,
+              "dd": 0.59
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 2.72,
+              "dd": 2.54
+            },
+            {
+              "dx": 3.24,
+              "dd": 11.17
+            },
+            {
+              "dx": 5.69,
+              "dd": 10.1
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -2.99,
+              "dd": 1.26
+            },
+            {
+              "dx": -5.61,
+              "dd": 3.54
+            },
+            {
+              "dx": -7.02,
+              "dd": 6.7
+            },
+            {
+              "dx": -8.05,
+              "dd": 3.7
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -1.97,
+              "dd": 8.55
+            },
+            {
+              "dx": -2.87,
+              "dd": 5.52
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -2.68,
+              "dd": -0.01
+            }
+          ]
+        }
+      }
+    },
+    "dhift_bubble_spot_dig": {
+      "name": "DHIFT BUBBLE SPOT DIG",
+      "formationId": "gun_empty_base_trio",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 6.93,
+              "dd": 4.33
+            },
+            {
+              "dx": 7.75,
+              "dd": 13.84
+            },
+            {
+              "dx": -1.65,
+              "dd": 18.41
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.11,
+              "dd": 8.18
+            },
+            {
+              "dx": -6,
+              "dd": 7.83
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.38,
+              "dd": 10.63
+            },
+            {
+              "dx": -9.35,
+              "dd": 10.61
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 5.22,
+              "dd": -0.9
+            },
+            {
+              "dx": 8.54,
+              "dd": 0.96
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -5.02,
+              "dd": 3.86
+            },
+            {
+              "dx": -8.09,
+              "dd": 3.42
+            }
+          ]
+        }
+      }
+    },
+    "shift_bubble_z_spot": {
+      "name": "SHIFT BUBBLE Z SPOT",
+      "formationId": "gun_empty_base_trio",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 3.43,
+              "dd": 2.92
+            },
+            {
+              "dx": 4.07,
+              "dd": 12.16
+            },
+            {
+              "dx": 11.12,
+              "dd": 14.01
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.52,
+              "dd": 6.64
+            },
+            {
+              "dx": 2.03,
+              "dd": 4.22
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -2.78,
+              "dd": 4.5
+            },
+            {
+              "dx": -5.92,
+              "dd": 4.02
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.28,
+              "dd": 9.82
+            },
+            {
+              "dx": 6.02,
+              "dd": 14.59
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 4.85,
+              "dd": -0.93
+            },
+            {
+              "dx": 7.36,
+              "dd": -0.09
+            }
+          ]
+        }
+      }
+    },
+    "deep_attack": {
+      "name": "DEEP ATTACK",
+      "formationId": "gun_empty_base_trio",
+      "playType": "pass",
+      "assignments": {
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -9.47,
+              "dd": 4.08
+            },
+            {
+              "dx": -9.63,
+              "dd": 17.41
+            }
+          ]
+        },
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 3.7,
+              "dd": 1.66
+            },
+            {
+              "dx": 6.42,
+              "dd": 4.7
+            },
+            {
+              "dx": 9.11,
+              "dd": 7.78
+            },
+            {
+              "dx": 10.38,
+              "dd": 5.54
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.44,
+              "dd": 3.64
+            },
+            {
+              "dx": 3.19,
+              "dd": 6.01
+            },
+            {
+              "dx": 5.42,
+              "dd": 8.94
+            },
+            {
+              "dx": 7.72,
+              "dd": 11.81
+            },
+            {
+              "dx": 9.39,
+              "dd": 15.09
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.41,
+              "dd": 8.4
+            },
+            {
+              "dx": -10.82,
+              "dd": 7.86
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -3.77,
+              "dd": 2.78
+            },
+            {
+              "dx": -4.35,
+              "dd": 12.89
+            },
+            {
+              "dx": -9.35,
+              "dd": 15.7
+            }
+          ]
+        }
+      }
+    },
+    "slot_shake": {
+      "name": "SLOT SHAKE",
+      "formationId": "gun_empty_base_trio",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -1.05,
+              "dd": 13.18
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.17,
+              "dd": 4.92
+            },
+            {
+              "dx": -9.81,
+              "dd": 5.33
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.12,
+              "dd": 5.21
+            },
+            {
+              "dx": 1.69,
+              "dd": 7.13
+            },
+            {
+              "dx": -7.92,
+              "dd": 7.64
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -4.57,
+              "dd": 4.06
+            },
+            {
+              "dx": 2.65,
+              "dd": 4.83
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -1.36,
+              "dd": 5.34
+            },
+            {
+              "dx": -6.39,
+              "dd": 8.72
+            },
+            {
+              "dx": -6.75,
+              "dd": 6.06
+            }
+          ]
+        }
+      }
+    },
+    "verticals_h_option": {
+      "name": "VERTICALS H OPTION",
+      "formationId": "gun_empty_base_trio",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.15,
+              "dd": 13.83
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.56,
+              "dd": 6.03
+            },
+            {
+              "dx": 3.19,
+              "dd": 4.64
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -1.54,
+              "dd": 3.53
+            },
+            {
+              "dx": -3.23,
+              "dd": 6.99
+            },
+            {
+              "dx": -6.28,
+              "dd": 9.28
+            },
+            {
+              "dx": -9.08,
+              "dd": 11.92
+            },
+            {
+              "dx": -12.36,
+              "dd": 13.84
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -3.62,
+              "dd": 2.97
+            },
+            {
+              "dx": -2.9,
+              "dd": 11.6
+            },
+            {
+              "dx": -8.51,
+              "dd": 15.89
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.24,
+              "dd": 15.96
+            }
+          ]
+        }
+      }
+    },
+    "wr_under": {
+      "name": "WR UNDER",
+      "formationId": "pistol_wing_flex_close",
+      "playType": "pass",
+      "assignments": {
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.47,
+              "dd": 16.31
+            }
+          ]
+        },
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.7,
+              "dd": 6.64
+            },
+            {
+              "dx": 9.89,
+              "dd": 7.62
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.87,
+              "dd": 4.2
+            },
+            {
+              "dx": 0.53,
+              "dd": 8.5
+            },
+            {
+              "dx": -0.75,
+              "dd": 12.62
+            },
+            {
+              "dx": -2.5,
+              "dd": 16.55
+            }
+          ]
+        },
+        "TE2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 6.29,
+              "dd": 5.07
+            },
+            {
+              "dx": 6.34,
+              "dd": 17.59
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 3.19,
+              "dd": 0.21
+            },
+            {
+              "dx": 6.32,
+              "dd": 0.87
+            },
+            {
+              "dx": 9.33,
+              "dd": 1.95
+            },
+            {
+              "dx": 11.87,
+              "dd": 3.78
+            }
+          ]
+        }
+      }
+    },
+    "spacing_2": {
+      "name": "SPACING",
+      "formationId": "pistol_wing_flex_close",
+      "playType": "pass",
+      "assignments": {
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.1,
+              "dd": 8.16
+            },
+            {
+              "dx": -6.67,
+              "dd": 8.21
+            }
+          ]
+        },
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -4.07,
+              "dd": 3.35
+            },
+            {
+              "dx": 11.09,
+              "dd": 4.15
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.96,
+              "dd": 3.65
+            },
+            {
+              "dx": -3.54,
+              "dd": 4.62
+            },
+            {
+              "dx": -5.91,
+              "dd": 3.24
+            }
+          ]
+        },
+        "TE2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 5.52,
+              "dd": 4.44
+            },
+            {
+              "dx": -0.79,
+              "dd": 5.7
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 3.51,
+              "dd": 0.34
+            },
+            {
+              "dx": 6.96,
+              "dd": 1.16
+            },
+            {
+              "dx": 10.22,
+              "dd": 2.53
+            },
+            {
+              "dx": 12.87,
+              "dd": 4.84
+            }
+          ]
+        }
+      }
+    },
+    "stick_3": {
+      "name": "STICK",
+      "formationId": "pistol_wing_flex_close",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -4.69,
+              "dd": 1.65
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.39,
+              "dd": 5.41
+            },
+            {
+              "dx": -1.9,
+              "dd": 2.98
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 2.81,
+              "dd": 12.56
+            },
+            {
+              "dx": -0.19,
+              "dd": 10.21
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.33,
+              "dd": 4.26
+            },
+            {
+              "dx": 2.93,
+              "dd": 3.61
+            }
+          ]
+        },
+        "TE2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 6.89,
+              "dd": 2.04
+            }
+          ]
+        }
+      }
+    },
+    "verticals_2": {
+      "name": "VERTICALS",
+      "formationId": "pistol_bunch_te",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -6.8,
+              "dd": 3.52
+            },
+            {
+              "dx": -7.24,
+              "dd": 16.29
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.14,
+              "dd": 15.55
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.5,
+              "dd": 3.99
+            },
+            {
+              "dx": 1.94,
+              "dd": 7.74
+            },
+            {
+              "dx": 4,
+              "dd": 11.19
+            },
+            {
+              "dx": 8.08,
+              "dd": 15.62
+            },
+            {
+              "dx": 11.39,
+              "dd": 17.63
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 1.24,
+              "dd": 3.92
+            },
+            {
+              "dx": 8.75,
+              "dd": 4.68
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 2.66,
+              "dd": 10.14
+            },
+            {
+              "dx": -4.77,
+              "dd": 10.66
+            }
+          ]
+        }
+      }
+    },
+    "stick_4": {
+      "name": "STICK",
+      "formationId": "pistol_bunch_te",
+      "playType": "pass",
+      "assignments": {
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -11.15,
+              "dd": 2.04
+            }
+          ]
+        },
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -3.75,
+              "dd": 2.7
+            },
+            {
+              "dx": -4.42,
+              "dd": 17.82
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.13,
+              "dd": 6.17
+            },
+            {
+              "dx": -1.89,
+              "dd": 4.57
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 3.06,
+              "dd": 12.7
+            },
+            {
+              "dx": 0.32,
+              "dd": 10.57
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 2.06,
+              "dd": 3.75
+            },
+            {
+              "dx": 10.96,
+              "dd": 3.86
+            }
+          ]
+        }
+      }
+    },
+    "cross_drag": {
+      "name": "CROSS DRAG",
+      "formationId": "pistol_bunch_te",
+      "playType": "pass",
+      "assignments": {
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.66,
+              "dd": 12.78
+            },
+            {
+              "dx": 13.49,
+              "dd": 12.68
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 0.99,
+              "dd": 7.16
+            },
+            {
+              "dx": 5.19,
+              "dd": 10.6
+            },
+            {
+              "dx": 17.63,
+              "dd": 11.48
+            }
+          ]
+        },
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 2.33,
+              "dd": 3.34
+            },
+            {
+              "dx": 5.7,
+              "dd": 5.6
+            },
+            {
+              "dx": 9.6,
+              "dd": 6.79
+            },
+            {
+              "dx": 13.63,
+              "dd": 7.45
+            },
+            {
+              "dx": 17.68,
+              "dd": 8
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -1.18,
+              "dd": 2.93
+            },
+            {
+              "dx": -9.07,
+              "dd": 3.06
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 3.23,
+              "dd": -0.16
+            },
+            {
+              "dx": 6.53,
+              "dd": 0.76
+            },
+            {
+              "dx": 9.66,
+              "dd": 2.18
+            },
+            {
+              "dx": 12.11,
+              "dd": 4.5
+            }
+          ]
+        }
+      }
+    },
+    "flood": {
+      "name": "FLOOD",
+      "formationId": "pistol_bunch_te",
+      "playType": "pass",
+      "assignments": {
+        "WR3": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -14.99,
+              "dd": 1.98
+            }
+          ]
+        },
+        "WR1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -6.11,
+              "dd": 3.15
+            },
+            {
+              "dx": -6.73,
+              "dd": 14.62
+            }
+          ]
+        },
+        "WR2": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 4.18,
+              "dd": 3.6
+            },
+            {
+              "dx": 4.59,
+              "dd": 9.9
+            },
+            {
+              "dx": -5.16,
+              "dd": 9.72
+            }
+          ]
+        },
+        "TE1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": -0.14,
+              "dd": 5.55
+            },
+            {
+              "dx": 2.83,
+              "dd": 7.79
+            },
+            {
+              "dx": -5.27,
+              "dd": 10.76
+            }
+          ]
+        },
+        "RB1": {
+          "kind": "route",
+          "points": [
+            {
+              "dx": 3.17,
+              "dd": 0.54
+            },
+            {
+              "dx": 6.23,
+              "dd": 1.54
+            },
+            {
+              "dx": 9.04,
+              "dd": 3.08
+            },
+            {
+              "dx": 11.06,
+              "dd": 5.57
+            }
+          ]
+        }
+      }
     }
   },
   "defFormations": {
