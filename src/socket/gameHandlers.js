@@ -33,7 +33,7 @@ import { startGameLoop } from '../game/simulation.js'
 import { getRoom } from '../game/roomManager.js'
 import { serializeGameState } from '../game/serialization.js'
 import {
-  recommendOffense, recommendDefense, layoutPlayForClient,
+  recommendOffense, recommendDefense, layoutPlayForClient, layoutShellForClient,
 } from '../ai/playcall/recommend.js'
 import { solvedTable } from '../ai/playcall/table.js'
 import { loadPlaybook } from '../playbook/store.js'
@@ -176,13 +176,23 @@ export function registerGameHandlers(io, socket) {
     // what actually cancels them: bump it and every pending tick becomes a no-op.
     const token = (state.countdownToken ?? 0) + 1
     state.countdownToken = token
-    Array.from({ length: start + 1 }, (_, i) => start - i).forEach((count, i) => {
+
+    // ⚠️ AND THE HANDLES ARE KEPT, because a cancelled tick is not a freed one. The token stops a
+    // stale tick from being SEEN; the timer itself stays booked for up to sixteen seconds, holding
+    // its closure — and through `io`, every position broadcast of the play it belonged to.
+    //
+    // A real game gets away with that: the timers expire and one room's worth is nothing. Training
+    // does not. Thousands of games a minute each left eleven to sixteen live timers holding a whole
+    // game's emits, they piled up far faster than they expired, and the solver died of it —
+    // "Ineffective mark-compacts near heap limit" after about 200,000 plays.
+    for (const h of state.countdownTimers ?? []) clearTimeout(h)
+    state.countdownTimers = Array.from({ length: start + 1 }, (_, i) => start - i).map((count, i) =>
       setTimeout(() => {
         const s = getGame(roomId)
         if (!s || s.phase !== PHASE.COUNTDOWN || s.countdownToken !== token) return
         io.to(roomId).emit('hike_countdown', { count })
       }, i * 1000)
-    })
+    )
   })
 
   // ── Defense declares itself ready ─────────────────────────────────────────
@@ -510,11 +520,18 @@ export function registerGameHandlers(io, socket) {
     look.id = `${look.wr}wr${look.te}te${look.rb}rb`
 
     const situation = { down: state.down, distance: state.distance, yardLine: state.yardLine }
-    const shells = recommendDefense(playbook(), situation, look, {
-      solved: solvedTable().defense,
-      // [halftime] The defense leans on what this opponent has been doing, from half-time on.
-      adjust: state.halftimeRead?.[roleSlot(socket, state)] ?? null,
-    })
+    const adjust = state.halftimeRead?.[roleSlot(socket, state)] ?? null
+    const book = playbook()
+    const receivers = [...state.offensePlayers.values()]
+
+    const shells = recommendDefense(book, situation, look, { solved: solvedTable().defense, adjust })
+      .map(rec => ({
+        ...rec,
+        layout: layoutShellForClient(book, rec.id, {
+          losY: state.yardLine, ballX: state.ballX, receivers, adjust,
+        }),
+      }))
+      .filter(rec => rec.layout)
 
     socket.emit('shells_offered', { situation, look, shells })
   })

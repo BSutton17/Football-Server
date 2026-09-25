@@ -19,6 +19,7 @@ import { situationKey } from './situation.js'
 import { playDepth } from './select.js'
 import { shellFit } from './tendencies.js'
 import { layoutAuthored, routeFor } from '../playbook/authored.js'
+import { alignAuthored } from '../playbook/alignAuthored.js'
 
 // At or above this many rushers a shell is a blitz rather than a coverage that happens to send
 // somebody. Four is the ordinary front.
@@ -244,19 +245,50 @@ export function layoutPlayForClient(book, playId, { losY, ballX, mirror = false 
   }
 }
 
-// The same for a shell: where the eleven start and what each is being asked to do. The alignment
-// the engine will actually use is computed at set time against the real offense — this is the
-// picture the player is choosing from.
-export function describeShellForClient(book, shellId) {
+// The same for a shell — and ⚠️ THROUGH `alignAuthored`, NOT OFF THE RAW SPOTS. The authored shell
+// is where the eleven stand against nobody; the alignment layer is what puts a corner across from
+// the receiver he is covering, decides his shade, presses or plays off, creeps a rusher toward the
+// line and stops two zones crossing. Handing the player the raw shell would give them a shape that
+// looks right and is aligned against an offense that is not on the field.
+//
+// This is the literal promise of the feature: the player gets the AI's defense, not a picture of it.
+export function layoutShellForClient(book, shellId, { losY, ballX, receivers = [], adjust = null }) {
   const shell = book?.shells?.[shellId]
-  if (!shell) return null
-  const formation = book?.defFormations?.[shell.formationId]
+  const formation = book?.defFormations?.[shell?.formationId]
+  if (!shell || !formation) return null
+
+  const rows = alignAuthored({
+    formation: { ...formation, id: shell.formationId },
+    shell: { ...shell, id: shellId },
+    receivers,
+    ballX,
+    losY,
+    ready: true,
+    adjust,
+  })
+
   return {
     id: shellId,
     name: shell.name,
     kind: classifyShell(shell),
     formationId: shell.formationId,
-    formationName: formation?.name ?? shell.formationId,
-    assignments: shell.assignments ?? {},
+    formationName: formation.name ?? shell.formationId,
+    // The linemen are auto-placed by both sides already (see the note in authored.js), so they are
+    // dropped here rather than fought over.
+    spots: rows.filter(r => r.label !== 'DL').map(r => ({
+      slot: r.slot,
+      label: r.label,
+      x: r.x,
+      y: r.y,
+      job: r.job,
+      zone: r.zone ?? null,
+      zoneCenterX: r.zoneCenter ? clampX(ballX + r.zoneCenter.dx) : null,
+      zoneCenterY: r.zoneCenter ? losY + r.zoneCenter.depth : null,
+      covers: r.covers ?? null,
+      shade: r.shade ?? 'none',
+    })),
   }
 }
+
+const FIELD_W = 53.33
+const clampX = (x) => Math.max(0.5, Math.min(FIELD_W - 0.5, x))

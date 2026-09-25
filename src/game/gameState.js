@@ -263,6 +263,15 @@ export function deleteGame(roomId) {
     clearTimeout(state.nextPlayTimer)
     state.nextPlayTimer = null
   }
+  // ⚠️ THE COUNTDOWN'S TICKS TOO. Every tick of the defensive adjust window is booked up front —
+  // eleven to sixteen of them — and ending the countdown only makes them no-ops, it does not
+  // unbook them. Each one holds `io`, and `io` holds every emit of the play it belonged to, so a
+  // room that is gone can still be pinning a play's worth of positions for another sixteen
+  // seconds. One room's worth is nothing; thousands a minute is what killed the solver.
+  if (state?.countdownTimers) {
+    for (const h of state.countdownTimers) clearTimeout(h)
+    state.countdownTimers = null
+  }
   gameStates.delete(roomId)
 }
 

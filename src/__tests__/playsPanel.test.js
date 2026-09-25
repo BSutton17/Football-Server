@@ -163,6 +163,42 @@ describe('the defense asks for shells', () => {
     expect(g.you.last('room_error')?.message).toMatch(/defense/i)
   })
 
+  it('⚠️ ALIGNS THE SHELL AGAINST THE OFFENSE THAT IS ACTUALLY THERE', () => {
+    // The authored shell is where the eleven stand against nobody. Handing that over would give the
+    // player a shape that looks right and is lined up against an offense that is not on the field —
+    // so this goes through the same alignment layer the AI's own defense does.
+    giveBallTo(AI)
+    lineUpOffense()
+    g.you.fire('request_shells')
+
+    for (const s of g.you.last('shells_offered').shells) {
+      expect(s.layout.spots.length).toBeGreaterThan(0)
+      // No linemen: both sides auto-place the front already.
+      expect(s.layout.spots.every(sp => sp.label !== 'DL')).toBe(true)
+      for (const sp of s.layout.spots) {
+        expect(typeof sp.x).toBe('number')
+        expect(typeof sp.y).toBe('number')
+        expect(['man', 'zone', 'rush', 'spy']).toContain(sp.job)
+        // A zone always carries a real landmark: a null centre had the whole assignment refused,
+        // which left that defender with no job — and the engine rushes anyone it has no job for.
+        if (sp.job === 'zone') expect(typeof sp.zoneCenterX).toBe('number')
+      }
+    }
+  })
+
+  it('covers the receivers who are on the field, by their real ids', () => {
+    giveBallTo(AI)
+    lineUpOffense()
+    g.you.fire('request_shells')
+
+    const onField = new Set([...getGame(ROOM).offensePlayers.keys()])
+    const manRows = g.you.last('shells_offered').shells
+      .flatMap(s => s.layout.spots)
+      .filter(sp => sp.job === 'man' && sp.covers)
+    // Whoever is being covered has to be somebody who exists, or the client cannot assign it.
+    for (const row of manRows) expect(onField.has(row.covers)).toBe(true)
+  })
+
   it('never names the play, only the look', () => {
     giveBallTo(AI)
     lineUpOffense()
