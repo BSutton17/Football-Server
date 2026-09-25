@@ -119,8 +119,18 @@ function samplePlay({ situation, playId, shellId, seed, possessionValue }) {
 
     // The same seam the measurement tools use: replace the CALL and inherit everything else — the
     // legality clamps, the alignment, the hash — so a forced call is as legal as a chosen one.
-    ctx.brains[0].forceAuthoredPlay = playId
-    ctx.brains[1].forceAuthoredShell = shellId
+    //
+    // ⚠️ WHICH SEAT HAS THE BALL IS DECIDED BY THE SEED, NOT BY SLOT 0. This forced the play onto
+    // brain 0 and the shell onto brain 1 unconditionally, and about 38% of seeds open with slot 1
+    // on offense — so in better than a third of every cell's samples the play went to the DEFENSE
+    // and the shell to the OFFENSE. Both were ignored, the down was played with two freely chosen
+    // calls, and the result was recorded as the value of a matchup that never happened.
+    //
+    // Nothing about it looked wrong from outside: the play ran, `ok` came back true, and a
+    // perfectly ordinary number went into the payoff matrix.
+    const offense = ctx.state.possession
+    ctx.brains[offense].forceAuthoredPlay = playId
+    ctx.brains[1 - offense].forceAuthoredShell = shellId
 
     const r = playDown(ctx, {})
     if (!r.ok) return null
