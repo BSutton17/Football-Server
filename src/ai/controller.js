@@ -16,6 +16,8 @@ import {
   hasAuthoredOffense, hasAuthoredDefense, callAuthoredOffense, buildAuthoredOffense,
   callAuthoredDefense, buildAuthoredDefense,
 } from './playbook/runAuthored.js'
+import { adjustOffense } from './playbook/adjustOffense.js'
+const forceDeps = { adjustOffense }
 import { createKnowledge, applyEvent, isOffense, isDefense, oppSkill } from './knowledge.js'
 import { callDefense, selectPlayers } from './defense.js'
 import { callOffense, buildFormation, chooseRunAngle } from './offense.js'
@@ -61,6 +63,26 @@ function authoredBook() {
 }
 
 export function reloadAuthoredPlaybook() { cachedBook = null }
+
+// [solve] Build the call for one named play, going through the same adjustment the chooser does.
+function forceOnePlay(book, playId, k, ballX) {
+  const play = book.plays?.[playId]
+  if (!play) return null
+  const formation = { ...book.formations[play.formationId], id: play.formationId }
+  if (!formation?.spots) return null
+  const { adjustOffense } = forceDeps
+  const { play: adjusted, mirror, keptIn } = adjustOffense({ ...play, id: playId }, formation, { ballX, rushers: 4 })
+  return { play: adjusted, formation, mirror, keptIn, playType: play.playType }
+}
+
+function forceOneShell(book, shellId) {
+  const shell = book.shells?.[shellId]
+  if (!shell) return null
+  const formation = { ...book.defFormations[shell.formationId], id: shell.formationId }
+  if (!formation?.spots) return null
+  return { shell: { ...shell, id: shellId }, formation, look: { id: 'forced' } }
+}
+
 
 export function createController({ socket, slot, roster, seed = 1, log = false }) {
   const k = createKnowledge(slot)
@@ -180,8 +202,13 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // could not line up until somebody had drawn a hundred plays would be unusable. An override
     // still wins over both — that is how a play is held fixed while it is being measured.
     const authored = self.overrideOffensiveCall ? null : authoredBook()
+    // [solve] Hold ONE play fixed while it is measured. Same contract as overrideOffensiveCall:
+    // it replaces the choice and inherits the formation build, the flip and the protection call,
+    // so a forced play is as legal as a chosen one.
     const authoredCall = authored && hasAuthoredOffense(authored)
-      ? callAuthoredOffense(authored, k, { ballX, rng })
+      ? (self.forceAuthoredPlay
+        ? forceOnePlay(authored, self.forceAuthoredPlay, k, ballX)
+        : callAuthoredOffense(authored, k, { ballX, rng }))
       : null
 
     let call
@@ -325,11 +352,29 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     const losY = k.yardLine
     const ballX = k.ballX            // the front lines up on the hash, across from the offense
 
-    // ⚠️ The four down linemen are NOT auto-placed by the server. They are generated client-side
-    // and re-sent by the defending client every pre-snap (App.tsx does exactly this), so a defense
-    // that does not send them has no pass rush at all: the quarterback stands untouched and the
-    // play never ends. The end-to-end test found this by hanging for forty seconds of game time.
-    for (const dl of autoDefense(losY, ballX)) {
+    // ⚠️ THE FRONT MUST MATCH THE SHELL, or the defense fields twelve. An authored 3-4 or 3-3-5
+    // places EIGHT behind the line rather than seven, so four linemen on top of it is one man too
+    // many and every snap is refused with "defense has 12 players, not 11". The play still ran and
+    // the down still advanced, which is why it read as a working defense right up until the
+    // validator was actually listened to.
+    //
+    // The linemen themselves are NOT optional: they are generated client-side and re-sent by the
+    // defending client every pre-snap, so a defense that does not send them has no pass rush at
+    // all — the quarterback stands untouched and the play never ends.
+    const authoredD = self.overrideDefensiveCall ? null : authoredBook()
+    const runningAuthored = authoredD && hasAuthoredDefense(authoredD)
+    if (runningAuthored && !self.authoredCall) {
+      self.authoredCall = self.forceAuthoredShell
+        ? forceOneShell(authoredD, self.forceAuthoredShell)
+        : callAuthoredDefense(authoredD, k, { ballX, receivers, rng })
+      if (self.authoredCall) {
+        say(`${self.authoredCall.shell.name} — ${self.authoredCall.formation.name} vs ${self.authoredCall.look.id}`)
+      }
+    }
+    const frontSize = self.authoredCall
+      ? (self.authoredCall.formation.spots ?? []).filter(sp => String(sp.slot).startsWith('DL')).length
+      : 4
+    for (const dl of autoDefense(losY, ballX, frontSize)) {
       socket.fire('place_player', dl)
     }
 
@@ -337,18 +382,9 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // alignDefense rather than beside the offensive call: `receivers` is the whole input. The
     // hand-written shells remain the fallback for an empty playbook, and an override still wins
     // over both so a shell can be held fixed while it is measured.
-    const authoredD = self.overrideDefensiveCall ? null : authoredBook()
-    if (authoredD && hasAuthoredDefense(authoredD)) {
-      if (!self.authoredCall) {
-        self.authoredCall = callAuthoredDefense(authoredD, k, { ballX, receivers, rng })
-        if (self.authoredCall) {
-          say(`${self.authoredCall.shell.name} — ${self.authoredCall.formation.name} vs ${self.authoredCall.look.id}`)
-        }
-      }
-      if (self.authoredCall) {
-        placeAuthoredDefense(self.authoredCall, { losY, ballX, receivers })
-        return
-      }
+    if (self.authoredCall) {
+      placeAuthoredDefense(self.authoredCall, { losY, ballX, receivers })
+      return
     }
 
     if (!self.done.personnel) {

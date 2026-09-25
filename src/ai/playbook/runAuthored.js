@@ -31,6 +31,13 @@ export function hasAuthoredDefense(book) {
 
 const withIds = (map) => Object.entries(map ?? {}).map(([id, v]) => ({ ...v, id }))
 
+const FIELD_WIDTH = 53.33
+const clampToField = (x) => Math.max(0.5, Math.min(FIELD_WIDTH - 0.5, x))
+
+// How far in front of the defender an unlandmarked zone sits, by kind. Only used when a shell was
+// authored without a centre — a drawn one always wins.
+const DEFAULT_ZONE_DEPTH = { flat: 2, curl: 5, hook: 4, deep: 8 }
+
 // ── Offense ─────────────────────────────────────────────────────────────────
 //
 // Pick a play for the situation, then decide how to line it up.
@@ -175,18 +182,34 @@ export function buildAuthoredDefense(call, { losY, ballX, receivers, roster, adj
 function coverageFor(row, receivers) {
   if (row.job === 'man') {
     const target = receivers.find(r => r.id === row.covers)
+    // ⚠️ A MAN DEFENDER WITH NOBODY TO COVER IS NOT A MAN DEFENDER. Six in man against five
+    // receivers leaves one spare, and sending him out with a null target left him with no
+    // assignment at all — which the engine reads as "rush", so the spare quietly became a free
+    // runner and the hole he was standing in went unmanned with nothing on screen to say so.
+    //
+    // A spare man defender is the free player every Cover 1 has. He spies, which is what he is
+    // actually for.
+    if (!target) return { type: 'spy' }
     return {
       type: 'man',
-      targetId: target?.id ?? null,
+      targetId: target.id,
       manCommit: row.shade === 'none' ? null : row.shade,
     }
   }
   if (row.job === 'zone') {
+    // ⚠️ A ZONE CENTRE IS ALWAYS A NUMBER. `assign_coverage` validates it as one, so a shell whose
+    // zone was authored without a landmark sent null and had the whole assignment REFUSED — which
+    // left that defender with no job at all, and the engine rushes anyone it has no assignment
+    // for. One unlandmarked zone silently became a free rusher and an empty hook zone.
+    //
+    // Falling back to the defender's own spot is what the engine would have computed anyway: a
+    // zone with no landmark is a zone centred on the man playing it.
+    const depthBelow = row.zoneCenter ? row.zoneCenter.depth - row.depth : DEFAULT_ZONE_DEPTH[row.zone] ?? 4
     return {
       type: 'zone',
       zoneType: row.zone ?? 'hook',
-      zoneCenterX: row.zoneCenter ? row.x : null,
-      zoneCenterY: row.zoneCenter ? row.y + (row.zoneCenter.depth - row.depth) : null,
+      zoneCenterX: clampToField(row.x),
+      zoneCenterY: row.y + depthBelow,
     }
   }
   // blitz and spy are coverage TYPES in this engine rather than placements.

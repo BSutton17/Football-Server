@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "nodemon src/index.js",
     "dev:sandbox": "nodemon scripts/devSandbox.mjs",
+    "solve": "node src/training/runSolve.mjs",
     "playbook": "node scripts/playbook.mjs show",
     "playbook:backups": "node scripts/playbook.mjs backups",
     "playbook:restore": "node scripts/playbook.mjs restore",
