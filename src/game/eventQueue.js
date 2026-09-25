@@ -1302,9 +1302,15 @@ function advanceQuarter(state, io) {
   })
 
   if (kind === 'halftime') {
-    // Server-side only, so a human can never see it but it is still debuggable.
+    // ⚠️ THE READ HAS TO BE KEPT, NOT JUST PRINTED. This was computed, logged and thrown away, so
+    // the half-time adjustment existed entirely in the server log: the AI went on calling the
+    // second half exactly as it called the first. Stored on the state, it is what the controller
+    // leans on from here — and storing it here is also what makes it a HALF-TIME adjustment rather
+    // than a running one, which is the whole idea. It stays server-side.
+    state.halftimeRead = {}
     for (const slot of [0, 1]) {
-      const read = describeAdjustments(adjustmentsFor(state.tendencies, { opponentSlot: 1 - slot }))
+      state.halftimeRead[slot] = adjustmentsFor(state.tendencies, { opponentSlot: 1 - slot })
+      const read = describeAdjustments(state.halftimeRead[slot])
       if (read.length) console.log(`[halftime] ${state.roomId} slot ${slot} reads: ${read.join(' | ')}`)
     }
   }

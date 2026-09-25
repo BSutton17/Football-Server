@@ -64,7 +64,9 @@ function checkPhase(state, ...allowed) {
 // Deriving it here takes the cache out of the decision path: the validators ask the game, and the
 // game always knows. `socket.data.role` is still maintained, because the client emits read it, but
 // nothing is RULED ON by it any more.
-function slotOf(socket, state) {
+// Which seat this socket is sitting in. Exported because a handler that needs the HALF-TIME read
+// needs the slot, not just the role: the read is stored per seat and possession flips.
+export function slotOf(socket, state) {
   const room = getRoom(state.roomId)
   if (!room) return null
   const i = room.players.indexOf(socket.id)

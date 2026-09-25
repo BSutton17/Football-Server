@@ -17,6 +17,8 @@ import {
   callAuthoredDefense, buildAuthoredDefense,
 } from './playbook/runAuthored.js'
 import { adjustOffense } from './playbook/adjustOffense.js'
+import { solvedTable } from './playcall/table.js'
+import { getGame } from '../game/gameState.js'
 const forceDeps = { adjustOffense }
 import { createKnowledge, applyEvent, isOffense, isDefense, oppSkill } from './knowledge.js'
 import { callDefense, selectPlayers } from './defense.js'
@@ -84,7 +86,26 @@ function forceOneShell(book, shellId) {
 }
 
 
+// ── What the caller knows beyond the situation ──────────────────────────────
+//
+// ⚠️ BOTH OF THESE WERE BUILT AND NEITHER WAS CONNECTED. `select.js` has always taken a solved
+// table and a half-time read; nothing ever passed one, so every call the AI made ran off the
+// situational prior no matter how much solving had been done, and the half-time analysis lived
+// only in a log line. This is the wire.
+//
+// Read fresh each call rather than captured: the table grows while the solver runs, and the read
+// does not exist until half-time.
+function callInputs(socket, slot) {
+  const solved = solvedTable()
+  let adjust = null
+  try {
+    adjust = getGame(socket?.data?.roomId)?.halftimeRead?.[slot] ?? null
+  } catch { /* no room yet, or a room without a game: the prior is a complete answer */ }
+  return { solved, adjust }
+}
+
 export function createController({ socket, slot, roster, seed = 1, log = false }) {
+  const brains = () => callInputs(socket, slot)
   const k = createKnowledge(slot)
   const rng = makeRng(seed)
 
@@ -218,7 +239,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     const authoredCall = authored && hasAuthoredOffense(authored)
       ? (self.forceAuthoredPlay
         ? forceOnePlay(authored, self.forceAuthoredPlay, k, ballX)
-        : callAuthoredOffense(authored, k, { ballX, rng }))
+        : callAuthoredOffense(authored, k, { ballX, rng, ...brains() }))
       : null
 
     let call
@@ -376,7 +397,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     if (runningAuthored && !self.authoredCall) {
       self.authoredCall = self.forceAuthoredShell
         ? forceOneShell(authoredD, self.forceAuthoredShell)
-        : callAuthoredDefense(authoredD, k, { ballX, receivers, rng })
+        : callAuthoredDefense(authoredD, k, { ballX, receivers, rng, ...brains() })
       if (self.authoredCall) {
         say(`${self.authoredCall.shell.name} — ${self.authoredCall.formation.name} vs ${self.authoredCall.look.id}`)
       }

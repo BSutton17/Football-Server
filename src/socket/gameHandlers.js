@@ -12,6 +12,7 @@ import {
   validateThrowaway,
   validateCallTimeout,
   roleOf,
+  slotOf,
 } from '../game/validation.js'
 import { getGame, initGame, commitThrowTarget, resolveThrowTarget } from '../game/gameState.js'
 import {
@@ -32,6 +33,11 @@ import { startGameLoop } from '../game/simulation.js'
 import { getRoom } from '../game/roomManager.js'
 import { serializeGameState } from '../game/serialization.js'
 import {
+  recommendOffense, recommendDefense, layoutPlayForClient,
+} from '../ai/playcall/recommend.js'
+import { solvedTable } from '../ai/playcall/table.js'
+import { loadPlaybook } from '../playbook/store.js'
+import {
   beginSpecialTeams, applyKickInput, isSpecialTeamsActive, isValidKickType, canAttemptBlock,
 } from '../game/specialTeams.js'
 
@@ -40,6 +46,23 @@ function reject(socket, event, reason) {
   console.warn(`[game] rejected ${event} from ${socket.id}: ${reason}`)
   socket.emit('room_error', { message: reason })
 }
+
+const resolveRoom = (socket) => (socket.data?.roomId ? getGame(socket.data.roomId) ?? null : null)
+const roleSlot = (socket, state) => slotOf(socket, state)
+
+// ⚠️ LOADED ONCE AND KEPT. `loadPlaybook` reads and parses a 300 KB file; doing that on every press
+// of the Plays button would put a disk read in front of a button a player taps repeatedly while a
+// play clock runs. The dev sandbox is the only thing that edits the book, and it is not running in
+// a real game.
+let cachedBook = null
+const playbook = () => {
+  if (cachedBook === null) {
+    try { cachedBook = loadPlaybook() }
+    catch { cachedBook = { formations: {}, plays: {}, defFormations: {}, shells: {} } }
+  }
+  return cachedBook
+}
+export function reloadHandlerPlaybook() { cachedBook = null }
 
 export function registerGameHandlers(io, socket) {
 
@@ -437,6 +460,65 @@ export function registerGameHandlers(io, socket) {
   // once the game is over. Re-initializes all game state (score, clock, quarter, possession,
   // field, fatigue), restarts the tick loop (it stopped itself at game over), and re-syncs both
   // players' roles and game state. Slot 0 starts on offense for the new game.
+  // ── Giving the player the AI's read ───────────────────────────────────────
+  //
+  // ⚠️ THE SAME MACHINERY, NOT A SECOND COPY OF IT. These call `recommend*`, which calls the same
+  // selector and the same solved table the computer opponent runs on. A separate "suggestion"
+  // heuristic would drift away from what the AI actually believes, and then the advice and the
+  // opponent would be playing two different games.
+  //
+  // ⚠️ AND NEITHER SIDE IS TOLD ANYTHING IT COULD NOT SEE. The offense's shortlist is built from
+  // down, distance and field position. The defense's adds the formation and personnel standing in
+  // front of it — which is on screen already — and never the play call. The long-standing rule
+  // that the defense never sees the play survives this feature intact.
+
+  socket.on('request_plays', () => {
+    const state = resolveRoom(socket)
+    if (!state) return reject(socket, 'request_plays', 'No active game found for this room')
+    if (roleOf(socket) !== 'offense') return reject(socket, 'request_plays', 'Only the offense picks plays')
+    if (state.phase !== PHASE.PRE_SNAP && state.phase !== PHASE.COUNTDOWN) {
+      return reject(socket, 'request_plays', 'Plays can only be chosen before the snap')
+    }
+
+    const book = playbook()
+    const situation = { down: state.down, distance: state.distance, yardLine: state.yardLine }
+    const losY = state.yardLine
+    const ballX = state.ballX
+
+    const plays = recommendOffense(book, situation, { solved: solvedTable().offense })
+      .map(rec => ({ ...rec, layout: layoutPlayForClient(book, rec.id, { losY, ballX }) }))
+      .filter(rec => rec.layout)
+
+    socket.emit('plays_offered', { situation, plays })
+  })
+
+  socket.on('request_shells', () => {
+    const state = resolveRoom(socket)
+    if (!state) return reject(socket, 'request_shells', 'No active game found for this room')
+    if (roleOf(socket) !== 'defense') return reject(socket, 'request_shells', 'Only the defense picks shells')
+    if (state.phase !== PHASE.PRE_SNAP && state.phase !== PHASE.COUNTDOWN) {
+      return reject(socket, 'request_shells', 'Shells can only be chosen before the snap')
+    }
+
+    // What is actually standing across the line, counted off the field rather than off a playbook
+    // entry — the defense sees players, not an authored formation.
+    const look = { wr: 0, te: 0, rb: 0 }
+    for (const p of state.offensePlayers.values()) {
+      const label = String(p.label ?? '').toLowerCase()
+      if (label in look) look[label]++
+    }
+    look.id = `${look.wr}wr${look.te}te${look.rb}rb`
+
+    const situation = { down: state.down, distance: state.distance, yardLine: state.yardLine }
+    const shells = recommendDefense(playbook(), situation, look, {
+      solved: solvedTable().defense,
+      // [halftime] The defense leans on what this opponent has been doing, from half-time on.
+      adjust: state.halftimeRead?.[roleSlot(socket, state)] ?? null,
+    })
+
+    socket.emit('shells_offered', { situation, look, shells })
+  })
+
   socket.on('reset_game', () => {
     const roomId = socket.data.roomId
     if (!roomId) return
