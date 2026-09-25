@@ -1289,22 +1289,24 @@ function advanceQuarter(state, io) {
   const kind = state.quarter === 3 ? 'halftime' : 'quarter'
   // [stats] Halftime carries the box score so the interstitial can show who has been playing well.
   // An ordinary quarter break does not — it is a five-second breather, not a report.
-  // [halftime] The box score AND the read on the opponent. Sent per player, because "what they
-  // have been doing" is a different sentence for each of them — one team's run-heavy half is the
-  // other team's problem to solve.
+  // [halftime] Halftime carries the box score. An ordinary quarter break does not — it is a
+  // five-second breather, not a report.
+  //
+  // ⚠️ WHAT THE AI HAS READ IS NEVER SENT. Telling a player "they are stacking the box" hands them
+  // the counter for free — it is the AI's own half-time thinking, and a human does not get to see
+  // the opponent's notes. It is not merely hidden in the UI: it never leaves the server, because
+  // anything on the wire can be read straight out of the browser.
+  io.to(state.roomId).emit('period_transition', {
+    kind, endedQuarter: prev, seconds: TRANSITION_SECONDS,
+    ...(kind === 'halftime' ? { stats: serializeStats(state.stats) } : {}),
+  })
+
   if (kind === 'halftime') {
-    const room = getRoom(state.roomId)
-    const stats = serializeStats(state.stats)
-    room?.players.forEach((socketId, slot) => {
-      if (!socketId) return
-      const adj = adjustmentsFor(state.tendencies, { opponentSlot: 1 - slot })
-      io.to(socketId).emit('period_transition', {
-        kind, endedQuarter: prev, seconds: TRANSITION_SECONDS,
-        stats, adjustments: describeAdjustments(adj),
-      })
-    })
-  } else {
-    io.to(state.roomId).emit('period_transition', { kind, endedQuarter: prev, seconds: TRANSITION_SECONDS })
+    // Server-side only, so a human can never see it but it is still debuggable.
+    for (const slot of [0, 1]) {
+      const read = describeAdjustments(adjustmentsFor(state.tendencies, { opponentSlot: 1 - slot }))
+      if (read.length) console.log(`[halftime] ${state.roomId} slot ${slot} reads: ${read.join(' | ')}`)
+    }
   }
 
   console.log(`[game] ${state.roomId} end of Q${prev} → Q${state.quarter} begins`)
