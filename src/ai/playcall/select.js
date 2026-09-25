@@ -17,6 +17,7 @@
 
 import { situationKey, runLean, depthLean } from './situation.js'
 import { withMixingFloor } from './nash.js'
+import { shellFit } from './tendencies.js'
 
 // How sharply the prior converts weights into a distribution. Low enough that the second and third
 // choices are called often — a "distribution" that always picks its favourite is a pure strategy
@@ -103,13 +104,19 @@ export function chooseOffensivePlay(plays, situation, { solved = null, rng = Mat
 //
 // ⚠️ KEYED ON THE FORMATION IT CAN SEE, not on the play it cannot. Personnel comes with the
 // formation — three receivers and a back IS the formation — so one signal carries both.
-export function chooseDefensiveShell(shells, situation, offenseLook, { solved = null, rng = Math.random } = {}) {
+export function chooseDefensiveShell(shells, situation, offenseLook,
+  { solved = null, adjust = null, rng = Math.random } = {}) {
   if (!shells?.length) return null
-  const key = `${situationKey(situation)}|${offenseLook ?? 'unknown'}`
+  const key = `${situationKey(situation)}|${offenseLook?.id ?? 'unknown'}`
   const table = solved?.[key]
 
+  // [halftime] The tendency lean rides on top of whatever the base distribution is — solved or
+  // prior — rather than replacing it. What the opponent has been doing is evidence about THEM; it
+  // is not a reason to forget what the situation asks for.
+  const fit = adjust ? shells.map(s => shellFit(s, adjust)) : shells.map(() => 1)
+
   if (table) {
-    const probs = normalize(shells.map(s => table[s.id] ?? 0))
+    const probs = normalize(shells.map((s, i) => (table[s.id] ?? 0) * fit[i]))
     if (probs.some(p => p > 0)) return sample(shells, withMixingFloor(probs, { floor: FLOOR }), rng)
   }
 
@@ -117,11 +124,11 @@ export function chooseDefensiveShell(shells, situation, offenseLook, { solved = 
   // EVIDENCE. Answering four receivers with a base defense is not an interesting gamble, it is
   // simply wrong, and a coin-flip prior would do it a quarter of the time.
   const wr = offenseLook?.wr ?? 3
-  const weights = shells.map(s => {
+  const weights = shells.map((s, i) => {
     const backs = s.personnel ? (s.personnel.CB ?? 0) + (s.personnel.S ?? 0) : 4
     // The closer the defensive back count is to what the formation asks for, the better the fit.
     const want = wr >= 4 ? 6 : wr === 3 ? 5 : 4
-    return 1 / (1 + Math.abs(backs - want))
+    return fit[i] / (1 + Math.abs(backs - want))
   })
   return sample(shells, withMixingFloor(normalize(weights), { floor: FLOOR }), rng)
 }

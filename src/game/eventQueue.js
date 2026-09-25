@@ -3,6 +3,7 @@ import {
   recordAttempt, recordCompletion, recordPassYards, recordRush, recordTackle, recordSack,
   recordInterception, recordTouchdown, serializeStats,
 } from './stats.js'
+import { observePlay, adjustmentsFor, describeAdjustments } from '../ai/playcall/tendencies.js'
 import { RULES, FIELD, FIELD_CENTER_X } from '../constants.js'
 import { getGame, advanceDown, changePossession, yardLineFromAbsY, getLosY, clampToHash } from './gameState.js'
 import {
@@ -139,6 +140,58 @@ function dispatch({ type, payload }, state, io) {
 //   io      — Socket.io server instance (to emit events to clients)
 
 // payload: (none)
+// [halftime] Sample what this play IS, at the snap — the last moment both sides have committed and
+// nothing has happened yet.
+//
+// ⚠️ SAMPLED, NOT INFERRED FROM THE RESULT. Counting rushers from who ended up near the quarterback
+// would count a linebacker who chased a scrambler as a blitzer, and a play that reads as a blitz
+// because the quarterback ran toward one is not evidence about the defense.
+// [halftime] Hand the play that just finished to the tendency tracker.
+//
+// ⚠️ WHAT BOTH SIDES SAW, AFTER THE FACT. Nobody learns a play call in advance; noticing that the
+// last twenty snaps were runs is the ordinary skill of watching an opponent, and both players are
+// doing it too.
+//
+// ⚠️ THE SLOT IS THE ONE STAMPED AT THE SNAP. A turnover flips possession before this runs, and
+// reading it live would credit the whole play to the team that just intercepted it.
+function recordFinishedPlay(state) {
+  if (!state.statsPlayType) return
+  const offenseSlot = state.tendencySlot ?? state.possession
+  observePlay(state.tendencies, {
+    offenseSlot,
+    defenseSlot: 1 - offenseSlot,
+    playType: state.statsPlayType,
+    routeDepth: state.statsRouteDepth,
+    rushers: state.statsRushers,
+  })
+}
+
+export function sampleForTendencies(state) {
+  // ⚠️ THE PLAY TYPE COMES FROM THE CALL, NOT FROM WHAT HAPPENED. Deriving it from whether a catch
+  // occurred counted every incompletion as a run — and a sack too, since neither produces one.
+  // Against a defense that covered well, a pass-happy offense read as run-heavy, which is the
+  // exact opposite of the truth and would have had the defense stacking the box against it.
+  state.statsPlayType = state.playDesign?.playType === 'run' ? 'run' : 'pass'
+  // Who was on offense for THIS play, stamped before any turnover can flip possession.
+  state.tendencySlot = state.possession
+
+  let rushers = 0
+  for (const a of state.defenseCoverage?.values() ?? []) if (a?.type === 'blitz') rushers++
+  // The four linemen always rush and are not in the coverage map.
+  state.statsRushers = rushers + 4
+
+  const depths = []
+  for (const p of state.offensePlayers?.values() ?? []) {
+    if (!p.drawnRoute?.length) continue
+    let deepest = 0
+    for (const pt of p.drawnRoute) deepest = Math.max(deepest, pt.dd ?? 0)
+    depths.push(deepest)
+  }
+  state.statsRouteDepth = depths.length
+    ? depths.reduce((a, b) => a + b, 0) / depths.length
+    : null
+}
+
 function onSnap(_payload, _state, _io) {
   // Transition phase to LIVE, set ballCarrierId to QB.
 }
@@ -1045,8 +1098,17 @@ export function applyDelayOfGame(state, io) {
   state.playSerial       = (state.playSerial ?? 0) + 1
   // [stats] Per-play bookkeeping. Without this a pass on one down would still read as a pass on
   // the next, and a run would be credited as a reception to the previous play's passer.
+  // [halftime] ⚠️ RECORDED HERE, ON THE WAY INTO THE NEXT PLAY, because this is the one point
+  // EVERY play reaches however it ended. Recording at the tackle missed every incompletion, every
+  // sack, every touchdown and every interception — so a passing offense whose throws fell
+  // incomplete did not appear in its own tendency at all.
+  recordFinishedPlay(state)
+
   state.statsWasPass     = false
   state.statsPasser      = null
+  state.statsRouteDepth  = null   // how deep this play's routes ran, for the tendency read
+  state.statsRushers     = null   // how many the defense sent
+  state.statsPlayType    = null   // what was CALLED, which is not what statsWasPass answers
 
   const room = getRoom(state.roomId)
   if (room) {
@@ -1227,10 +1289,23 @@ function advanceQuarter(state, io) {
   const kind = state.quarter === 3 ? 'halftime' : 'quarter'
   // [stats] Halftime carries the box score so the interstitial can show who has been playing well.
   // An ordinary quarter break does not — it is a five-second breather, not a report.
-  io.to(state.roomId).emit('period_transition', {
-    kind, endedQuarter: prev, seconds: TRANSITION_SECONDS,
-    ...(kind === 'halftime' ? { stats: serializeStats(state.stats) } : {}),
-  })
+  // [halftime] The box score AND the read on the opponent. Sent per player, because "what they
+  // have been doing" is a different sentence for each of them — one team's run-heavy half is the
+  // other team's problem to solve.
+  if (kind === 'halftime') {
+    const room = getRoom(state.roomId)
+    const stats = serializeStats(state.stats)
+    room?.players.forEach((socketId, slot) => {
+      if (!socketId) return
+      const adj = adjustmentsFor(state.tendencies, { opponentSlot: 1 - slot })
+      io.to(socketId).emit('period_transition', {
+        kind, endedQuarter: prev, seconds: TRANSITION_SECONDS,
+        stats, adjustments: describeAdjustments(adj),
+      })
+    })
+  } else {
+    io.to(state.roomId).emit('period_transition', { kind, endedQuarter: prev, seconds: TRANSITION_SECONDS })
+  }
 
   console.log(`[game] ${state.roomId} end of Q${prev} → Q${state.quarter} begins`)
 }
@@ -1366,8 +1441,17 @@ export function startNextPlay(roomId, io, { quiet = false } = {}) {
   state.playSerial       = (state.playSerial ?? 0) + 1
   // [stats] Per-play bookkeeping. Without this a pass on one down would still read as a pass on
   // the next, and a run would be credited as a reception to the previous play's passer.
+  // [halftime] ⚠️ RECORDED HERE, ON THE WAY INTO THE NEXT PLAY, because this is the one point
+  // EVERY play reaches however it ended. Recording at the tackle missed every incompletion, every
+  // sack, every touchdown and every interception — so a passing offense whose throws fell
+  // incomplete did not appear in its own tendency at all.
+  recordFinishedPlay(state)
+
   state.statsWasPass     = false
   state.statsPasser      = null
+  state.statsRouteDepth  = null   // how deep this play's routes ran, for the tendency read
+  state.statsRushers     = null   // how many the defense sent
+  state.statsPlayType    = null   // what was CALLED, which is not what statsWasPass answers
 
   transition(state, PHASE.PRE_SNAP)
 

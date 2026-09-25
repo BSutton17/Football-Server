@@ -126,10 +126,15 @@ export function pairMan(manSlots, receivers, ballX) {
 //
 // ⚠️ THE SAFETY RULES OUTRANK THE PREFERENCE, ALWAYS. With nobody over the top, anything but UNDER
 // is a way to lose deep, and no situational cleverness makes that a good trade.
-export function decideShade(defender, receiver, { hasDeepHelp, ballX, forced = null }) {
+export function decideShade(defender, receiver,
+  { hasDeepHelp, ballX, forced = null, preferUnderneath = false }) {
   if (!receiver) return 'none'
   if (receiver.label === 'RB') return 'under'   // a back releasing is a short threat
   if (!hasDeepHelp) return 'under'              // nothing behind you: never get beaten deep
+  // [halftime] An opponent who has spent a half living underneath gets sat on there. This comes
+  // BELOW the safety rules and ABOVE the shell's pinned leverage: a half of evidence outranks a
+  // default, and nothing outranks not getting beaten deep.
+  if (preferUnderneath) return 'under'
   if (forced === 'in' || forced === 'out') return forced
 
   const outsideness = Math.abs(receiver.x - ballX)
@@ -165,7 +170,7 @@ export function enforceNoCrossing(rows) {
 }
 
 // ── The adjustment ──────────────────────────────────────────────────────────
-export function alignAuthored({ formation, shell, receivers, ballX, losY, ready = true }) {
+export function alignAuthored({ formation, shell, receivers, ballX, losY, ready = true, adjust = null }) {
   const spots = formation?.spots ?? []
   const assignments = shell?.assignments ?? {}
 
@@ -198,7 +203,8 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
     if (d.job === 'man') {
       const target = pairs.get(d.slot)
       if (!target) return d
-      const shade = decideShade(d, target, { hasDeepHelp, ballX, forced })
+      const shade = decideShade(d, target,
+        { hasDeepHelp, ballX, forced, preferUnderneath: !!adjust?.preferUnderneath })
       const x = clamp(target.x + shadeLean(shade, target, ballX),
         d.x - MAX_MAN_TRAVEL, d.x + MAX_MAN_TRAVEL)
 

@@ -1,4 +1,5 @@
 import { createStats } from './stats.js'
+import { createTendencies } from '../ai/playcall/tendencies.js'
 import { RULES, FIELD, HASH, FIELD_CENTER_X, GAME_MODE, DIFFICULTY } from '../constants.js'
 import { makeRng } from './utils/rng.js'
 import { PHASE } from './stateMachine.js'
@@ -108,6 +109,10 @@ export function initGame(roomId, offenseSlot, { mode, difficulty, quarterSeconds
     // spans the whole thing — a per-play or per-drive home would lose it at exactly the moments
     // it is wanted.
     stats: createStats(),
+
+    // [halftime] What each side has been DOING, for the halftime read. Separate from the box score
+    // because they answer different questions: one is who played well, the other is how they play.
+    tendencies: createTendencies(),
     statsWasPass: false,   // was the ball caught on THIS play (decides reception vs carry)
     statsPasser: null,     // who threw it on THIS play
 

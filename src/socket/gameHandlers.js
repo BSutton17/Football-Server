@@ -27,7 +27,7 @@ import { transition, PHASE } from '../game/stateMachine.js'
 import { beginStoppage, STOPPAGE, beginPlayerPause, resumePlayerPause, isPlayerPaused } from '../game/pause.js'
 import { FIELD, RULES } from '../constants.js'
 import { initLivePhase } from '../game/systems/init.js'
-import { enqueue, EVENT, resolveDecision, resolveConversion, resolvePuntReturn, resolveFieldGoalBlock, broadcastSpecialTeams } from '../game/eventQueue.js'
+import { enqueue, EVENT, resolveDecision, resolveConversion, resolvePuntReturn, resolveFieldGoalBlock, broadcastSpecialTeams , sampleForTendencies } from '../game/eventQueue.js'
 import { startGameLoop } from '../game/simulation.js'
 import { getRoom } from '../game/roomManager.js'
 import { serializeGameState } from '../game/serialization.js'
@@ -302,6 +302,12 @@ export function registerGameHandlers(io, socket) {
 
     const roomId = socket.data.roomId
     const state  = getGame(roomId)
+
+    // [halftime] ⚠️ SAMPLED HERE, because this is where the snap actually happens. The event
+    // queue has an EVENT.SNAP case, but nothing routes through it — the socket handler transitions
+    // to LIVE directly. Sampling there recorded nothing at all, and every play then fell back to
+    // "was there a catch", which counted every incompletion and every sack as a RUN.
+    sampleForTendencies(state)
 
     state.newDrive = false   // [first play] the drive's opening snap is away — back to the 5 s window next time
     state.clockStopped = false   // [70] the snap restarts the game clock (paused since the offense set)
