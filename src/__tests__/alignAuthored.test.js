@@ -1,5 +1,7 @@
 import { describe, it, expect } from '@jest/globals'
-import { alignAuthored, readyToAlign, isBlitz } from '../ai/playbook/alignAuthored.js'
+import {
+  alignAuthored, readyToAlign, isBlitz, pairMan, decideShade, enforceNoCrossing,
+} from '../ai/playbook/alignAuthored.js'
 
 // [authored] Turning a drawn defense into the one it actually shows.
 //
@@ -28,12 +30,15 @@ const formation = {
 }
 
 // Trips right: three receivers wide right, a tight end left, a back beside the quarterback.
+// ⚠️ LABELS MATTER. The matchup rule is "corners on receivers, linebackers on the tight end
+// and the back", so a fixture without labels cannot exercise it — it falls through to the
+// out-of-options pass, which pairs by pure proximity and looks like a bug in the code.
 const receivers = [
-  { id: 'WR1', x: BALL_X - 16, y: LOS },
-  { id: 'TE1', x: BALL_X + 6, y: LOS },
-  { id: 'WR2', x: BALL_X + 12, y: LOS - 1 },
-  { id: 'WR3', x: BALL_X + 18, y: LOS },
-  { id: 'RB1', x: BALL_X - 3, y: LOS - 6 },
+  { id: 'WR1', x: BALL_X - 16, y: LOS, label: 'WR' },
+  { id: 'TE1', x: BALL_X + 6, y: LOS, label: 'TE' },
+  { id: 'WR2', x: BALL_X + 12, y: LOS - 1, label: 'WR' },
+  { id: 'WR3', x: BALL_X + 18, y: LOS, label: 'WR' },
+  { id: 'RB1', x: BALL_X - 3, y: LOS - 6, label: 'RB' },
 ]
 
 const rush = (slots) => Object.fromEntries(slots.map(s => [s, { job: 'rush' }]))
@@ -63,6 +68,7 @@ const zoneShell = () => ({
 const align = (shell, opts = {}) =>
   alignAuthored({ formation, shell, receivers, ballX: BALL_X, losY: LOS, ready: true, ...opts })
 const find = (rows, slot) => rows.find(r => r.slot === slot)
+const SHADES = ['none', 'in', 'out', 'over', 'under']
 
 describe('⚠️ NOTHING IS DECIDED UNTIL THE OFFENSE HAS SET', () => {
   it('reads the engine’s own adjust window', () => {
@@ -92,9 +98,10 @@ describe('man coverage travels to the receiver', () => {
   it('walks a corner out to whoever is split to his side', () => {
     const rows = align(manShell())
     const cb1 = find(rows, 'CB1')
-    // Drawn at -14, the widest receiver left is at -16: he goes and gets him.
+    // Drawn at -14, the widest receiver left is at -16: he goes and gets him — and stands a yard
+    // to the side his shade says he is taking away, rather than nose to nose.
     expect(cb1.covers).toBe('WR1')
-    expect(cb1.x).toBeCloseTo(BALL_X - 16)
+    expect(Math.abs(cb1.x - (BALL_X - 16))).toBeCloseTo(1, 1)
   })
 
   it('covers every receiver, and nobody twice', () => {
@@ -133,7 +140,7 @@ describe('man coverage travels to the receiver', () => {
   it('will not sprint across the formation to reach somebody', () => {
     // A corner drawn at one number chasing a receiver on the far hash leaves the picture
     // unrecognisable, so travel is bounded.
-    const far = [{ id: 'WR9', x: BALL_X + 24, y: LOS }]
+    const far = [{ id: 'WR9', x: BALL_X + 24, y: LOS, label: 'WR' }]
     const rows = alignAuthored({ formation, shell: manShell(), receivers: far, ballX: BALL_X, losY: LOS })
     const cb1 = find(rows, 'CB1')
     expect(cb1.x).toBeLessThan(BALL_X + 24)
@@ -179,13 +186,10 @@ describe('zones slide toward the formation', () => {
     // to sit over them, which is the point: the zone should be over the route distribution rather
     // than over grass outside it.
     const rows = align(zoneShell())
-    const cb2 = find(rows, 'CB2')
-    expect(cb2.x).toBeLessThan(BALL_X + 14)
-    expect(cb2.x).toBeCloseTo(BALL_X + 12, 1)
-    expect(cb2.zoneCenter.dx).toBeLessThan(16)
-
-    // And the left side, with one receiver out at -16, pulls the other way.
-    expect(find(rows, 'CB1').x).toBeLessThan(BALL_X - 14)
+    // The ZONE is what moved toward them. The defender's own spot is additionally subject to the
+    // no-crossing pass, which may hold him out from a neighbour.
+    expect(find(rows, 'CB2').zoneCenter.dx).toBeLessThan(16)
+    expect(find(rows, 'CB1').zoneCenter.dx).toBeLessThan(-16 + 1e-9)
   })
 
   it('⚠️ ONLY A LITTLE — a zone that chases completely is man coverage with extra steps', () => {
@@ -196,14 +200,16 @@ describe('zones slide toward the formation', () => {
     }
   })
 
-  it('never changes a zone defender’s depth — that is the shell', () => {
+  it('never sends a zone defender BACKWARDS, and never deepens the zone itself', () => {
+    // A corner in a shallow zone may come forward onto the receiver aligned in it — that is the
+    // rule. What he may never do is drop off, which would quietly deepen the coverage that was
+    // called. The ZONE's own depth belongs to the shell and is untouched either way.
     const rows = align(zoneShell())
     for (const r of rows.filter(x => x.job === 'zone')) {
       const spot = formation.spots.find(s => s.slot === r.slot)
-      expect(r.depth).toBe(spot.depth)
+      expect(r.depth).toBeLessThanOrEqual(spot.depth + 1e-9)
       if (r.zoneCenter) {
-        const authored = zoneShell().assignments[r.slot].center.depth
-        expect(r.zoneCenter.depth).toBe(authored)
+        expect(r.zoneCenter.depth).toBe(zoneShell().assignments[r.slot].center.depth)
       }
     }
   })
@@ -225,5 +231,115 @@ describe('what it is NOT allowed to do', () => {
       expect(r.job).toBe(shell.assignments[r.slot]?.job ?? 'rush')
       if (r.job === 'zone') expect(r.zone).toBe(shell.assignments[r.slot].zone)
     }
+  })
+})
+
+describe('⚠️ CORNERS ON RECEIVERS, LINEBACKERS ON THE TIGHT END AND THE BACK', () => {
+  const man = (slots) => slots.map(([slot, dx]) => ({ slot, dx }))
+
+  it('puts each corner on the widest receiver to HIS side', () => {
+    const pairs = pairMan(man([['CB1', -14], ['CB2', 14]]), receivers, BALL_X)
+    expect(pairs.get('CB1').id).toBe('WR1')
+    expect(pairs.get('CB2').id).toBe('WR3')
+  })
+
+  it('gives the tight end and the back to linebackers', () => {
+    const pairs = pairMan(man([['CB1', -14], ['CB2', 14], ['LB1', -5], ['LB2', 0]]), receivers, BALL_X)
+    expect([pairs.get('LB1').label, pairs.get('LB2').label].sort()).toEqual(['RB', 'TE'])
+  })
+
+  it('⚠️ TAKES A BAD MATCHUP OVER LEAVING SOMEBODY UNCOVERED', () => {
+    // Three receivers and only linebackers to cover them. A linebacker on a receiver is a losing
+    // matchup; an uncovered receiver is a touchdown.
+    const wrs = receivers.filter(r => r.label === 'WR')
+    const pairs = pairMan(man([['LB1', -5], ['LB2', 0], ['LB3', 5]]), wrs, BALL_X)
+    expect(new Set([...pairs.values()].map(r => r.id)).size).toBe(3)
+  })
+
+  it('leaves a spare defender free rather than doubling somebody', () => {
+    const pairs = pairMan(man([['CB1', -14], ['CB2', 14], ['S1', -8]]), receivers.slice(0, 2), BALL_X)
+    const taken = [...pairs.values()].map(r => r.id)
+    expect(new Set(taken).size).toBe(taken.length)
+  })
+})
+
+describe('⚠️ SHADING IS DECIDED PER DEFENDER', () => {
+  const wide = { id: 'w', x: BALL_X + 18, y: LOS, label: 'WR' }
+  const tight = { id: 't', x: BALL_X + 3, y: LOS, label: 'WR' }
+  const back = { id: 'b', x: BALL_X - 3, y: LOS - 6, label: 'RB' }
+  const ctx = { hasDeepHelp: true, ballX: BALL_X }
+
+  it('takes away the inside on a wide receiver — the sideline is the help outside', () => {
+    expect(decideShade({}, wide, ctx)).toBe('in')
+  })
+
+  it('takes away the outside on a tight one — the traffic inside is the help', () => {
+    expect(decideShade({}, tight, ctx)).toBe('out')
+  })
+
+  it('plays a releasing back underneath, whoever is on him', () => {
+    expect(decideShade({}, back, ctx)).toBe('under')
+  })
+
+  it('⚠️ REFUSES ANYTHING BUT UNDER WITH NOBODY OVER THE TOP', () => {
+    for (const r of [wide, tight, back]) {
+      expect(decideShade({}, r, { ...ctx, hasDeepHelp: false })).toBe('under')
+    }
+  })
+
+  it('honours a shell that pins its leverage — but not over the safety rule', () => {
+    expect(decideShade({}, wide, { ...ctx, forced: 'out' })).toBe('out')
+    expect(decideShade({}, wide, { ...ctx, forced: 'out', hasDeepHelp: false })).toBe('under')
+  })
+
+  it('stands NEAR his receiver, never nose to nose', () => {
+    const rows = align(manShell())
+    const cb1 = find(rows, 'CB1')
+    expect(SHADES).toContain(cb1.shade)
+    const target = receivers.find(r => r.id === cb1.covers)
+    const off = Math.abs(cb1.x - target.x)
+    expect(off).toBeLessThanOrEqual(1.01)
+  })
+})
+
+describe('⚠️ A RUSHER MAY SHOW HIMSELF, UP TO FOUR YARDS', () => {
+  it('creeps a blitzing linebacker toward the line', () => {
+    const rows = align(manShell(1))
+    const lb = find(rows, 'LB2')
+    expect(lb.job).toBe('rush')
+    expect(lb.depth).toBeLessThan(5)
+    expect(5 - lb.depth).toBeLessThanOrEqual(4 + 1e-9)
+  })
+
+  it('leaves the linemen exactly where they were drawn', () => {
+    const rows = align(manShell(1))
+    for (const r of rows.filter(x => x.label === 'DL')) {
+      const spot = formation.spots.find(s => s.slot === r.slot)
+      expect(r.depth).toBe(spot.depth)
+      expect(r.x).toBeCloseTo(BALL_X + spot.dx)
+    }
+  })
+})
+
+describe('⚠️ ZONES NEVER CROSS EACH OTHER', () => {
+  it('keeps the drawn left-to-right order after everyone has slid', () => {
+    const rows = align(zoneShell()).filter(r => r.job === 'zone')
+    const drawn = [...rows].sort((a, b) => a.dx - b.dx).map(r => r.slot)
+    const after = [...rows].sort((a, b) => a.x - b.x).map(r => r.slot)
+    expect(after).toEqual(drawn)
+  })
+
+  it('pushes a zone out rather than letting it pass its neighbour', () => {
+    const rows = [
+      { slot: 'A', job: 'zone', dx: -4, x: 10 },
+      { slot: 'B', job: 'zone', dx: 4, x: 8 },   // has slid past A
+    ]
+    enforceNoCrossing(rows)
+    expect(rows.find(r => r.slot === 'B').x).toBeGreaterThan(rows.find(r => r.slot === 'A').x)
+  })
+
+  it('leaves a lone zone alone', () => {
+    const rows = [{ slot: 'A', job: 'zone', dx: 0, x: 10 }]
+    expect(enforceNoCrossing(rows)[0].x).toBe(10)
   })
 })
