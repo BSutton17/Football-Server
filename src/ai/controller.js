@@ -123,9 +123,16 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
         // assignment for — so the AI loses a defender to the pass rush and opens a hole where he
         // was standing, with nothing on screen to say so. Logged unconditionally, not behind the
         // debug flag, because there is no situation in which this is expected.
-        case 'room_error':
-          console.warn(`[ai:${slot}] ACTION REFUSED: ${payload?.message ?? '(no reason)'}`)
+        case 'room_error': {
+          // …with ONE exception, and it is narrow on purpose: pulling a lineman who has already
+          // left the field. The engine rebuilds the defense at every snap, so the front this
+          // controller remembers may simply not be there any more. That miss is the expected
+          // outcome, not a bug, and letting it shout here would train the eye to ignore the very
+          // line that catches a refused coverage assignment.
+          const expected = self.expectMissingRemoval && /Player not found/i.test(payload?.message ?? '')
+          if (!expected) console.warn(`[ai:${slot}] ACTION REFUSED: ${payload?.message ?? '(no reason)'}`)
           return undefined
+        }
 
         // The snap. Nothing else announces it — see the note in knowledge.js.
         case 'ball_snapped': return undefined
@@ -161,6 +168,9 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     self.forceSet = false
     self.alignedAgainst = null   // [twitch] the opponent formation this defense last answered
     self.placedAt = new Map()    // …and where each defender was actually put
+    // ⚠️ `frontOnField` IS DELIBERATELY NOT CLEARED HERE. It is the only record of which linemen
+    // are standing on the field, and the engine does not always rebuild the defense alongside this
+    // reset — clearing it strands the fourth lineman of a shrinking front all over again.
   }
 
   function say(...args) { if (log) console.log(`[ai:${slot}]`, ...args) }
@@ -388,7 +398,9 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
       // the time a four-man front shrank to three, the record of the fourth was already gone and
       // the removal never fired at all. He stayed on the field, at the previous hash.
       if (!wanted.has(id)) {
+        self.expectMissingRemoval = true
         socket.fire('remove_player', id)   // the handler takes the id itself, not an object
+        self.expectMissingRemoval = false
         self.placedAt.delete(id)
       }
     }
