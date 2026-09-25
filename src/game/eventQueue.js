@@ -1,4 +1,8 @@
 import { PHASE, transition } from './stateMachine.js'
+import {
+  recordAttempt, recordCompletion, recordPassYards, recordRush, recordTackle, recordSack,
+  recordInterception, recordTouchdown, serializeStats,
+} from './stats.js'
 import { RULES, FIELD, FIELD_CENTER_X } from '../constants.js'
 import { getGame, advanceDown, changePossession, yardLineFromAbsY, getLosY, clampToHash } from './gameState.js'
 import {
@@ -165,7 +169,50 @@ function deliverPassOutcome(state, io, { event, payload, outcome, reason = null,
 }
 
 // payload: { receiverId, x, y } — the catch location snapshotted at release ([167])
+// ── Stat helpers ([stats]) ──────────────────────────────────────────────────
+//
+// ⚠️ THESE ONLY LOOK THINGS UP. Every number handed to the box score was already decided by the
+// engine — the yardage in onTackle, the completion in onPassComplete — so nothing here recomputes
+// a result. A second opinion about how far a run went is a second source of truth.
+
+// Which team a player is on, which is NOT the same as who has the ball. Offense/defense swap every
+// change of possession; the slot a player belongs to never does.
+function slotOfOffense(state) { return state.possession }
+function slotOfDefense(state) { return 1 - state.possession }
+
+function statPlayer(state, id, slot) {
+  const p = state.offensePlayers?.get(id) ?? state.defensePlayers?.get(id)
+  return p ? { id, slot, name: p.name, label: p.label } : (id ? { id, slot } : null)
+}
+
+function offensePlayer(state, id) { return statPlayer(state, id, slotOfOffense(state)) }
+function defensePlayer(state, id) { return statPlayer(state, id, slotOfDefense(state)) }
+
+// The quarterback of the team currently on offense.
+function currentPasser(state) {
+  for (const p of state.offensePlayers?.values() ?? []) {
+    if (p.label === 'QB') return offensePlayer(state, p.id)
+  }
+  return null
+}
+
+// Who made the tackle: the nearest non-lineman defender to the spot, which is the same rule
+// `applyTackleStamina` already uses to decide who the hit tired out.
+function nearestTackler(state, x, y) {
+  let best = null, bestDist = Infinity
+  for (const p of state.defensePlayers?.values() ?? []) {
+    if (p.label === 'DL' || p.label === 'OL') continue
+    const d = Math.hypot((p.x ?? 0) - x, (p.y ?? 0) - y)
+    if (d < bestDist) { bestDist = d; best = p }
+  }
+  return best ? defensePlayer(state, best.id) : null
+}
+
 function onThrow({ receiverId, x, y }, state, io) {
+  // [stats] The attempt is counted the moment the throw is declared — a sack later does not undo
+  // it, because a sack happens INSTEAD of a throw and this one already left his hand.
+  recordAttempt(state.stats, { passer: currentPasser(state), target: offensePlayer(state, receiverId) })
+  state.statsPasser = currentPasser(state)
   state.activeThrow   = { receiverId, x, y }
   state.ballCarrierId = null   // ball briefly in the air
 
@@ -265,6 +312,10 @@ function onThrow({ receiverId, x, y }, state, io) {
 
 // payload: { receiverId, x, y } — x,y is the catch location (receiver position at the catch)
 function onPassComplete({ receiverId, x, y }, state, _io) {
+  // [stats] The catch is a completion; the YARDS are not known yet because the play runs on, so
+  // they are credited when the tackle settles them.
+  recordCompletion(state.stats, { passer: state.statsPasser, receiver: offensePlayer(state, receiverId) })
+  state.statsWasPass = true
   // [182] Record the exact catch location before anything moves — the authoritative spot for
   // first-down measurement and passing statistics.
   state.catchSpot = { x, y }
@@ -324,6 +375,11 @@ function onPassIncomplete({ reason } = {}, state, io) {
 
 // payload: { catcherId, x, y } — x,y is the interception spot (absolute)
 function onInterception({ catcherId, x, y }, state, io) {
+  // [stats] A takeaway: credited to the defender who caught it and charged to the passer.
+  recordInterception(state.stats, {
+    defender: defensePlayer(state, catcherId),
+    passer: state.statsPasser,
+  })
   const catcher = catcherId ? state.defensePlayers.get(catcherId) : null
 
   // No defender to take it (shouldn't happen) — settle immediately as a turnover at the spot.
@@ -412,6 +468,24 @@ function onTackle({ carrierId, x, y, interceptionReturn }, state, io) {
   const carrier = carrierId ? state.offensePlayers.get(carrierId) : null
   if (carrier?.label === 'QB') recordScramble(state, carrier, yardsGained, io)
 
+  // [stats] The play's yardage is settled HERE, so this is where it is credited — as a reception
+  // or a carry depending on whether the ball was caught on this play. Passing yards include the
+  // yards after the catch, which is how football counts them.
+  {
+    const tackler = nearestTackler(state, x, y)
+    if (tackler) recordTackle(state.stats, { tackler })
+    const gained = Math.round(yardsGained)
+    if (state.statsWasPass) {
+      recordPassYards(state.stats, {
+        passer: state.statsPasser,
+        receiver: offensePlayer(state, carrierId),
+        yards: gained,
+      })
+    } else if (carrierId) {
+      recordRush(state.stats, { runner: offensePlayer(state, carrierId), yards: gained })
+    }
+  }
+
   const result = advanceDown(state, yardsGained)   // sets state.yardLine = spotYardLine
 
   // [294] A run by an RB ball carrier drives its X-Factor progress (Shifty 20+ yd run, Serious
@@ -482,6 +556,13 @@ function enterKickoff(state, io, kickingSlot) {
 
 // payload: { scoringSlot, carrierId, x, y }
 function onTouchdown({ scoringSlot, carrierId }, state, io) {
+  // [stats] Credited by HOW the scorer got the ball, not by his position — a receiver who took a
+  // handoff scored a rushing touchdown.
+  recordTouchdown(state.stats, {
+    scorer: statPlayer(state, carrierId, scoringSlot),
+    passer: state.statsPasser,
+    viaPass: !!state.statsWasPass,
+  })
   state.prevPlayIncompletePass = false   // [294] a TD isn't an incomplete pass
 
   // [51] Reaching the end zone DURING a two-point try is the conversion succeeding — worth 2, then a
@@ -962,6 +1043,10 @@ export function applyDelayOfGame(state, io) {
   state.newDrive         = false
   // [stale set] The line has moved; any formation still in flight was drawn for the old spot.
   state.playSerial       = (state.playSerial ?? 0) + 1
+  // [stats] Per-play bookkeeping. Without this a pass on one down would still read as a pass on
+  // the next, and a run would be credited as a reception to the previous play's passer.
+  state.statsWasPass     = false
+  state.statsPasser      = null
 
   const room = getRoom(state.roomId)
   if (room) {
@@ -1041,6 +1126,16 @@ function onSack({ qbY, losY, dir, qbX }, state, io) {
 
   state.prevPlayIncompletePass = false   // [294] a sack isn't an incomplete pass
   if (qbX != null) state.ballX = clampToHash(qbX)   // [hash] spot the ball laterally where the QB was downed
+
+  // [stats] The sack goes to the nearest rusher, and the lost yards against the passer.
+  {
+    const lost = Math.round(yardLineFromAbsY(state, qbY) - state.yardLine)
+    recordSack(state.stats, {
+      defender: nearestTackler(state, qbX ?? state.ballX, qbY),
+      passer: currentPasser(state),
+      yards: lost,
+    })
+  }
 
   // [fatigue effort] A sack is a hard hit — tire the QB and the nearest rusher (the sacker).
   const sackedQb = findOffenseQB(state)
@@ -1130,7 +1225,12 @@ function advanceQuarter(state, io) {
   // to zero finished). Halftime keeps its own field reset above; a normal quarter break preserves the
   // formation. The client auto-returns after ~5 s (its own timer), by which point the next play is set.
   const kind = state.quarter === 3 ? 'halftime' : 'quarter'
-  io.to(state.roomId).emit('period_transition', { kind, endedQuarter: prev, seconds: TRANSITION_SECONDS })
+  // [stats] Halftime carries the box score so the interstitial can show who has been playing well.
+  // An ordinary quarter break does not — it is a five-second breather, not a report.
+  io.to(state.roomId).emit('period_transition', {
+    kind, endedQuarter: prev, seconds: TRANSITION_SECONDS,
+    ...(kind === 'halftime' ? { stats: serializeStats(state.stats) } : {}),
+  })
 
   console.log(`[game] ${state.roomId} end of Q${prev} → Q${state.quarter} begins`)
 }
@@ -1264,6 +1364,10 @@ export function startNextPlay(roomId, io, { quiet = false } = {}) {
   state.playClockRunning = true
   // [stale set] A new play — formations designed for the previous one no longer apply.
   state.playSerial       = (state.playSerial ?? 0) + 1
+  // [stats] Per-play bookkeeping. Without this a pass on one down would still read as a pass on
+  // the next, and a run would be credited as a reception to the previous play's passer.
+  state.statsWasPass     = false
+  state.statsPasser      = null
 
   transition(state, PHASE.PRE_SNAP)
 

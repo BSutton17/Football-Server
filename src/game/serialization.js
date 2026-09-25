@@ -1,3 +1,4 @@
+import { serializeStats } from './stats.js'
 import { getScoreFor, getLosY } from './gameState.js'
 import { isPlayerPaused } from './pause.js'
 import { FIELD, HIDES_OPENNESS } from '../constants.js'
@@ -276,5 +277,14 @@ export function serializeGameOver(state, viewerSlot) {
   const result = score.offense > score.defense ? 'win'
                : score.offense < score.defense ? 'loss'
                : 'tie'
-  return { score, result }
+  // [stats] ⚠️ TEAM TOTALS ARE SENT VIEWER-RELATIVE, like the score above, because every other
+  // number on this screen already is. Sending them slot-indexed would mean one of the two players
+  // reads their opponent's yards under their own heading.
+  const stats = serializeStats(state.stats)
+  return {
+    score,
+    result,
+    top: stats.top,
+    teams: { yours: stats.teams[viewerSlot], theirs: stats.teams[1 - viewerSlot] },
+  }
 }

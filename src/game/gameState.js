@@ -1,3 +1,4 @@
+import { createStats } from './stats.js'
 import { RULES, FIELD, HASH, FIELD_CENTER_X, GAME_MODE, DIFFICULTY } from '../constants.js'
 import { makeRng } from './utils/rng.js'
 import { PHASE } from './stateMachine.js'
@@ -102,6 +103,13 @@ export function initGame(roomId, offenseSlot, { mode, difficulty, quarterSeconds
     // (whoever started on defense receives the second half), so this is the source of truth for
     // the second-half flip regardless of who had the ball when the half ended.
     openingPossession: offenseSlot,
+
+    // [stats] The box score, for the halftime and final screens. Lives on the game because it
+    // spans the whole thing — a per-play or per-drive home would lose it at exactly the moments
+    // it is wanted.
+    stats: createStats(),
+    statsWasPass: false,   // was the ball caught on THIS play (decides reception vs carry)
+    statsPasser: null,     // who threw it on THIS play
 
     // ── Field position (offense-relative) ───────────────────────────────────
     yardLine: RULES.KICKOFF_YARD_LINE,  // 25
