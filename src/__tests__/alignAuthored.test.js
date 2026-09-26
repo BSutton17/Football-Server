@@ -269,12 +269,17 @@ describe('⚠️ SHADING IS DECIDED PER DEFENDER', () => {
   const back = { id: 'b', x: BALL_X - 3, y: LOS - 6, label: 'RB' }
   const ctx = { hasDeepHelp: true, ballX: BALL_X }
 
-  it('takes away the inside on a wide receiver — the sideline is the help outside', () => {
-    expect(decideShade({}, wide, ctx)).toBe('in')
+  // ⚠️ LEVERAGE POINTS AWAY FROM THE HELP, AND THIS USED TO ASSERT THE OPPOSITE. The deep help is
+  // a safety in the MIDDLE, so on a receiver split wide the inside is already covered and the
+  // corner owns the outside — the comeback, the out, the fade. The old rule ("the sideline is
+  // your help") left every out-breaking route uncontested: a star split wide drew inside leverage
+  // in 25 of 30 man shells.
+  it('takes away the OUTSIDE on a wide receiver — the help is inside him', () => {
+    expect(decideShade({}, wide, ctx)).toBe('out')
   })
 
-  it('takes away the outside on a tight one — the traffic inside is the help', () => {
-    expect(decideShade({}, tight, ctx)).toBe('out')
+  it('takes away the INSIDE on a tight one — he is already next to the help, the sideline is far', () => {
+    expect(decideShade({}, tight, ctx)).toBe('in')
   })
 
   it('plays a releasing back underneath, whoever is on him', () => {

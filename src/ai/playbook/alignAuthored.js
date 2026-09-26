@@ -65,6 +65,10 @@ const MIN_DEFENDER_GAP = 1.25
 // defense never adjusts to something it would not have bothered saying out loud.
 const SHAPE_LEAN = 0.12
 
+// The deepest anyone may line up while covering a man. Beyond this he is not covering him, he is
+// watching him. A safety over the top of a RECEIVER is the one exception — see where it is used.
+const MAN_MAX_DEPTH = 5
+
 // How far the quick-game and deep leans move a corner's cushion, in yards at a maximal read.
 // Small: this is leverage, not a different coverage.
 const CUSHION_SWING = 2.5
@@ -185,19 +189,31 @@ export function decideShade(defender, receiver,
   // Read in order of how much they cost to be wrong about. A team taking shots gets played over
   // the top even if they also cross a lot; only then does crossing pull you inside, and an
   // outside-heavy team push you out.
+  // Ordered by how much it costs to be wrong. Getting beaten deep is worst, so a team taking shots
+  // is played over the top whatever else they do. Then the short game, which is the oldest and
+  // best-evidenced of these reads. Only then the lateral tendencies, which decide a hip rather
+  // than a depth — and putting them above `preferUnderneath` let an outside lean quietly cancel
+  // "they live underneath", which is a stronger signal about a whole half of football.
+  if (adjust?.deepBias > SHAPE_LEAN) return 'over'
+  if (preferUnderneath) return 'under'
   if (adjust) {
-    if (adjust.deepBias > SHAPE_LEAN) return 'over'
     if (adjust.crossingBias > SHAPE_LEAN) return 'in'    // take away the inside they keep running to
     if (adjust.outsideBias > SHAPE_LEAN) return 'out'
   }
-
-  // [halftime] An opponent who has spent a half living underneath gets sat on there.
-  if (preferUnderneath) return 'under'
   if (forced === 'in' || forced === 'out') return forced
 
+  // ⚠️ LEVERAGE POINTS AWAY FROM YOUR HELP, AND THIS HAD IT BACKWARDS. The deep help is a safety
+  // in the MIDDLE of the field, so on a receiver split wide the inside is covered and the corner's
+  // job is the outside — the comeback, the out, the fade. Playing him inside instead, on the
+  // reasoning that "the sideline is your help", left every out-breaking route uncontested: a star
+  // split wide drew inside leverage in 25 of 30 man shells and won comebacks all day.
+  //
+  // A receiver lined up TIGHT is the mirror of it. He is already next to the help, his dangerous
+  // routes are the ones working back inside, and the sideline is a long way off — so that defender
+  // takes the inside away and lets the boundary do the rest.
   const outsideness = Math.abs(receiver.x - ballX)
-  if (outsideness > 14) return 'in'             // wide: the sideline is your help outside
-  if (outsideness < 6) return 'out'             // tight: the traffic inside is your help
+  if (outsideness > 14) return 'out'            // split wide: help is inside, so take the outside
+  if (outsideness < 6) return 'in'              // tight: deny the inside, the sideline is far away
   return 'over'
 }
 
@@ -343,6 +359,11 @@ export function enforceSpacing(rows, losY) {
   for (let i = 0; i < order.length; i++) {
     const a = order[i]
     if (a.label === 'DL') continue            // the front holds its drawn spot
+    // ⚠️ AND A MAN DEFENDER IS NOT MOVED EITHER. His spot is decided by the receiver he is
+    // covering and is already bounded by MAX_MAN_TRAVEL; nudging him aside to make room breaks
+    // that bound and puts him off his man, which costs more than the overlap does. The overlap
+    // this pass exists for is a walked-down RUSHER standing inside a lineman.
+    if (a.job === 'man') continue
     const ceiling = a.baseDepth ?? a.depth    // as deep as he is allowed to be
 
     for (let j = 0; j < i; j++) {
@@ -442,7 +463,23 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
         // Back off toward the depth he was drawn at — never past it.
         depth = Math.min(d.depth, depth + deep * CUSHION_SWING)
       }
-      return { ...d, x, y: losY + depth, depth, shade, pressing: depth < d.depth, covers: target.id }
+
+      // ⚠️ YOU CANNOT COVER A MAN FROM TWELVE YARDS AWAY. Man coverage means travelling with him,
+      // and a defender drawn deep in a shell is drawn for a ZONE responsibility — when the shell
+      // hands him a man instead, that depth stops making sense. A safety standing twelve yards off
+      // the tight end he is supposedly covering is the case that showed it.
+      //
+      // The exception is a safety on a RECEIVER: that is him playing over the top of a vertical
+      // threat with the whole field behind him, which is a real assignment and needs the cushion.
+      // On a tight end or a back there is nothing to get over the top of — he is just late.
+      const overTheTop = d.label === 'S' && target.label !== 'TE' && target.label !== 'RB'
+      const capped = overTheTop ? depth : Math.min(depth, MAN_MAX_DEPTH)
+      // ⚠️ THE CAP IS NOT A PRESS. `pressing` means he walked up to jam, and the renderer and the
+      // engine both read it that way; a defender merely brought to a sane man-coverage depth has
+      // not decided anything. Conflating them had every man defender showing press on every snap.
+      const pressed = mayPress && capped < d.depth
+      depth = capped
+      return { ...d, x, y: losY + depth, depth, shade, pressing: pressed, covers: target.id }
     }
 
     if (d.job === 'rush' && d.label !== 'DL') {

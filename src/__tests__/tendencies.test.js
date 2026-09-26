@@ -108,7 +108,9 @@ describe('the three adjustments the user asked for', () => {
     // And the shade actually changes: a wide receiver normally gets inside leverage.
     const wide = { id: 'w', x: 44, y: 40, label: 'WR' }
     const ctx = { hasDeepHelp: true, ballX: 26.665 }
-    expect(decideShade({}, wide, ctx)).toBe('in')
+    // Baseline leverage on a wide receiver is OUTSIDE now — the deep help is inside him. What
+    // this test is actually about is that the half-time read overrides whatever that baseline is.
+    expect(decideShade({}, wide, ctx)).toBe('out')
     expect(decideShade({}, wide, { ...ctx, preferUnderneath: true })).toBe('under')
   })
 
