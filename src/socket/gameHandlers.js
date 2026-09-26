@@ -20,6 +20,7 @@ import {
   isManualPlay, isManualFrozen,
 } from '../game/manual.js'
 import { cancelRpo } from '../game/systems/rpo.js'
+import { armChewClock, chewRefusal, CHEW_STOP_AT, CHEW_SPEED } from '../game/chewClock.js'
 import {
   isSoloRoom, markDefenseSet, soloCountdownFor, DEFENSE_SET_COUNTDOWN, OFFENSE_SET_COUNTDOWN,
   ADJUST_WINDOW, ADJUST_WINDOW_NEW_DRIVE,
@@ -295,6 +296,28 @@ export function registerGameHandlers(io, socket) {
       })
     })
     console.log(`[game] ${roomId} timeout by slot ${slot} — ${state.timeouts[slot]} left; clock stopped`)
+  })
+
+  // ── Chewing the clock ([chew clock]) ───────────────────────────────────────
+  //
+  // The offense asking for the pre-snap seconds to go away faster. All the rules live in
+  // chewClock.js so the button's availability and the handler's answer come from one function.
+
+  socket.on('chew_clock', () => {
+    const roomId = socket.data.roomId
+    const state  = getGame(roomId)
+    const room   = getRoom(roomId)
+    const slot   = room ? room.players.indexOf(socket.id) : -1
+    if (slot < 0) return reject(socket, 'chew_clock', 'You are not seated in this game')
+
+    const refusal = chewRefusal(state, slot)
+    if (refusal) return reject(socket, 'chew_clock', refusal)
+    if (!armChewClock(state, slot)) return reject(socket, 'chew_clock', 'Cannot chew the clock now')
+
+    // Only the offense is told, and only so its own clock can show that it is running fast. The
+    // defense is the computer, so there is nobody else to inform.
+    socket.emit('chew_clock_started', { speed: CHEW_SPEED, stopAt: CHEW_STOP_AT })
+    console.log(`[game] ${roomId} chewing the clock from :${Math.ceil(state.playClock)} to :${CHEW_STOP_AT}`)
   })
 
   // ── Pause ([pause]) ────────────────────────────────────────────────────────

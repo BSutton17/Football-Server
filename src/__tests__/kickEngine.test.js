@@ -2,7 +2,8 @@ import { describe, it, expect } from '@jest/globals'
 import {
   computeKick, calculateKickResult, isKickGood, UPRIGHT_HALF_WIDTH, maxKickDistance,
   computePuntReturn, computePuntBounce, resolvePuntBounce,
-  PUNT_RETURN_MAX_YARDS, PUNT_BOUNCE_MIN_YARDS, PUNT_BOUNCE_MAX_YARDS, PUNT_BOUNCE_TOUCHBACK_LINE,
+  PUNT_RETURN_MAX_YARDS, PUNT_RETURN_MIN_YARDS, PUNT_BOUNCE_MIN_YARDS, PUNT_BOUNCE_MAX_YARDS,
+  PUNT_BOUNCE_TOUCHBACK_LINE,
 } from '../game/kickEngine.js'
 
 // [Special Teams][6][15][16][17] The unified kick math: meter power × Power rating → distance; aim ±
@@ -376,18 +377,65 @@ describe('[37] touchback on a deep no-backspin bounce', () => {
 })
 
 describe('[31][32] punt return', () => {
-  it('most returns land between 0 and the cap, and a better returner gains more', () => {
-    const weak   = computePuntReturn({ hangTime: 2.5, returnerRating: 20, punterPower: 75 }, noNoise)
-    const strong = computePuntReturn({ hangTime: 2.5, returnerRating: 99, punterPower: 75 }, noNoise)
-    expect(weak.yards).toBeGreaterThanOrEqual(0)
-    expect(strong.yards).toBeLessThanOrEqual(PUNT_RETURN_MAX_YARDS)
-    expect(strong.yards).toBeGreaterThan(weak.yards)        // [31] returner ability matters
+  // ⚠️ MEASURED OVER A DISTRIBUTION, NOT ONE DRAW. The yardage is deliberately skewed (see
+  // RETURN_SKEW), so a single roll at a fixed rng says almost nothing about whether a knob works —
+  // two settings can round to the same integer while the shapes differ a lot. These sample.
+  const spread = (opts, n = 4000) => {
+    let seed = 12345
+    const rng = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648 }
+    const all = []
+    for (let i = 0; i < n; i++) all.push(computePuntReturn(opts, rng).yards)
+    const mean = all.reduce((a, b) => a + b, 0) / n
+    const share = (lo, hi) => all.filter(y => y >= lo && y <= hi).length / n
+    return { mean, share, min: Math.min(...all), max: Math.max(...all) }
+  }
+
+  it('⚠️ A RETURN IS USUALLY STOPPED FOR 1–3 YARDS', () => {
+    // The whole point of the reshape. The old model had a mean near 10 and could not go below 0, so
+    // every return was a chunk play; short returns have to be the COMMON case, not an edge case.
+    const d = spread({ hangTime: 2.5, returnerRating: 75, punterPower: 75 })
+    expect(d.share(1, 3)).toBeGreaterThan(0.40)
+    expect(d.mean).toBeGreaterThan(2)
+    expect(d.mean).toBeLessThan(6)
+  })
+
+  it('⚠️ CAN LOSE GROUND, BUT RARELY, AND NEVER PAST THE FLOOR', () => {
+    const d = spread({ hangTime: 2.5, returnerRating: 75, punterPower: 75 })
+    const negative = d.share(PUNT_RETURN_MIN_YARDS, -1)
+    expect(negative).toBeGreaterThan(0.02)                  // it does happen
+    expect(negative).toBeLessThan(0.25)                     // … and it is not the norm
+    expect(d.min).toBeGreaterThanOrEqual(PUNT_RETURN_MIN_YARDS)
+    expect(d.max).toBeLessThanOrEqual(PUNT_RETURN_MAX_YARDS)
+  })
+
+  it('a breakaway still exists — the tail is thin, not missing', () => {
+    const d = spread({ hangTime: 2.5, returnerRating: 75, punterPower: 75 })
+    expect(d.share(10, PUNT_RETURN_MAX_YARDS)).toBeGreaterThan(0.05)
+    expect(d.share(10, PUNT_RETURN_MAX_YARDS)).toBeLessThan(0.30)
+  })
+
+  it('[31] a better returner gains more, and reaches the tail more often', () => {
+    const weak   = spread({ hangTime: 2.5, returnerRating: 20, punterPower: 75 })
+    const strong = spread({ hangTime: 2.5, returnerRating: 99, punterPower: 75 })
+    expect(strong.mean).toBeGreaterThan(weak.mean)
+    expect(strong.share(10, PUNT_RETURN_MAX_YARDS)).toBeGreaterThan(weak.share(10, PUNT_RETURN_MAX_YARDS))
+    expect(strong.share(PUNT_RETURN_MIN_YARDS, -1)).toBeLessThan(weak.share(PUNT_RETURN_MIN_YARDS, -1))
   })
 
   it('[31] more hang time (better coverage) yields fewer return yards', () => {
-    const lowHang  = computePuntReturn({ hangTime: 1.8, returnerRating: 75, punterPower: 75 }, noNoise)
-    const highHang = computePuntReturn({ hangTime: 4.4, returnerRating: 75, punterPower: 75 }, noNoise)
-    expect(highHang.yards).toBeLessThan(lowHang.yards)
+    const lowHang  = spread({ hangTime: 1.8, returnerRating: 75, punterPower: 75 })
+    const highHang = spread({ hangTime: 4.4, returnerRating: 75, punterPower: 75 })
+    expect(highHang.mean).toBeLessThan(lowHang.mean)
+  })
+
+  it('yardage is monotone in skill at any single roll — no band-boundary reversals', () => {
+    // Skill moves the shape's two knobs the same way on purpose, so this holds at EVERY roll rather
+    // than only on average. A reversal here would mean an elite returner is worse off on some punts.
+    for (const u of [0.05, 0.2, 0.4, 0.6, 0.8, 0.95]) {
+      const at = r => computePuntReturn({ hangTime: 2.5, returnerRating: r, punterPower: 75 }, () => u).yards
+      expect(at(99)).toBeGreaterThanOrEqual(at(75))
+      expect(at(75)).toBeGreaterThanOrEqual(at(20))
+    }
   })
 
   it('[32] the touchdown chance is ~1%, lifted by returner rating and a low hang', () => {

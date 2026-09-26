@@ -211,6 +211,30 @@ describe('[28][29] punt return decision', () => {
     expect(ret.yardLine).toBeGreaterThan(fc.yardLine)             // gained yards on the return
   })
 
+  it('⚠️ A RETURN CAN LOSE GROUND, AND STILL NEVER CONCEDES A SAFETY', () => {
+    // Returns are allowed to go negative (see PUNT_RETURN_MIN_YARDS). The one thing that must never
+    // follow from that is two points for the punting team: a bad return caught on the 2 is
+    // first-and-10 on the 1, not a safety. The spot is clamped to the receiving team's own 1.
+    const state = kickState('rd-neg', KICK.PUNT, { yardLine: 62 }); room('rd-neg')
+    beginSpecialTeams(state, KICK.PUNT, { kickingSlot: 0 })
+    state.specialTeams.angle = 0; state.specialTeams.power = 0.1   // short punt, caught in the shadow
+    fireKick(state)
+    const airLanding = Math.round(state.specialTeams.result.previewLandingYardLine)
+    expect(airLanding).toBeLessThan(6)                             // genuinely backed up
+    const before = [...state.score]
+
+    // First roll is the return yardage (worst case, deep negative); the second is the TD check,
+    // which has to be high or the same tiny number would also trigger a breakaway.
+    let i = 0
+    const seq = (...v) => () => v[Math.min(i++, v.length - 1)]
+    resolvePuntReturn(state, mockIo(), PUNT_RETURN.RETURN, seq(0.0001, 1))
+
+    expect(state.possession).toBe(1)                               // receiving team has the ball
+    expect(state.yardLine).toBeGreaterThanOrEqual(1)               // never on or behind the goal line
+    expect(state.score).toEqual(before)                            // … and nobody got two points
+    expect(state.yardLine).toBeLessThan(airLanding + 1)            // it did lose ground
+  })
+
   it('[32][51] a breakaway Return is a punt-return touchdown → +6 and the conversion menu', () => {
     const ret = inFieldPunt('rd-td')
     resolvePuntReturn(ret, mockIo(), PUNT_RETURN.RETURN, () => 0)    // rng→0 forces the TD roll

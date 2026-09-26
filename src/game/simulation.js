@@ -8,6 +8,7 @@ import { runPushForce }         from './systems/pushForce.js'
 import { runCollisionResponse } from './systems/collisionResponse.js'
 import { runClock }             from './systems/clock.js'
 import { runPlayClock }         from './systems/playClock.js'
+import { chewStep, clearChewClock } from './chewClock.js'
 import { runDecisionClock, runConversionClock } from './systems/decisionClock.js'
 import { runKickClock }         from './systems/kickClock.js'
 import { runEventQueue }        from './systems/eventQueue.js'
@@ -113,6 +114,10 @@ export function tick(roomId, io) {
   // clock advances and the live sim is held, so the exact state is preserved until it resumes. A
   // timed stoppage counts down here and auto-resumes when it elapses.
   if (isStopped(state)) {
+    // [chew clock] Anything that freezes the game cancels an in-flight fast-forward. A timeout in
+    // particular is the OPPOSITE intent — the player just paid to stop the clock, so resuming into a
+    // chew would burn the seconds they spent a timeout to keep.
+    clearChewClock(state)
     if (!tickStoppage(state, DT)) {
       const reason = stoppageReason(state)
       endStoppage(state)
@@ -154,12 +159,17 @@ export function tick(roomId, io) {
         runKickClock(state, io, DT)
         break
       }
-      runPlayClock(state, io, DT)
-      // [204] After a play that doesn't stop the clock (in-bounds tackle, sack), the game clock
-      // keeps running between plays; it restarts on the snap after a stopping play.
-      if (!state.clockStopped) {
-        runClock(state, io, DT)
-        runEventQueue(state, io, DT)   // process a CLOCK_EXPIRED that lands during the play clock
+      // [chew clock] Both pre-snap clocks advance by the SAME step, so fast-forwarding cannot
+      // invent or skip game time — see chewClock.js. Ordinarily this is just DT.
+      {
+        const step = chewStep(state, DT)
+        runPlayClock(state, io, step)
+        // [204] After a play that doesn't stop the clock (in-bounds tackle, sack), the game clock
+        // keeps running between plays; it restarts on the snap after a stopping play.
+        if (!state.clockStopped) {
+          runClock(state, io, step)
+          runEventQueue(state, io, DT)   // process a CLOCK_EXPIRED that lands during the play clock
+        }
       }
       break
 

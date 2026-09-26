@@ -201,11 +201,31 @@ function computeHangTime(power, distance) {
 
 // [31][32] A punt return from the catch spot. Yards are shaped by the returner's ability (more =
 // farther), the hang time (a high, floaty punt lets the coverage close → fewer yards), and the
-// punter's leg (a big boot can outkick its coverage for a touch more room), plus randomness. Most
-// returns fall between 0 and PUNT_RETURN_MAX_YARDS. [32] A rare (~1%) breakaway is flagged as a
-// touchdown, with the returner's ability and a low hang nudging that small chance.
+// punter's leg (a big boot can outkick its coverage for a touch more room), plus randomness.
+// [32] A rare (~1%) breakaway is flagged as a touchdown, with the returner's ability and a low hang
+// nudging that small chance.
+//
+// ⚠️ THE SHAPE IS SKEWED, NOT A BELL CURVE, AND THAT IS THE POINT. This used to be
+// `mean ± 6` around a mean near 10, which made a ten-yard return the ORDINARY result and a short one
+// impossible — nothing under 0, and almost nothing under 4. A real punt return is usually swallowed
+// for very little, occasionally loses ground, and rarely breaks. So a flat roll is passed through a
+// power curve (`RETURN_SKEW`) that piles the mass up at the bottom: the mean is ~4 yards, HALF land
+// in 1–3, and double digits are the exception rather than the expectation.
+//
+// Returns can now be NEGATIVE (tackled behind the catch). They can never produce a safety — the
+// caller spots the ball with a clamp to the receiving team's own 1 (see clampSpot in
+// resolvePuntReturn), so the worst possible return on a catch at the 2 is first-and-10 at the 1.
 export const PUNT_RETURN_MAX_YARDS = 20
+export const PUNT_RETURN_MIN_YARDS = -4      // tackled behind the catch; never deep enough to matter
 export const PUNT_RETURN_TD_BASE   = 0.01
+
+// The median of the positive branch is 1 + 19 * 0.5^SKEW — at 4.0 that is ~2.2 yards, which is the
+// "usually 1–3" the shape is tuned for. Skill lowers the exponent rather than adding a bonus, so a
+// better returner reaches the tail more often instead of everyone gaining a flat amount.
+const RETURN_SKEW       = 4.0
+const RETURN_SKEW_SWING = 1.2      // ± by skill edge
+const RETURN_NEG_CHANCE = 0.12     // share of returns that lose ground, before skill
+const RETURN_NEG_SWING  = 0.08
 
 export function computePuntReturn(
   { hangTime = 2.5, returnerRating = DEFAULT_KICK_ACCURACY, punterPower = DEFAULT_KICK_POWER } = {},
@@ -215,9 +235,23 @@ export function computePuntReturn(
   const hang = clamp01((hangTime - HANG_MIN) / (HANG_MAX - HANG_MIN))   // 0 (line drive) … 1 (booming)
   const leg  = clamp01(punterPower / 99)
 
-  const mean  = 6 + ret * 9 - hang * 7 + leg * 2     // expected yards before noise
-  const noise = (rng() * 2 - 1) * 6                  // ±6 variability
-  const yards = Math.max(0, Math.min(PUNT_RETURN_MAX_YARDS, Math.round(mean + noise)))
+  // One skill number in −1…1, centred so a default returner against a default punt sits at ~0. It
+  // moves BOTH knobs in the same direction, which keeps yardage monotone in every input: a better
+  // returner (or a lower hang) is never worse off at the same roll.
+  const edge = clampSigned((ret - 0.76) * 1.4 - (hang - 0.35) * 1.6 + (leg - 0.76) * 0.5)
+  const skew = Math.max(1, RETURN_SKEW - edge * RETURN_SKEW_SWING)
+  const neg  = clamp01(RETURN_NEG_CHANCE - edge * RETURN_NEG_SWING)
+
+  const u = rng()
+  let yards
+  if (u < neg) {
+    // Lost ground. Spread over the floor…0, worst at the lowest roll.
+    yards = Math.round(PUNT_RETURN_MIN_YARDS * (1 - u / neg))
+  } else {
+    const v = (u - neg) / (1 - neg)                   // re-spread the rest of the roll over 1…cap
+    yards = Math.round(1 + (PUNT_RETURN_MAX_YARDS - 1) * Math.pow(v, skew))
+  }
+  yards = Math.max(PUNT_RETURN_MIN_YARDS, Math.min(PUNT_RETURN_MAX_YARDS, yards))
 
   // [32] ~1% house chance, lifted by ability and a low (line-drive) hang, kept small.
   const tdChance  = PUNT_RETURN_TD_BASE * (0.5 + ret) * (1.4 - hang)

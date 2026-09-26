@@ -3,6 +3,7 @@ import { createTendencies } from '../ai/playcall/tendencies.js'
 import { RULES, FIELD, HASH, FIELD_CENTER_X, GAME_MODE, DIFFICULTY } from '../constants.js'
 import { makeRng } from './utils/rng.js'
 import { PHASE } from './stateMachine.js'
+import { clearChewClock } from './chewClock.js'
 
 // ── Coordinate system ────────────────────────────────────────────────────────
 //
@@ -338,6 +339,9 @@ export function resetPlay(state) {
 // begins", which was the thing that made it look done. Both callers now share this function, so a
 // new per-play declaration cannot be added to one path and forgotten in the other.
 export function clearPerPlayDeclarations(state) {
+  // [chew clock] Not solo-gated: the flag is only ever SET in a solo room, but clearing it has to be
+  // unconditional or an early return above it would leave a stale one armed.
+  clearChewClock(state)
   if (!state?.solo) return
   state.solo.defenseSet = false
   state.solo.countdown  = null

@@ -2,6 +2,7 @@ import { serializeStats } from './stats.js'
 import { getScoreFor, getLosY } from './gameState.js'
 import { isPlayerPaused } from './pause.js'
 import { serializeDevReveal } from './devReveal.js'
+import { chewRefusal, CHEW_MIN_PLAY_CLOCK } from './chewClock.js'
 import { FIELD, HIDES_OPENNESS } from '../constants.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { ratingOf } from '../data/ratings.js'
@@ -116,6 +117,11 @@ export function serializeGameState(state, viewerSlot) {
     // started a solo game — a refresh would otherwise lose the flag, and with it the Set Defense
     // button, which is the same class of bug as the reconnect role drift.
     solo: !!state.solo,
+    // [chew clock] Whether this viewer may chew the clock on this snap. Only the conditions that hold
+    // still for the whole pre-snap (offense, solo, no kick or menu) — the play-clock threshold moves
+    // every tick, so the client applies `chewMinPlayClock` against the clock it is already showing.
+    canChew: chewRefusal(state, viewerSlot, { ignoreLive: true }) === null,
+    chewMinPlayClock: CHEW_MIN_PLAY_CLOCK,
   }
 }
 
