@@ -1,0 +1,11 @@
+{
+  "//": "⚠️ TRAINING OUTPUT IS NOT SOURCE. nodemon watches the working directory for .json by default, and the solver checkpoints state.json and table.json after EVERY subgame. That restarted the dev server a couple of hundred times a run and burned two cores doing it, which quietly halved the throughput of the solve it was restarting for.",
+  "watch": ["src", "scripts"],
+  "ext": "js,mjs,json",
+  "ignore": [
+    "training-output/**",
+    "src/ai/playbook/authored.json",
+    "src/ai/playbook/backups/**",
+    "**/__tests__/**"
+  ]
+}
