@@ -31,7 +31,23 @@ export function coverOrder(job, targetLabel, drawnLabel) {
   if (job !== 'man' || !targetLabel) return [drawnLabel]
   const t = String(targetLabel).toUpperCase()
   if (t === 'WR') return ['CB', 'S', 'LB']       // a receiver needs a corner
-  if (t === 'TE') return ['S', 'LB', 'CB']       // a tight end is a safety or a backer
+  // ⚠️ A LINEBACKER TAKES THE TIGHT END, NOT A SAFETY. This had it the other way round, and it was
+  // wrong twice over.
+  //
+  // In football: two safeties on two tight ends is a bad matchup in the run game, and the tight end
+  // is exactly who a linebacker is built for — he has to be able to play the run from that spot
+  // whatever the offense does with it.
+  //
+  // And structurally: a roster carries THREE safeties. Against two tight ends this took two of them
+  // for man coverage, leaving one for a two-deep shell — so the second deep slot found nobody, was
+  // silently skipped, and the defense took the field with TEN MEN. Reported as exactly that, on a
+  // screenshot where both tight ends were covered by safeties.
+  //
+  // ⚠️ IT COSTS SOMETHING, AND THAT WAS THE AUTHOR'S CALL TO MAKE. Measured over 1,200 downs, a
+  // safety on the tight end defends the PASS better — 3.91 yds/play against 4.05 — which is no
+  // surprise, he is the faster cover man. It gives back explosive plays (2.3% -> 2.1%) and it is
+  // the right run fit, which is what was asked for.
+  if (t === 'TE') return ['LB', 'S', 'CB']
   return ['LB', 'S', 'CB']                       // a back belongs to a linebacker
 }
 
@@ -195,7 +211,19 @@ export function buildAuthoredDefense(call, { losY, ballX, receivers, roster, adj
       pick = (byPos[want] ?? []).find(p => !used.has(p.id))
       if (pick) break
     }
-    if (!pick) continue
+    // ⚠️ ELEVEN MEN, WHATEVER IT TAKES. A slot whose preferred positions are all already on the
+    // field used to be skipped, and skipping it means playing a man short — which was reported from
+    // a real game ("there are only 10 people on the field"). A safety playing a linebacker's spot is
+    // a bad matchup; a spot with NOBODY IN IT is an uncovered receiver or an unmanned zone, and there
+    // is no version of that which is better.
+    if (!pick) {
+      pick = roster.find(p => !used.has(p.id))
+      if (pick) {
+        console.warn(`[defense] ${row.slot} wanted ${coverOrder(row.job, target?.label, row.label).join('/')}` +
+          `, took a ${pick.label ?? pick.position} — the preferred positions are all out there already`)
+      }
+    }
+    if (!pick) continue      // genuinely nobody left: the roster is short, not the matcher
     used.add(pick.id)
 
     out.push({

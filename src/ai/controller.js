@@ -41,18 +41,9 @@ const DEF_MIN_DEPTH = 0.75      // a full player radius off the ball, or it is o
 // One simulation tick, in seconds. The AI's sense of time is positions_update arrivals, which the
 // server sends once per tick — so counting them IS counting game time, and it stays correct
 // through a freeze or a pause because a held tick sends nothing.
-const TICK_SECONDS = 0.05
+import { DL_SPACING } from './playbook/front.js'
 
-// Where the down linemen line up, by how many of them there are. Spacing is listed per count
-// rather than computed, because the alignments genuinely differ: three is a nose with two ends,
-// four is the base front.
-//
-// ⚠️ MUST MATCH `DL_SPACING` in Client/src/game/formation.ts, or the two screens draw a different
-// defense. The four-man row is byte-identical to what shipped before this became variable.
-const DL_SPACING = {
-  3: [-3.0, 0, 3.0],
-  4: [-3.25, -1.25, 1.25, 3.25],
-}
+const TICK_SECONDS = 0.05
 
 // ⚠️ READ ONCE, NOT EVERY SNAP. The playbook is a file on disk and placeOffense runs on every
 // play; re-reading and re-parsing 126 plays each time would be pure waste. It is reloaded only

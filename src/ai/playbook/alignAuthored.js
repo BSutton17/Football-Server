@@ -17,6 +17,7 @@
 // ⚠️ AND IT STILL NEVER SEES THE PLAY CALL. Where receivers stand is public; what they are about
 // to run is not. Everything below reads positions and personnel only.
 
+import { frontXs, FRONT_DEPTH } from './front.js'
 import { slotLabel } from './authored.js'
 
 // How close a pressing defender gets to the line. Deliberately not zero — the offside rule holds
@@ -460,38 +461,79 @@ export function accountForEveryone(rows, receivers, losY) {
 // toward the line without checking what is already standing there, so he walks up LESS: back
 // toward the depth he was drawn at and no further. Only if he is still inside somebody at his own
 // drawn spot does he give ground sideways, and then by the smallest amount that clears.
-export function enforceSpacing(rows, losY) {
-  const toward = losY <= 0 ? 1 : 1   // depth is always measured away from the line
+export function enforceSpacing(rows, losY, ballX = null, frontSize = null) {
+  // ⚠️ SPACE AGAINST THE LINEMEN WHO WILL ACTUALLY BE THERE. The shell's drawn DL spots are not
+  // where the front stands — it is auto-placed from DL_SPACING (see front.js), on one straight line
+  // — so clearing a linebacker of the DRAWN ones left him inside a real one. Substituting the true
+  // positions is the difference between this check working and merely running.
+  if (ballX != null) {
+    const dl = rows.filter(r => r.label === 'DL')
+    // ⚠️ AND SIZED THE WAY THE CONTROLLER SIZES IT — off the FORMATION's lineman count, not off
+    // however many DL rows survived to here. `accountForEveryone` may drop a spare rusher, and a
+    // front of three sits at different spots from a front of four, so counting rows put the check
+    // back to comparing against linemen who are not there.
+    const xs = frontXs(frontSize ?? dl.length, ballX)
+    dl.forEach((d, i) => {
+      d.x = xs[i] ?? d.x
+      d.y = losY + FRONT_DEPTH
+      d.depth = FRONT_DEPTH
+    })
+  }
+
   // Nearest the line first, so a creeping defender resolves against what is already settled.
   const order = [...rows].sort((a, b) => Math.abs(a.depth ?? 0) - Math.abs(b.depth ?? 0))
+  const near = (a, b) => Math.hypot(a.x - b.x, a.y - b.y) < MIN_DEFENDER_GAP
 
   for (let i = 0; i < order.length; i++) {
     const a = order[i]
-    if (a.label === 'DL') continue            // the front holds its drawn spot
-    // ⚠️ AND A MAN DEFENDER IS NOT MOVED EITHER. His spot is decided by the receiver he is
-    // covering and is already bounded by MAX_MAN_TRAVEL; nudging him aside to make room breaks
-    // that bound and puts him off his man, which costs more than the overlap does. The overlap
-    // this pass exists for is a walked-down RUSHER standing inside a lineman.
-    if (a.job === 'man') continue
-    const ceiling = a.baseDepth ?? a.depth    // as deep as he is allowed to be
+    if (a.label === 'DL') continue            // the front holds its spot
+    // ⚠️ THE FRONT IS ALWAYS SETTLED, WHEREVER IT FALLS IN THE ORDER. Linemen never move, but a
+    // rusher who has crept to 0.8 yards is SHALLOWER than the line at 1.0 — so he was processed
+    // first, the linemen were not yet "settled", and the one pair that most needed checking was the
+    // one pair nobody checked. That is the overlap that was reported.
+    const settled = [...order.slice(0, i).filter(b => b.label !== 'DL'), ...order.filter(b => b.label === 'DL')]
+    const ceiling = a.baseDepth ?? a.depth    // as deep as he was drawn
 
-    for (let j = 0; j < i; j++) {
-      const b = order[j]
-      const dx = a.x - b.x
-      if (Math.hypot(dx, a.y - b.y) >= MIN_DEFENDER_GAP) continue
+    // ⚠️ RESOLVED AGAINST EVERYONE AT ONCE, NOT ONE NEIGHBOUR AT A TIME.
+    //
+    // Pushing away from each conflict in turn does not converge: a defender mugged in the two-yard
+    // gap between two linemen was shoved right by the first and straight back left by the second,
+    // landing exactly where he started. He needs 2.5 yards to stand between them and the gap is 2,
+    // so no amount of sideways nudging can work — the honest answer is that he cannot be there.
+    //
+    // So the candidates are enumerated and the SMALLEST move that clears everybody wins: step left
+    // out of the cluster, step right out of it, or give a little ground off the line. A man
+    // defender may not take the depth option beyond a yard and a half — his cushion belongs to the
+    // receiver he is covering, and rewriting it is a different call — but a yard back to avoid
+    // standing inside a lineman is not rewriting anything.
+    if (!settled.some(b => near(a, b))) continue
 
-      // Give back creep first: how deep would clear him, capped at where he was drawn.
-      const needDy = Math.sqrt(Math.max(0, MIN_DEFENDER_GAP ** 2 - dx * dx))
-      const wantDepth = (b.y - losY) + needDy * toward
-      const depth = Math.min(ceiling, wantDepth)
-      a.depth = depth
-      a.y = clampFieldY(losY + depth)
+    const MAN_DEPTH_GIVE = 1.5
+    const maxDepth = a.job === 'man' ? ceiling + MAN_DEPTH_GIVE : Math.max(ceiling, (a.depth ?? 0) + 3)
+    const clear = (x, y) => !settled.some(b => Math.hypot(x - b.x, y - b.y) < MIN_DEFENDER_GAP)
 
-      // Still inside him at his own drawn depth? Then, and only then, step aside.
-      if (Math.hypot(a.x - b.x, a.y - b.y) < MIN_DEFENDER_GAP) {
-        const push = MIN_DEFENDER_GAP - Math.abs(a.x - b.x)
-        a.x = clampFieldX(a.x + (a.x >= b.x ? push : -push))
+    // Searched rather than stepped. Walking away from each body in turn does not converge in a
+    // crowd — stepping clear of one lineman lands you inside the next, and the step out of THAT one
+    // lands you back on the first. Sampling outwards from where he is and taking the first spot
+    // that clears EVERYBODY is both obviously correct and cheap at eleven defenders.
+    const STEP = 0.15
+    const candidates = []
+    for (let d = STEP; d <= 8; d += STEP) {
+      for (const x of [a.x - d, a.x + d]) {
+        if (clear(clampFieldX(x), a.y)) { candidates.push({ x: clampFieldX(x), y: a.y, depth: a.depth, cost: d }); break }
       }
+      if (candidates.length) break
+    }
+    for (let dd = STEP; dd <= maxDepth - a.depth + 1e-9; dd += STEP) {
+      const y = losY + a.depth + dd
+      if (clear(a.x, y)) { candidates.push({ x: a.x, y: clampFieldY(y), depth: a.depth + dd, cost: dd }); break }
+    }
+
+    const best = candidates.sort((c, d) => c.cost - d.cost)[0]
+    if (best) {
+      a.x = best.x
+      a.y = best.y
+      a.depth = best.depth
       a.pressing = a.depth < ceiling
     }
   }
@@ -521,6 +563,22 @@ export function enforceNoCrossing(rows) {
 // A real secondary rotates as a unit. So one shift is computed for the whole structure — the
 // average of what each deep defender wanted — and everybody moves by it. The shape the shell was
 // drawn with is preserved exactly; only where it sits on the field changes.
+// ⚠️ DEEP LANDMARKS GO TO DEEP DEFENDERS BY POSITION, NOT BY SLOT NAME. A shell may name its slots
+// in any order, and at least one in this playbook does: 3-3-5 MINT draws S1's body on the LEFT and
+// authors S1's zone on the RIGHT. Handing each slot its own authored landmark then asks a defender
+// to own a quarter twenty yards away from where he is standing — the body and the area it is
+// responsible for pull apart, and neither is covered.
+//
+// Sorting both and pairing them in order is what a secondary does anyway: the man on the left has
+// the left, and nobody crosses anybody to get to his area.
+function assignDeepLandmarks(rows) {
+  const deeps = rows.filter(d => d.job === 'zone' && d.zone === 'deep' && d.zoneCenter)
+  if (deeps.length < 2) return
+  const byBody = [...deeps].sort((a, b) => a.dx - b.dx)
+  const byLandmark = deeps.map(d => d.zoneCenter).sort((a, b) => a.dx - b.dx)
+  byBody.forEach((d, i) => { d.zoneCenter = { ...byLandmark[i] } })
+}
+
 function deepStructureSlide(rows, receivers, losY, ballX) {
   const deeps = rows.filter(d => d.job === 'zone' && d.zone === 'deep' && d.zoneCenter)
   if (!deeps.length) return 0
@@ -574,6 +632,7 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
 
   const pairs = pairMan(base.filter(d => d.job === 'man'), receivers, ballX)
   const zonePairs = pairUnderneathZones(base, receivers, losY, ballX)
+  assignDeepLandmarks(base)   // before the slide is measured, so it measures the real pairing
   const deepSlide = deepStructureSlide(base, receivers, losY, ballX)
 
   const out = base.map(d => {
@@ -715,5 +774,7 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
   // move anyone, or a defender goes back out of bounds.
   for (const r of out) { r.losY = losY; r.baseDepth = r.depth }
   // Accounting first: it changes JOBS, and everything after it is about where bodies stand.
-  return clampRowsToField(enforceSpacing(enforceNoCrossing(accountForEveryone(out, receivers, losY)), losY))
+  return clampRowsToField(
+    enforceSpacing(enforceNoCrossing(accountForEveryone(out, receivers, losY)), losY, ballX,
+      spots.filter(sp => String(sp.slot).startsWith('DL')).length))
 }

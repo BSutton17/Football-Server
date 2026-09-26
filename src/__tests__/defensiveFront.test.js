@@ -5,14 +5,19 @@ import { fileURLToPath } from 'node:url'
 
 // [authored] ⚠️ THE DEFENSIVE FRONT IS DEFINED TWICE, ON PURPOSE AND DANGEROUSLY.
 //
-// `autoDefense` in ai/controller.js places the down linemen for the simulation, and `DL_SPACING`
-// in Client/src/game/formation.ts places them for the picture. The comment in both files says
-// they must match. Nothing enforced it until this test: when they drift, the server simulates a
-// front the client never draws, and the two screens show a different defense with no error
-// anywhere.
+// `DL_SPACING` in ai/playbook/front.js places the down linemen for the simulation, and the table of
+// the same name in Client/src/game/formation.ts places them for the picture. The comment in both
+// files says they must match. Nothing enforced it until this test: when they drift, the server
+// simulates a front the client never draws, and the two screens show a different defense with no
+// error anywhere.
+//
+// It used to live inside the controller. It moved to front.js when the ALIGNER needed it too — the
+// walked-down linebackers were being spaced against the linemen the shell DREW rather than the ones
+// auto-placed here, which is not the same row. A third copy is how three things drift instead of
+// two, so there is one on each side of the wire and this test holds them together.
 
 const HERE = dirname(fileURLToPath(import.meta.url))
-const SERVER = join(HERE, '..', 'ai', 'controller.js')
+const SERVER = join(HERE, '..', 'ai', 'playbook', 'front.js')
 const CLIENT = join(HERE, '..', '..', '..', 'Client', 'src', 'game', 'formation.ts')
 
 const table = (file) => {
