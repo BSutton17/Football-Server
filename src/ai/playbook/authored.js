@@ -192,6 +192,33 @@ export function personnelOf(formation) {
   return out
 }
 
+// ⚠️ A SHELL DOES NOT CARRY ITS OWN PERSONNEL, AND EVERYTHING ASSUMED IT DID. Both the
+// selector's prior and the recommendation shortlist read `shell.personnel` and fell back to a
+// constant when it was missing — which is every shell, all 94 of them. So the fallback WAS the
+// behaviour: the same number for every shell, and a defense that answered five receivers exactly
+// as it answered two tight ends.
+//
+// The personnel is a property of the FORMATION, which is where the bodies are listed. Derived
+// rather than stored, so it cannot drift from the spots it describes.
+export function defensePersonnel(formation) {
+  const out = { DL: 0, LB: 0, CB: 0, S: 0 }
+  for (const sp of formation?.spots ?? []) {
+    const label = slotLabel(sp.slot)
+    if (label in out) out[label]++
+  }
+  return out
+}
+
+// Every shell with the personnel of the formation it is drawn from, which is the shape both the
+// selector and the shortlist want. One place, so the two cannot disagree.
+export function shellsWithPersonnel(book) {
+  return Object.entries(book?.shells ?? {}).map(([id, sh]) => ({
+    ...sh,
+    id,
+    personnel: defensePersonnel(book?.defFormations?.[sh.formationId]),
+  }))
+}
+
 // A play's route for one slot, mirrored with the formation so the art and the simulated path agree.
 export function routeFor(play, slot, { mirror = false } = {}) {
   const a = play?.assignments?.[slot]

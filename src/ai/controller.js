@@ -357,19 +357,23 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   function placeAuthoredDefense(call, { losY, ballX, receivers }) {
     const rows = buildAuthoredDefense(call, { losY, ballX, receivers, roster })
 
-    // ⚠️ A RE-CALLED SHELL MUST TAKE THE PREVIOUS ONE'S DEFENDERS OFF. Shells field different
-    // numbers behind the line — seven behind a four-man front, eight behind a three — so going
-    // from the eight-man shell to the seven-man one placed seven and left the eighth standing
-    // where he was. Twelve men, and the extra one still had last call's assignment.
-    const wanted = new Set(rows.map(r => r.id))
-    for (const id of self.coverageOnField ?? []) {
-      if (wanted.has(id)) continue
-      self.expectMissingRemoval = true
+    // ⚠️ ANYONE NOT IN THIS CALL COMES OFF, AND THE FIELD IS THE SOURCE OF TRUTH. Shells field
+    // different numbers behind the line — seven behind a four-man front, eight behind a three —
+    // and personnel substitution can change WHICH player fills a spot between two alignments of
+    // the same play. Either one leaves somebody standing there holding last call's assignment:
+    // twelve men on the field.
+    //
+    // This used to track what it had placed and remove the difference, which is bookkeeping that
+    // has to stay in step with reality — and did not. Reading `defensePlayers` needs no
+    // bookkeeping and cannot drift: whoever is out there and is not in this call is removed,
+    // whatever put him there, including the heuristic path this call replaced.
+    const keep = new Set([...rows.map(r => r.id), ...(self.frontOnField ?? [])])
+    const onField = getGame(socket?.data?.roomId)?.defensePlayers
+    for (const id of [...(onField?.keys() ?? [])]) {
+      if (keep.has(id)) continue
       socket.fire('remove_player', id)
-      self.expectMissingRemoval = false
       self.placedAt.delete(id)
     }
-    self.coverageOnField = [...wanted]
     for (const d of rows) {
       // ⚠️ Only a placement that actually MOVES him. Re-sending the same spot is what a player
       // sees as the defense twitching: every re-align rebroadcast eleven positions and the client
@@ -445,18 +449,16 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // places DL1-3 and says nothing about DL4 — who is still standing where the last shell put
     // him, still counts toward the eleven, and still rushes. On a new hash he is visibly in the
     // wrong place: the front's centre came out four yards off the ball.
+    // ⚠️ A SHRINKING FRONT LEAVES A LINEMAN BEHIND, so the surplus comes off — asked of the
+    // FIELD rather than of a record this code keeps. An earlier version consulted `placedAt`,
+    // which is wiped at the start of every play, so by the time a four-man front shrank to three
+    // the record of the fourth was already gone and the removal never fired at all.
     const wanted = new Set(front.map(d => d.id))
-    for (const id of self.frontOnField ?? []) {
-      // ⚠️ WHICH LINEMEN ARE OUT THERE OUTLIVES THE PLAY, so this record has to as well. The first
-      // version of this guard asked `placedAt`, which is wiped at the start of every play — so by
-      // the time a four-man front shrank to three, the record of the fourth was already gone and
-      // the removal never fired at all. He stayed on the field, at the previous hash.
-      if (!wanted.has(id)) {
-        self.expectMissingRemoval = true
-        socket.fire('remove_player', id)   // the handler takes the id itself, not an object
-        self.expectMissingRemoval = false
-        self.placedAt.delete(id)
-      }
+    const live = getGame(socket?.data?.roomId)?.defensePlayers
+    for (const id of ['auto_dl1', 'auto_dl2', 'auto_dl3', 'auto_dl4']) {
+      if (wanted.has(id) || !live?.has(id)) continue
+      socket.fire('remove_player', id)   // the handler takes the id itself, not an object
+      self.placedAt.delete(id)
     }
     self.frontOnField = [...wanted]
 

@@ -15,11 +15,25 @@
 // from wherever that slot lines up. The payload has always supported it — it is how a human's
 // hand-drawn route reaches the server — so authored plays ride a path that already works.
 
-import { layoutAuthored, routeFor, slotLabel } from './authored.js'
+import { layoutAuthored, routeFor, slotLabel, shellsWithPersonnel } from './authored.js'
 import { alignAuthored, clampFieldY } from './alignAuthored.js'
 import { adjustOffense } from './adjustOffense.js'
 import { chooseOffensivePlay, chooseDefensiveShell, offenseLookOf } from '../playcall/select.js'
 import { expectedRushers, adjustmentsFor } from '../playcall/tendencies.js'
+
+// Who should cover this assignment, best first. A man defender has to run with the person in
+// front of him, so the body matters; a zone defender covers grass and can be anyone.
+//
+// Exported because the AI fills its own defense from the roster here, while the SHELLS panel
+// sends the shape to the client and IT fills the spots — two fillers, one rule, or the shell a
+// player loads covers differently from the shell the computer runs.
+export function coverOrder(job, targetLabel, drawnLabel) {
+  if (job !== 'man' || !targetLabel) return [drawnLabel]
+  const t = String(targetLabel).toUpperCase()
+  if (t === 'WR') return ['CB', 'S', 'LB']       // a receiver needs a corner
+  if (t === 'TE') return ['S', 'LB', 'CB']       // a tight end is a safety or a backer
+  return ['LB', 'S', 'CB']                       // a back belongs to a linebacker
+}
 
 export function hasAuthoredOffense(book) {
   return Object.keys(book?.plays ?? {}).length > 0 && Object.keys(book?.formations ?? {}).length > 0
@@ -103,7 +117,9 @@ export function buildAuthoredOffense(call, { losY, ballX, roster }) {
 // `offenseLookOf` carries the formation and the personnel that comes with it — and nothing else,
 // because the play itself is not the defense's to know.
 export function callAuthoredDefense(book, k, { ballX, receivers, rng = Math.random, solved = null, adjust = null }) {
-  const shells = withIds(book.shells)
+  // With the personnel of the formation each is drawn from — see shellsWithPersonnel. Without it
+  // the selector's personnel prior is a constant and the defense answers every look the same way.
+  const shells = shellsWithPersonnel(book)
   if (!shells.length) return null
 
   // What the offense is showing, derived from who is actually on the field rather than from any
@@ -156,18 +172,36 @@ export function buildAuthoredDefense(call, { losY, ballX, receivers, roster, adj
 
   const used = new Set()
   const out = []
+  // ⚠️ MAN COVERAGE GETS THE RIGHT BODY, NOT THE DRAWN ONE. The shell says which SPOT covers a
+  // receiver; it cannot know that the offense would come out in four wides. Filling strictly by
+  // the drawn label put a linebacker on a slot receiver in Cover 1 and left the corners standing
+  // on tight ends. Matching personnel matters everywhere, but in man it is the whole call: a zone
+  // defender covers grass and can be anyone, while a man defender has to run with the person in
+  // front of him.
+  //
+  // So a man assignment is filled by who can actually cover its target, best available first, and
+  // only falls back to the drawn position when the cupboard is bare. Everything else — where he
+  // stands, what he is told to do — is unchanged, so this substitutes players without altering
+  // the shell that was authored.
   for (const row of rows) {
     // ⚠️ The linemen are auto-placed by the engine and are not ours to position or assign. They
     // are in the authored formation so it can be SEEN whole in the sandbox; here they are skipped.
     if (row.label === 'DL') continue
-    const group = byPos[row.label] ?? []
-    const pick = group.find(p => !used.has(p.id))
+
+    const target = row.job === 'man' ? receivers.find(r => r.id === row.covers) : null
+    let pick = null
+    for (const want of [...coverOrder(row.job, target?.label, row.label), row.label]) {
+      pick = (byPos[want] ?? []).find(p => !used.has(p.id))
+      if (pick) break
+    }
     if (!pick) continue
     used.add(pick.id)
 
     out.push({
       id: pick.id,
-      label: row.label,
+      // The player's own position, not the slot's — a corner filling a linebacker's spot is still
+      // a corner, and his ratings and the card the client draws have to agree with that.
+      label: pick.label ?? pick.position ?? row.label,
       x: row.x,
       y: row.y,
       ratings: pick.ratings,

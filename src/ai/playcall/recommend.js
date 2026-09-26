@@ -18,8 +18,9 @@
 import { situationKey, distanceBand, fieldZone } from './situation.js'
 import { playDepth } from './select.js'
 import { shellFit } from './tendencies.js'
-import { layoutAuthored, routeFor } from '../playbook/authored.js'
+import { layoutAuthored, routeFor, shellsWithPersonnel } from '../playbook/authored.js'
 import { alignAuthored, clampFieldY } from '../playbook/alignAuthored.js'
+import { coverOrder } from '../playbook/runAuthored.js'
 
 // At or above this many rushers a shell is a blitz rather than a coverage that happens to send
 // somebody. Four is the ordinary front.
@@ -200,7 +201,7 @@ function whyOffense(depth, { distance = 10, yardLine = 50 } = {}) {
 // offered a genuine change of answer rather than three shades of the same one.
 export function recommendDefense(book, situation, look,
   { solved = null, adjust = null, rng = Math.random } = {}) {
-  const shells = Object.entries(book?.shells ?? {}).map(([id, s]) => ({ ...s, id }))
+  const shells = shellsWithPersonnel(book)
   if (!shells.length) return []
 
   const key = `${situationKey(situation)}|${look?.id ?? 'unknown'}`
@@ -263,13 +264,17 @@ function situationalShellFit(shell, situation) {
   return Math.max(w, 0.05)
 }
 
-// The same shape-matching the selector's prior uses: answering four receivers with a base defense
-// is not an interesting gamble, it is simply wrong.
+// ⚠️ A CORNER FOR EACH RECEIVER. Answering four receivers with a base defense is not an
+// interesting gamble, it is simply wrong — "if they have 3 WR out there I should probably have
+// 3 CB". The corner count is weighted above the total secondary because it is the one that
+// actually has to travel with somebody: a third safety is not a substitute for a third corner.
 function personnelFit(shell, look) {
   const wr = look?.wr ?? 3
-  const backs = shell.personnel ? (shell.personnel.CB ?? 0) + (shell.personnel.S ?? 0) : 4
-  const want = wr >= 4 ? 6 : wr === 3 ? 5 : 4
-  return 1 / (1 + Math.abs(backs - want))
+  const cb = shell.personnel?.CB ?? 0
+  const db = cb + (shell.personnel?.S ?? 0)
+  const wantCB = Math.max(2, Math.min(4, wr))          // within what a roster actually has
+  const wantDB = wr >= 4 ? 6 : wr === 3 ? 5 : 4
+  return 1 / (1 + 1.6 * Math.abs(cb - wantCB) + Math.abs(db - wantDB))
 }
 
 function describeDefense({ shell, kind, score }, book, look) {
@@ -419,6 +424,11 @@ export function layoutShellForClient(book, shellId,
       zoneCenterY: clampFieldY(r.zoneCenter ? losY + r.zoneCenter.depth : r.y + (DEFAULT_ZONE_DEPTH[r.zone] ?? 4)),
       covers: r.covers ?? null,
       shade: r.shade ?? 'none',
+      // ⚠️ WHO SHOULD FILL THIS SPOT, which the client cannot work out for itself — it has the
+      // roster but not the shell's intent. Without it a loaded Cover 1 put a linebacker on a slot
+      // receiver while the corners stood on tight ends, and the computer running the SAME shell
+      // did it correctly. One rule, both fillers.
+      prefer: coverOrder(r.job, receivers.find(x => x.id === r.covers)?.label, r.label),
     })),
   }
 }

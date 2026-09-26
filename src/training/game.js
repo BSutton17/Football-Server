@@ -101,6 +101,11 @@ export function createTrainingGame({
   const room = getRoom(roomId)
   const state = initGame(roomId, room.offenseSlot ?? 0, { mode, difficulty, seed })
   state.teams = ['AI0', 'AI1']
+  // ⚠️ NOBODY IS WATCHING THIS ONE. A training room is a solo room, and solo half-time now waits
+  // for a player to tap before the next play is booked — which in here would be a wait forever.
+  // A solve is 1.1 million downs across six processes; one stalled shard is an overnight run that
+  // never finishes and no error to say why.
+  state.headless = true
 
   // Brains. Each gets its own random stream so one seat's choices never shift the other's.
   const brains = seats.map((socket, slot) => {

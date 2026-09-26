@@ -12,9 +12,15 @@
 // the cost of first-and-ten, which is a third of the game. Buckets left unsolved keep the prior,
 // which the selector already falls back to cleanly.
 //
-// ⚠️ CHECKPOINTS EVERY BUCKET. An earlier overnight run lost ~50 generations because the machine
-// turned off and the resumable state lagged. A bucket is minutes of work; losing the lot to a
-// closed laptop is not acceptable, and the write is cheap.
+// ⚠️ CHECKPOINTS EVERY 100,000 DOWNS. An earlier overnight run lost ~50 generations because the
+// machine turned off and the resumable state lagged, so this used to save after EVERY subgame —
+// 204 of them, each rewriting ~1.6 MB of state and rebuilt table. That is a third of a gigabyte of
+// writes per shard for work that is only ever read once, and with six shards running it is the
+// noisiest thing on the disk.
+//
+// A hundred thousand downs is a few minutes of work and the most a crash can cost. The table is no
+// longer rebuilt on every save either: it is pure post-processing over the subgames, so it is
+// written once at the end, and `mergeSolve` rebuilds it from the saved state anyway.
 
 import { writeFileSync, readFileSync, existsSync, mkdirSync, renameSync, appendFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -212,8 +218,12 @@ if (SHARD) {
 const totalCells = situations.length * plays.length * shells.length * SAMPLES
 console.log(`[solve] ${situations.length} buckets x ${plays.length} plays x ${shells.length} shells x ${SAMPLES} = ${totalCells.toLocaleString()} plays to simulate`)
 
+// How many simulated downs may pass between checkpoints. The most a crash can cost.
+const CHECKPOINT_EVERY_DOWNS = 100_000
+
 const started = Date.now()
 let simulated = 0
+let savedAt = 0
 
 for (const sit of situations) {
   for (const [formationId, formationPlays] of byFormation) {
@@ -264,16 +274,23 @@ for (const sit of situations) {
     )
     if (solved.diagnosis?.warning) console.log(`      ${solved.diagnosis.warning}`)
 
-    // ⚠️ EVERY SUBGAME. Minutes of work each; a closed laptop must not cost the lot.
-    try {
-      saveJson(statePath, { subgames: done, possessionValue })
-      saveJson(tablePath, buildTable(done))
-    } catch (err) {
-      console.log(`      checkpoint FAILED: ${err.message}`)
+    // Save on a downs budget rather than per subgame — see the note at the top. Only the state:
+    // the table is derived from it and is written once at the end.
+    if (simulated - savedAt >= CHECKPOINT_EVERY_DOWNS) {
+      try {
+        saveJson(statePath, { subgames: done, possessionValue })
+        savedAt = simulated
+        console.log(`      checkpoint: ${done.length} subgames, ${simulated.toLocaleString()} downs`)
+      } catch (err) {
+        console.log(`      checkpoint FAILED: ${err.message}`)
+      }
     }
   }
 }
 
+// The run is over: save the state one last time (the budget may not have come round again) and
+// build the table from it.
+saveJson(statePath, { subgames: done, possessionValue })
 const table = buildTable(done)
 saveJson(tablePath, table)
 const mins = (Date.now() - started) / 60000

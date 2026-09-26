@@ -4,6 +4,7 @@ import {
   recordInterception, recordTouchdown, serializeStats,
 } from './stats.js'
 import { observePlay, adjustmentsFor, describeAdjustments } from '../ai/playcall/tendencies.js'
+import { isSoloRoom } from '../ai/timing.js'
 import { RULES, FIELD, FIELD_CENTER_X } from '../constants.js'
 import { getGame, advanceDown, changePossession, yardLineFromAbsY, getLosY, clampToHash, clearPerPlayDeclarations } from './gameState.js'
 import {
@@ -162,6 +163,7 @@ function recordFinishedPlay(state) {
     defenseSlot: 1 - offenseSlot,
     playType: state.statsPlayType,
     routeDepth: state.statsRouteDepth,
+    routeShapes: state.statsRouteShapes,
     rushers: state.statsRushers,
   })
 }
@@ -181,15 +183,49 @@ export function sampleForTendencies(state) {
   state.statsRushers = rushers + 4
 
   const depths = []
+  // [halftime] What SHAPE the routes were, not only how deep. A half of quick game and a half of
+  // crossers ask the defense for opposite things — press and squeeze underneath versus tighten the
+  // middle — and depth alone cannot tell them apart. Counted per route and summarised per play, so
+  // one five-man concept contributes one opinion rather than five.
+  const shapes = { quick: 0, deep: 0, outside: 0, crossing: 0, total: 0 }
   for (const p of state.offensePlayers?.values() ?? []) {
     if (!p.drawnRoute?.length) continue
     let deepest = 0
     for (const pt of p.drawnRoute) deepest = Math.max(deepest, pt.dd ?? 0)
     depths.push(deepest)
+    shapes.total++
+    shapes[classifyRouteShape(p, deepest, state.ballX)]++
   }
   state.statsRouteDepth = depths.length
     ? depths.reduce((a, b) => a + b, 0) / depths.length
     : null
+  state.statsRouteShapes = shapes.total ? shapes : null
+}
+
+// Which of the four a single route is. Read off the drawn geometry, like every other route
+// question in this engine — there is no list of route names anywhere in the simulation.
+//
+// The order matters: depth decides first, because a deep route that also breaks outside is a
+// problem for the safety, not for the corner's leverage. Only routes that stay in front are
+// classified by which way they went.
+// Reuses the engine's own DEEP_YARDS for "deep", so a route the X-Factors call deep and a route
+// the half-time read calls deep are the same thing.
+const QUICK_YARDS = 6
+const CROSS_YARDS = 8     // lateral travel that takes a receiver across somebody else's zone
+
+function classifyRouteShape(player, deepest, ballX) {
+  if (deepest >= DEEP_YARDS) return 'deep'
+  if (deepest <= QUICK_YARDS) return 'quick'
+
+  // Where the route finishes, laterally, relative to where he started.
+  const last = player.drawnRoute[player.drawnRoute.length - 1]
+  const dx = last?.dx ?? 0
+  if (Math.abs(dx) < 3) return 'quick'          // straight up the stem, functionally a short hitch
+
+  // Toward the middle of the field and a long way across is a crosser; away from it is an out.
+  // Which way "toward the middle" points depends on the side of the ball he lined up on.
+  const towardMiddle = player.x < ballX ? dx > 0 : dx < 0
+  return Math.abs(dx) >= CROSS_YARDS && towardMiddle ? 'crossing' : 'outside'
 }
 
 function onSnap(_payload, _state, _io) {
@@ -1107,6 +1143,7 @@ export function applyDelayOfGame(state, io) {
   state.statsWasPass     = false
   state.statsPasser      = null
   state.statsRouteDepth  = null   // how deep this play's routes ran, for the tendency read
+  state.statsRouteShapes = null   // …and what shape they were: quick / outside / crossing / deep
   state.statsRushers     = null   // how many the defense sent
   state.statsPlayType    = null   // what was CALLED, which is not what statsWasPass answers
 
@@ -1247,6 +1284,21 @@ function onClockExpired(_payload, state, io) {
   }
 
   advanceQuarter(state, io)
+
+  // ⚠️ HALFTIME IN A SOLO GAME WAITS FOR THE PLAYER. There is nobody else to hold up, and five
+  // seconds is not long enough to read a box score. So the next play is NOT booked: the game sits
+  // in DEAD, where no clock of any kind is running, until the player taps.
+  //
+  // Not scheduling is what makes this safe. Leaving the overlay up while the server marched on
+  // would start the play clock behind it and hand out a delay of game for reading the stats.
+  // `advanceQuarter` has already incremented, so quarter 3 means the half just ended — the same
+  // test it uses itself to pick the interstitial.
+  if (state.quarter === 3 && isSoloRoom(state) && !state.headless) {
+    state.awaitingTransitionTap = true
+    console.log(`[game] ${state.roomId} halftime — holding for the player`)
+    return
+  }
+
   // [transition screens] Hold on the full-screen End-of-Quarter / Halftime interstitial before the
   // next play lines up, so both stay in step with the client's 5-second overlay.
   beginNextPlay(state.roomId, io, TRANSITION_MS)
@@ -1405,6 +1457,15 @@ export function startNextPlay(roomId, io, { quiet = false } = {}) {
   if (state.clock <= 0) {
     if (state.quarter >= RULES.QUARTERS) { endGame(state, io); return }
     advanceQuarter(state, io)
+    // ⚠️ THE SAME SOLO HALF-TIME HOLD AS IN onClockExpired, AND IT HAS TO BE IN BOTH. There are two
+    // ways a period ends — the clock running out BETWEEN plays, and the play that ran it to zero
+    // finishing — and this is the common one. Handling only the other left half-time auto-advancing
+    // on almost every real game.
+    if (state.quarter === 3 && isSoloRoom(state) && !state.headless) {
+      state.awaitingTransitionTap = true
+      console.log(`[game] ${roomId} halftime — holding for the player`)
+      return
+    }
     // advanceQuarter has just told both clients to hold a full-screen interstitial. Falling
     // through here would set the next play up *behind* that overlay: the formation resets, the
     // play clock starts and the defense cannot place or adjust anyone until the overlay lifts
@@ -1458,12 +1519,14 @@ export function startNextPlay(roomId, io, { quiet = false } = {}) {
   state.statsWasPass     = false
   state.statsPasser      = null
   state.statsRouteDepth  = null   // how deep this play's routes ran, for the tendency read
+  state.statsRouteShapes = null   // …and what shape they were: quick / outside / crossing / deep
   state.statsRushers     = null   // how many the defense sent
   state.statsPlayType    = null   // what was CALLED, which is not what statsWasPass answers
 
   // [offline] The defense may declare itself ready again on this play — see the note on the
   // function. Without this the Set Defense button worked exactly once per game.
   clearPerPlayDeclarations(state)
+  state.awaitingTransitionTap = false
 
   transition(state, PHASE.PRE_SNAP)
 

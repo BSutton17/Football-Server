@@ -28,7 +28,7 @@ import { transition, PHASE } from '../game/stateMachine.js'
 import { beginStoppage, STOPPAGE, beginPlayerPause, resumePlayerPause, isPlayerPaused } from '../game/pause.js'
 import { FIELD, RULES } from '../constants.js'
 import { initLivePhase } from '../game/systems/init.js'
-import { enqueue, EVENT, resolveDecision, resolveConversion, resolvePuntReturn, resolveFieldGoalBlock, broadcastSpecialTeams , sampleForTendencies } from '../game/eventQueue.js'
+import { enqueue, EVENT, resolveDecision, resolveConversion, resolvePuntReturn, resolveFieldGoalBlock, broadcastSpecialTeams, sampleForTendencies, startNextPlay } from '../game/eventQueue.js'
 import { startGameLoop } from '../game/simulation.js'
 import { getRoom } from '../game/roomManager.js'
 import { serializeGameState } from '../game/serialization.js'
@@ -547,6 +547,19 @@ export function registerGameHandlers(io, socket) {
       .filter(rec => rec.layout)
 
     socket.emit('shells_offered', { situation, look, shells })
+  })
+
+  // [transition screens] The player dismissed the half-time box score. Solo only, and only while
+  // the game is actually waiting on it — see advanceQuarter: the next play is deliberately not
+  // booked so no clock runs behind the overlay.
+  socket.on('transition_continue', () => {
+    const roomId = socket.data.roomId
+    const state = getGame(roomId)
+    if (!state?.awaitingTransitionTap) return
+    if (!isSoloRoom(state)) return
+    state.awaitingTransitionTap = false
+    startNextPlay(roomId, io)
+    console.log(`[game] ${roomId} half-time dismissed — play on`)
   })
 
   socket.on('reset_game', () => {

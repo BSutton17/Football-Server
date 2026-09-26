@@ -18,6 +18,13 @@ export const NEUTRAL = {
   runRate: 0.45,
   shortRate: 0.60,     // share of pass plays whose routes average under the short threshold
   blitzRate: 0.25,
+  // Share of ROUTES of each shape. An ordinary offense throws mostly short and outside with a few
+  // crossers and the occasional shot; these are what "ordinary" means, and the lean is measured
+  // against them. They sum to 1 because every route is classified as exactly one.
+  quickRate: 0.40,
+  outsideRate: 0.30,
+  crossingRate: 0.17,
+  deepRate: 0.13,
 }
 
 // Routes averaging under this are the short game.
@@ -52,13 +59,18 @@ export function createTendencies() {
   }
 }
 
-const blankOffense = () => ({ plays: 0, runs: 0, passes: 0, shortPasses: 0 })
+const blankOffense = () => ({
+  plays: 0, runs: 0, passes: 0, shortPasses: 0,
+  // Route shapes, counted per ROUTE rather than per play — a five-man concept is five opinions
+  // about what this offense likes, not one.
+  routes: 0, quick: 0, outside: 0, crossing: 0, deep: 0,
+})
 const blankDefense = () => ({ plays: 0, blitzes: 0 })
 
 // ── Watching ────────────────────────────────────────────────────────────────
 //
 // Called once per play, after it has resolved, with what both sides just saw.
-export function observePlay(tend, { offenseSlot, defenseSlot, playType, routeDepth, rushers }) {
+export function observePlay(tend, { offenseSlot, defenseSlot, playType, routeDepth, routeShapes, rushers }) {
   if (!tend) return
   const off = tend.offense[offenseSlot]
   const def = tend.defense[defenseSlot]
@@ -69,6 +81,13 @@ export function observePlay(tend, { offenseSlot, defenseSlot, playType, routeDep
     else {
       off.passes++
       if (Number.isFinite(routeDepth) && routeDepth < SHORT_YARDS) off.shortPasses++
+      if (routeShapes?.total) {
+        off.routes += routeShapes.total
+        off.quick += routeShapes.quick ?? 0
+        off.outside += routeShapes.outside ?? 0
+        off.crossing += routeShapes.crossing ?? 0
+        off.deep += routeShapes.deep ?? 0
+      }
     }
   }
   if (def) {
@@ -96,6 +115,12 @@ export function summarize(tend, slot) {
     shortRate: shrink(off.shortPasses, off.passes, NEUTRAL.shortRate),
     defPlays: def.plays,
     blitzRate: shrink(def.blitzes, def.plays, NEUTRAL.blitzRate),
+    // Over ROUTES, so a team that rarely throws does not read as having no preferences.
+    routes: off.routes,
+    quickRate: shrink(off.quick, off.routes, NEUTRAL.quickRate),
+    outsideRate: shrink(off.outside, off.routes, NEUTRAL.outsideRate),
+    crossingRate: shrink(off.crossing, off.routes, NEUTRAL.crossingRate),
+    deepRate: shrink(off.deep, off.routes, NEUTRAL.deepRate),
   }
 }
 
@@ -116,7 +141,20 @@ export function adjustmentsFor(tend, { opponentSlot }) {
     underneathBias: lean(them.shortRate, NEUTRAL.shortRate, 1.4),
     // They blitz a lot: keep somebody in to block more readily.
     protectBias: lean(them.blitzRate, NEUTRAL.blitzRate, 1.8),
-    evidence: { offensivePlays: them.plays, defensivePlays: them.defPlays },
+
+    // [halftime shapes] What the defense should do differently with its BODIES, as opposed to
+    // which call it makes. Depth alone cannot separate these: a half of quick game and a half of
+    // crossers both read as "short", and they ask for opposite things — get hands on at the line
+    // versus tighten the middle and stop giving up the inside.
+    //
+    // Each is a signed lean like the others: positive means the opponent does this more than an
+    // ordinary offense, so lean against it.
+    quickBias: lean(them.quickRate, NEUTRAL.quickRate, 1.5),
+    outsideBias: lean(them.outsideRate, NEUTRAL.outsideRate, 1.7),
+    crossingBias: lean(them.crossingRate, NEUTRAL.crossingRate, 1.9),
+    deepBias: lean(them.deepRate, NEUTRAL.deepRate, 2.0),
+
+    evidence: { offensivePlays: them.plays, defensivePlays: them.defPlays, routes: them.routes },
   }
 }
 
@@ -132,6 +170,10 @@ export function describeAdjustments(adj) {
   else if (adj.underneathBias < -WORTH_SAYING) out.push('They are pushing it downfield — playing over the top')
   if (adj.protectBias > WORTH_SAYING) out.push('They blitz — keeping help in to block')
   else if (adj.protectBias < -WORTH_SAYING) out.push('They rush four — releasing everybody')
+  if (adj.quickBias > WORTH_SAYING) out.push('Quick game — pressing at the line')
+  if (adj.outsideBias > WORTH_SAYING) out.push('Everything outside — taking away the sideline')
+  if (adj.crossingBias > WORTH_SAYING) out.push('Crossers — squeezing the middle')
+  if (adj.deepBias > WORTH_SAYING) out.push('They take shots — backing off the line')
   return out
 }
 

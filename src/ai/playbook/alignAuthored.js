@@ -52,6 +52,23 @@ export const FIELD_MAX_Y = 109.5
 export const clampFieldY = (y) => Math.max(FIELD_MIN_Y, Math.min(FIELD_MAX_Y, y))
 // The sidelines, for the same reason: a zone slide or a man-coverage travel can push a defender
 // past them, and `place_player` refuses an x outside 0..53.33.
+// ⚠️ TWO DEFENDERS MAY NOT STAND ON EACH OTHER. A non-lineman rusher creeps up to four yards
+// toward the line to show blitz, and nothing checked what was already there — so a walked-down
+// linebacker routinely ended up inside a defensive lineman. Two bodies in one place is one body's
+// worth of pass rush, and it looks broken.
+//
+// A player is a yard across (PLAYER_RADIUS 0.5 each), so a yard and a quarter leaves daylight.
+const MIN_DEFENDER_GAP = 1.25
+
+// How strong a half-time lean has to be before it changes where somebody stands. Matches the
+// threshold the half-time report uses to decide a tendency is worth mentioning at all, so the
+// defense never adjusts to something it would not have bothered saying out loud.
+const SHAPE_LEAN = 0.12
+
+// How far the quick-game and deep leans move a corner's cushion, in yards at a maximal read.
+// Small: this is leverage, not a different coverage.
+const CUSHION_SWING = 2.5
+
 export const FIELD_MIN_X = 0.5
 export const FIELD_MAX_X = 52.8
 export const clampFieldX = (x) => Math.max(FIELD_MIN_X, Math.min(FIELD_MAX_X, x))
@@ -155,13 +172,26 @@ export function pairMan(manSlots, receivers, ballX) {
 // ⚠️ THE SAFETY RULES OUTRANK THE PREFERENCE, ALWAYS. With nobody over the top, anything but UNDER
 // is a way to lose deep, and no situational cleverness makes that a good trade.
 export function decideShade(defender, receiver,
-  { hasDeepHelp, ballX, forced = null, preferUnderneath = false }) {
+  { hasDeepHelp, ballX, forced = null, preferUnderneath = false, adjust = null }) {
   if (!receiver) return 'none'
   if (receiver.label === 'RB') return 'under'   // a back releasing is a short threat
   if (!hasDeepHelp) return 'under'              // nothing behind you: never get beaten deep
-  // [halftime] An opponent who has spent a half living underneath gets sat on there. This comes
-  // BELOW the safety rules and ABOVE the shell's pinned leverage: a half of evidence outranks a
-  // default, and nothing outranks not getting beaten deep.
+
+  // [halftime shapes] What the opponent has actually been throwing decides leverage before any
+  // default does. These sit BELOW the two safety rules above — nothing outranks not getting beaten
+  // deep — and ABOVE the shell's pinned leverage, because half a game of evidence outranks a
+  // drawing made before kickoff.
+  //
+  // Read in order of how much they cost to be wrong about. A team taking shots gets played over
+  // the top even if they also cross a lot; only then does crossing pull you inside, and an
+  // outside-heavy team push you out.
+  if (adjust) {
+    if (adjust.deepBias > SHAPE_LEAN) return 'over'
+    if (adjust.crossingBias > SHAPE_LEAN) return 'in'    // take away the inside they keep running to
+    if (adjust.outsideBias > SHAPE_LEAN) return 'out'
+  }
+
+  // [halftime] An opponent who has spent a half living underneath gets sat on there.
   if (preferUnderneath) return 'under'
   if (forced === 'in' || forced === 'out') return forced
 
@@ -234,6 +264,110 @@ export function clampRowsToField(rows) {
   return rows
 }
 
+// ⚠️ IN MAN, EVERYBODY IS SOMEBODY'S. A Cover 1 is drawn with five man defenders because five
+// eligible receivers is the common case; come out in four wides with a tight end and a back and
+// there are SIX, and the sixth ran free. Measured against the real playbook: with 4WR+TE+RB,
+// 27 of 30 man shells left exactly one man uncovered, every time, and in man there is nobody
+// behind him — an uncovered receiver in Cover 1 is a touchdown, not a completion.
+//
+// So a man shell finds a body for anyone left over, in order of what it costs to take him:
+//
+//   1. THE SPY. He is already assigned to nobody in particular; this is what he is for.
+//   2. AN UNDERNEATH ZONE. Giving up a short zone to cover a man is the trade Cover 1 already
+//      makes everywhere else on the field.
+//   3. A SURPLUS RUSHER, and only above a four-man rush. Dropping the fourth rusher would leave
+//      the quarterback untouched, which loses the play a different way.
+//
+// A DEEP zone is never taken: that defender is the "1" in Cover 1, and using him is how the whole
+// call becomes Cover 0 by accident.
+//
+// Only for shells that are ALREADY man. A Cover 3 has uncovered receivers by design — that is what
+// a zone is — and pulling its defenders onto men would quietly rewrite the call.
+const BASE_RUSH = 4
+
+export function accountForEveryone(rows, receivers, losY) {
+  const manCount = rows.filter(r => r.job === 'man').length
+  const zoneCount = rows.filter(r => r.job === 'zone').length
+  if (!manCount || manCount <= zoneCount) return rows      // not a man call
+
+  const covered = new Set(rows.filter(r => r.job === 'man' && r.covers).map(r => r.covers))
+  const loose = (receivers ?? []).filter(r => !covered.has(r.id))
+  if (!loose.length) return rows
+
+  const rushers = rows.filter(r => r.job === 'rush').length
+  let spare = rushers - BASE_RUSH
+
+  for (const receiver of loose) {
+    // Nearest available body of each kind, best kind first.
+    const pick = (test) => rows
+      .filter(r => r.label !== 'DL' && test(r))
+      .sort((a, b) => Math.hypot(a.x - receiver.x, a.y - receiver.y) - Math.hypot(b.x - receiver.x, b.y - receiver.y))[0]
+
+    // ⚠️ THE LAST DEEP DEFENDER IS NEVER TAKEN. He is the "1" in Cover 1, and using him turns the
+    // call into Cover 0 by accident — every man now with nobody behind him. A SECOND deep defender
+    // is fair game: dropping from two-deep to one-deep to cover a loose receiver is a trade a real
+    // defense makes, and it beats leaving somebody running free with no help anywhere.
+    const deepLeft = rows.filter(r => r.job === 'zone' && r.zone === 'deep').length
+    const taken =
+      pick(r => r.job === 'spy') ??
+      pick(r => r.job === 'zone' && r.zone !== 'deep') ??
+      (spare > 0 ? pick(r => r.job === 'rush') : null) ??
+      (deepLeft > 1 ? pick(r => r.job === 'zone' && r.zone === 'deep') : null)
+
+    if (!taken) break          // nothing left that can be spared; better one free than no rush
+    if (taken.job === 'rush') spare--
+    taken.job = 'man'
+    taken.covers = receiver.id
+    taken.zone = null
+    taken.zoneCenter = null
+  }
+  return rows
+}
+
+// Separates two defenders standing on top of each other.
+//
+// ⚠️ BY CREEPING LESS, NEVER BY BACKING UP. The authored depth is a CEILING everywhere else in
+// this file — "a corner drawn at 5 bailing to 12 is playing a different call entirely" — and the
+// first version of this pass pushed the overlapping man straight back off the line, which broke
+// exactly that rule and was caught by the test protecting it.
+//
+// The cure belongs where the cause is. The overlap comes from a rusher walking up to four yards
+// toward the line without checking what is already standing there, so he walks up LESS: back
+// toward the depth he was drawn at and no further. Only if he is still inside somebody at his own
+// drawn spot does he give ground sideways, and then by the smallest amount that clears.
+export function enforceSpacing(rows, losY) {
+  const toward = losY <= 0 ? 1 : 1   // depth is always measured away from the line
+  // Nearest the line first, so a creeping defender resolves against what is already settled.
+  const order = [...rows].sort((a, b) => Math.abs(a.depth ?? 0) - Math.abs(b.depth ?? 0))
+
+  for (let i = 0; i < order.length; i++) {
+    const a = order[i]
+    if (a.label === 'DL') continue            // the front holds its drawn spot
+    const ceiling = a.baseDepth ?? a.depth    // as deep as he is allowed to be
+
+    for (let j = 0; j < i; j++) {
+      const b = order[j]
+      const dx = a.x - b.x
+      if (Math.hypot(dx, a.y - b.y) >= MIN_DEFENDER_GAP) continue
+
+      // Give back creep first: how deep would clear him, capped at where he was drawn.
+      const needDy = Math.sqrt(Math.max(0, MIN_DEFENDER_GAP ** 2 - dx * dx))
+      const wantDepth = (b.y - losY) + needDy * toward
+      const depth = Math.min(ceiling, wantDepth)
+      a.depth = depth
+      a.y = clampFieldY(losY + depth)
+
+      // Still inside him at his own drawn depth? Then, and only then, step aside.
+      if (Math.hypot(a.x - b.x, a.y - b.y) < MIN_DEFENDER_GAP) {
+        const push = MIN_DEFENDER_GAP - Math.abs(a.x - b.x)
+        a.x = clampFieldX(a.x + (a.x >= b.x ? push : -push))
+      }
+      a.pressing = a.depth < ceiling
+    }
+  }
+  return rows
+}
+
 export function enforceNoCrossing(rows) {
   const zones = rows.filter(r => r.job === 'zone')
   if (zones.length < 2) return rows
@@ -286,7 +420,7 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
       const target = pairs.get(d.slot)
       if (!target) return d
       const shade = decideShade(d, target,
-        { hasDeepHelp, ballX, forced, preferUnderneath: !!adjust?.preferUnderneath })
+        { hasDeepHelp, ballX, forced, preferUnderneath: !!adjust?.preferUnderneath, adjust })
       const x = clamp(target.x + shadeLean(shade, target, ballX),
         d.x - MAX_MAN_TRAVEL, d.x + MAX_MAN_TRAVEL)
 
@@ -296,8 +430,18 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
       //
       // Corners are the ones who press. A linebacker on a back is already near the line, and
       // walking him onto it just vacates the middle he is standing in.
-      const mayPress = d.label === 'CB' && (blitzing || shade === 'under')
-      const depth = mayPress ? Math.min(d.depth, PRESS_DEPTH) : d.depth
+      // [halftime shapes] ALIGNMENT, not only leverage. A half of quick game says get hands on him
+      // at the line; a half of shots says give yourself room. Both move the cushion rather than
+      // the call, and both respect the ceiling: a corner may come up but never drop off deeper
+      // than he was drawn, which is the rule everything else in this file obeys.
+      const quick = adjust?.quickBias ?? 0
+      const deep = adjust?.deepBias ?? 0
+      const mayPress = d.label === 'CB' && (blitzing || shade === 'under' || quick > SHAPE_LEAN)
+      let depth = mayPress ? Math.min(d.depth, PRESS_DEPTH) : d.depth
+      if (d.label === 'CB' && deep > SHAPE_LEAN) {
+        // Back off toward the depth he was drawn at — never past it.
+        depth = Math.min(d.depth, depth + deep * CUSHION_SWING)
+      }
       return { ...d, x, y: losY + depth, depth, shade, pressing: depth < d.depth, covers: target.id }
     }
 
@@ -354,7 +498,10 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
     return d
   })
 
-  // Last of all, inside the field — see clampRowsToField. Nothing after this may move anyone.
-  for (const r of out) r.losY = losY
-  return clampRowsToField(enforceNoCrossing(out))
+  // Order matters here. Crossing first (it moves people sideways), then spacing (which moves them
+  // backward off whatever they landed on), then the field bounds last — nothing after that may
+  // move anyone, or a defender goes back out of bounds.
+  for (const r of out) { r.losY = losY; r.baseDepth = r.depth }
+  // Accounting first: it changes JOBS, and everything after it is about where bodies stand.
+  return clampRowsToField(enforceSpacing(enforceNoCrossing(accountForEveryone(out, receivers, losY)), losY))
 }
