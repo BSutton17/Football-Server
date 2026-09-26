@@ -1234,18 +1234,43 @@ const ZONE_HELP_REACH  = 20   // his effective zone radius once helping, so the 
 
 const RECEIVER_LABELS = new Set(['WR', 'TE', 'RB'])
 
-// Finds the most dangerous receiver in a zone defender's detection range: the one
-// that has penetrated closest to the landmark. Detection range extends past the zone
-// for high-awareness defenders so they read threats before they arrive ([147]/[148]).
+// ⚠️ WHO IS ACTUALLY THIS DEFENDER'S PROBLEM. This used to take whoever was nearest the
+// landmark, full stop — including a receiver already OUTSIDE the zone and running away from it.
+// A flat defender would shade out after a man leaving his area, and the back arriving underneath
+// found nobody home. "Too many times a rb in the flat is wide open because a defender in the flat
+// abandoned their zone."
+//
+// Two corrections, both about responsibility rather than proximity:
+//
+//   • A RECEIVER INSIDE THE ZONE OUTRANKS ONE OUTSIDE IT. Someone in your area is yours; someone
+//     beyond it is somebody else's until he arrives. Detection still reaches past the boundary
+//     (that is how a defender reads a threat before it gets there), but what it sees out there no
+//     longer outranks what is already in front of him.
+//   • WHERE HE WILL BE, NOT ONLY WHERE HE IS. A man running INTO the zone is the threat; one
+//     running out of it is leaving. Scoring on the nearer of now and a moment from now means the
+//     back breaking to the flat is picked up as he arrives rather than after he is open.
+const ZONE_OUTSIDE_PENALTY = 6      // yards of "distance" added for being beyond the boundary
+const ZONE_LOOKAHEAD = 0.6          // seconds of travel used to judge who is arriving
+
 export function findZoneThreat(zoneCenter, offensePlayers, awareness = 55) {
   const detectRadius = ZONE_RADIUS + (awareness / 99) * ZONE_AWARENESS_RANGE
   let best = null
-  let bestDist = detectRadius
+  let bestScore = Infinity
 
   for (const p of offensePlayers.values()) {
     if (!RECEIVER_LABELS.has(p.label ?? '')) continue
-    const d = Math.hypot(p.x - zoneCenter.x, p.y - zoneCenter.y)
-    if (d < bestDist) { bestDist = d; best = p }
+    const now = Math.hypot(p.x - zoneCenter.x, p.y - zoneCenter.y)
+    if (now >= detectRadius) continue
+
+    const soon = Math.hypot(
+      p.x + (p.vx ?? 0) * ZONE_LOOKAHEAD - zoneCenter.x,
+      p.y + (p.vy ?? 0) * ZONE_LOOKAHEAD - zoneCenter.y,
+    )
+    // The nearer of where he is and where he is heading, so arriving beats departing.
+    const reach = Math.min(now, soon)
+    const score = reach + (now > ZONE_RADIUS && soon > ZONE_RADIUS ? ZONE_OUTSIDE_PENALTY : 0)
+
+    if (score < bestScore) { bestScore = score; best = p }
   }
   return best
 }

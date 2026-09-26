@@ -49,7 +49,7 @@ export function opennessTier(openness) {
 // the ball falling incomplete — a drop on an open window, a break-up under coverage:
 //   open      → 95% catch,  5% drop,                    0% INT
 //   covered   → 45% catch, 50% broken up,               5% INT
-//   smothered → 10% catch, 70% broken up,              20% INT
+//   smothered → 10% catch, 81% broken up,               9% INT
 // These are the odds at neutral ratings, before the catch/accuracy modifiers below.
 //
 // [contested-catch feedback] `covered` was cut from 55%. Elite receivers were catching genuinely
@@ -66,10 +66,25 @@ export function opennessTier(openness) {
 // tier-independent — they add the same amount to every tier — so `smothered` and `open` are
 // untouched by this change, and conversely no combination of rating dials could have moved
 // `covered` without dragging `smothered` along with it.
+//
+// ⚠️ A HEAVILY CONTESTED THROW IS BROKEN UP, NOT PICKED. `smothered` sat at a 20% interception
+// rate, so throwing into tight coverage turned the ball over one time in five. Real defenders in
+// that window knock the ball down far more often than they catch it, and the number had two
+// knock-on effects beyond feeling punishing:
+//
+//   • IT DECIDED THE SOLVE. Against a best-responding defense a 3rd-and-long pass was worth less
+//     than a draw, purely because the run cannot be intercepted — the solved table came back 61%
+//     and 65% run on third and long, which is not football.
+//   • IT PUNISHED THE AGGRESSIVE CALL TWICE, once through the low catch rate and again through
+//     the pick.
+//
+// Nine percent keeps the gradient that matters — still nearly twice the `covered` rate, so a
+// tighter window is still a worse gamble — while moving the mass where it belongs, into balls
+// knocked away. The catch rate is untouched: a smothered throw is still caught one time in ten.
 export const TIER_ODDS = {
   open:      { catch: 0.95, int: 0.00 },
   covered:   { catch: 0.45, int: 0.05 },
-  smothered: { catch: 0.10, int: 0.20 },
+  smothered: { catch: 0.10, int: 0.09 },
 }
 
 // All rating modifiers are measured from a NEUTRAL rating: a 66/66 throw lands exactly on the

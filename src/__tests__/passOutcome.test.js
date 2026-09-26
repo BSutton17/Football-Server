@@ -36,7 +36,10 @@ describe('passProbabilities ([pass-outcome feedback])', () => {
     expect(passProbabilities(0.5, 66, 66).catchP).toBeCloseTo(TIER_ODDS.covered.catch, 2)
     expect(passProbabilities(0.1, 66, 66).catchP).toBeCloseTo(0.10, 2)
     expect(passProbabilities(0.5, 66, 66).intP).toBeCloseTo(0.05, 2)
-    expect(passProbabilities(0.1, 66, 66).intP).toBeCloseTo(0.20, 2)
+    // ⚠️ 9%, NOT 20%. A heavily contested throw is BROKEN UP far more often than it is picked;
+    // at 20% the aggressive call was punished twice over, and the solved table answered by
+    // calling the draw on third and long.
+    expect(passProbabilities(0.1, 66, 66).intP).toBeCloseTo(0.09, 2)
   })
 
   // ── [contested-catch feedback] The contested window is a coin flip, even for the very best ──
@@ -103,14 +106,17 @@ describe('passProbabilities ([pass-outcome feedback])', () => {
 
   it('0 accuracy adds +5% interception on covered/smothered windows', () => {
     expect(passProbabilities(0.5, 0, 66).intP).toBeCloseTo(0.05 + 0.05, 2)
-    expect(passProbabilities(0.1, 0, 66).intP).toBeCloseTo(0.20 + 0.05, 2)
+    expect(passProbabilities(0.1, 0, 66).intP).toBeCloseTo(0.09 + 0.05, 2)
     // ...but never on an open window.
     expect(passProbabilities(0.9, 0, 66).intP).toBe(0)
   })
 
   it('a smothered window is mostly broken up', () => {
+    // And MORE so now: the mass taken off the interception rate goes here, where it belongs.
     const p = passProbabilities(0.1, 66, 66)
-    expect(p.incompleteP).toBeCloseTo(0.70, 2)
+    expect(p.incompleteP).toBeCloseTo(0.81, 2)
+    // Still a worse gamble than a merely covered window, which is the gradient that matters.
+    expect(p.intP).toBeGreaterThan(passProbabilities(0.5, 66, 66).intP)
   })
 })
 
