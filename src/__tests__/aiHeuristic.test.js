@@ -328,10 +328,18 @@ describe('the information boundary', () => {
 
 describe('special teams', () => {
   it('matches the specified field-goal curve', () => {
-    expect(fieldGoalChance(2)).toBeCloseTo(0.975, 4)
-    expect(fieldGoalChance(19)).toBeCloseTo(0.7625, 4)
-    expect(fieldGoalChance(40)).toBeCloseTo(0.5, 4)
-    expect(fieldGoalChance(90)).toBe(0)
+    // ⚠️ THE ARGUMENT IS THE KICK DISTANCE (goal line + 17), which the old straight line was not
+    // built for: it made a 37-yarder a coin flip when a real kicker makes about 88% of them.
+    expect(fieldGoalChance(20)).toBeCloseTo(0.99, 2)    // a chip shot is a chip shot
+    expect(fieldGoalChance(37)).toBeGreaterThan(0.85)   // the attempt that started this
+    expect(fieldGoalChance(45)).toBeCloseTo(0.79, 2)
+    expect(fieldGoalChance(55)).toBeCloseTo(0.51, 2)
+    expect(fieldGoalChance(90)).toBeCloseTo(0.02, 2)    // never quite impossible
+
+    // …and it only ever gets harder with distance.
+    for (let d = 10; d < 70; d += 5) {
+      expect(fieldGoalChance(d)).toBeGreaterThanOrEqual(fieldGoalChance(d + 5))
+    }
   })
 
   it('lets it bounce inside the 10 and returns it otherwise', () => {

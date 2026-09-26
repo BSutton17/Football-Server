@@ -20,11 +20,34 @@ import { yardsToGoal } from './knowledge.js'
 
 export const XP_MAKE_CHANCE = 0.99
 export const FG_BLOCK_CHANCE = 0.01
-export const FG_DISTANCE_PENALTY = 1.25     // percentage points lost per yard
+// Roughly what one more snap costs off the clock. Below this there is no time to improve the spot,
+// so the kick is the call.
+export const ONE_MORE_PLAY_SECONDS = 8
+// ⚠️ THE ARGUMENT IS THE KICK DISTANCE, not the yards to the goal line — the caller passes
+// `fieldGoalDistance`, which already includes the end zone and the snap (goal line + 17). The old
+// parameter name said otherwise and the curve was built as though it were the shorter number.
+//
+// The straight line it used — one percentage point and a quarter per yard from 100 — made the
+// computer a dreadful kicker: a 37-yard attempt, which a real kicker makes about 88% of the time,
+// came out a coin flip at 54%, and even a chip shot from the two was 75%. "The AI are missing too
+// many field goals."
+//
+// Two segments, because real accuracy does not fall off at one rate: it is nearly flat out to the
+// high thirties and then drops away quickly past 45.
+const FG_AUTOMATIC_TO = 25      // a kick this short is as close to certain as anything in football
+const FG_MAX = 0.99
+const FG_NEAR_FALLOFF = 0.010   // per yard from 25 to 45
+const FG_LONG_FROM = 45
+const FG_LONG_FALLOFF = 0.028   // per yard past 45, where legs start to matter
+const FG_FLOOR = 0.02           // never quite impossible
 
-// Chance the AI makes a field goal from this spot.
-export function fieldGoalChance(distanceToGoal) {
-  return clamp01((100 - distanceToGoal * FG_DISTANCE_PENALTY) / 100)
+// Chance the AI makes a field goal of this KICK distance. Roughly:
+//   30 yd 94%   35 yd 89%   40 yd 84%   45 yd 79%   50 yd 65%   55 yd 51%   60 yd 37%
+export function fieldGoalChance(kickDistance) {
+  const d = Math.max(0, kickDistance)
+  const near = FG_MAX - Math.max(0, Math.min(d, FG_LONG_FROM) - FG_AUTOMATIC_TO) * FG_NEAR_FALLOFF
+  const long = Math.max(0, d - FG_LONG_FROM) * FG_LONG_FALLOFF
+  return clamp01(Math.max(near - long, FG_FLOOR))
 }
 
 // ── Punt returns ──────────────────────────────────────────────────────────────
@@ -66,6 +89,15 @@ export function fourthDownChoice(k, rng = Math.random) {
   const desperate = behind && k.quarter === 4 && k.clock <= 240
   if (desperate && legal.has('go_for_it') && !(legal.has('field_goal') && fgDistance <= 50)) {
     return choose('go_for_it')
+  }
+
+  // ⚠️ ASKED ON AN EARLY DOWN, THE ANSWER IS USUALLY "PLAY ON". The menu now opens on any down
+  // inside the last thirty seconds of a half, and everything below this point reasons as though it
+  // were fourth down — which would have the computer kicking on 1st and 10 with half a minute left
+  // and the ball still moving. It takes the points only when there is no time to do better.
+  if (k.down !== 4 && legal.has('field_goal')) {
+    const noTimeLeft = (k.clock ?? 999) <= ONE_MORE_PLAY_SECONDS
+    return choose(noTimeLeft && fgDistance <= 52 ? 'field_goal' : 'go_for_it')
   }
 
   // In range and it is worth more than the down.

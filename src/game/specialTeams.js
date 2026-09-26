@@ -352,10 +352,29 @@ export const DECISION_SECONDS = 5
 const FG_MIDFIELD_LINE = 50   // must be past this to attempt a field goal
 const PUNT_DEADZONE    = 65   // opponent's 35 — no punts from here in
 
+// ⚠️ THE END OF A HALF IS ITS OWN DOWN. With the clock nearly gone the down number stops being
+// what decides whether to kick: on 1st and 10 with twenty seconds left and the ball on the 30, the
+// choice between running another play and taking the points is a real one, and the menu only ever
+// appeared on 4th down. This opens it on ANY down inside the window.
+//
+// Only in the second and fourth quarters, because those are the ones that end something. And only
+// when a field goal is actually available — with nothing to choose between, a menu is just a
+// five-second pause before the snap.
+export const END_OF_HALF_SECONDS = 30
+const ENDING_QUARTERS = new Set([2, 4])
+
+export function isEndOfHalfWindow(state) {
+  return ENDING_QUARTERS.has(state.quarter)
+    && (state.clock ?? Infinity) <= END_OF_HALF_SECONDS
+    && state.yardLine > FG_MIDFIELD_LINE
+}
+
 export function canFieldGoal(state) {
-  return state.down === RULES.DOWNS && state.yardLine > FG_MIDFIELD_LINE
+  return (state.down === RULES.DOWNS || isEndOfHalfWindow(state)) && state.yardLine > FG_MIDFIELD_LINE
 }
 export function canPunt(state) {
+  // Still fourth down only. Punting away the last twenty seconds of a half is not a decision
+  // anybody needs offered to them, and the request was go-for-it or the field goal.
   return state.down === RULES.DOWNS && state.yardLine < PUNT_DEADZONE
 }
 
@@ -372,6 +391,11 @@ export function isDecisionLegal(state, option) {
 // field goal once a punt is off the table (opponent's 35+). Go For It is never auto-selected — a
 // kick is always legal somewhere on a 4th down, so a timeout always yields special teams.
 export function decisionDefault(state) {
+  // ⚠️ INSIDE THE WINDOW ON AN EARLY DOWN, DOING NOTHING MEANS PLAYING ON. The timeout default
+  // exists so a kick still happens when nobody answers a FOURTH-down menu. Applying that here
+  // would kick a field goal on 1st and 10 because the player took five seconds to decide, which
+  // is the opposite of leaving them the choice.
+  if (state.down !== RULES.DOWNS && isEndOfHalfWindow(state)) return DECISION.GO_FOR_IT
   if (canPunt(state))      return DECISION.PUNT
   if (canFieldGoal(state)) return DECISION.FIELD_GOAL
   return DECISION.GO_FOR_IT
@@ -406,7 +430,7 @@ export function serializeDecision(state, viewerSlot) {
 // Is a 4th-down decision required for this play? (Offense pre-snap, 4th down, not already kicking.)
 export function decisionRequired(state) {
   return state.phase === PHASE.PRE_SNAP
-    && state.down === RULES.DOWNS
+    && (state.down === RULES.DOWNS || isEndOfHalfWindow(state))
     && !state.specialTeams
 }
 
