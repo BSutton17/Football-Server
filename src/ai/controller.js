@@ -14,7 +14,7 @@
 import { loadPlaybook } from '../playbook/store.js'
 import {
   hasAuthoredOffense, hasAuthoredDefense, callAuthoredOffense, buildAuthoredOffense,
-  callAuthoredDefense, buildAuthoredDefense,
+  callAuthoredDefense, buildAuthoredDefense, formationLookId,
 } from './playbook/runAuthored.js'
 import { adjustOffense } from './playbook/adjustOffense.js'
 import { solvedTable } from './playcall/table.js'
@@ -180,6 +180,8 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // coverage for the rest of the drive — and because alignDefense re-runs on every opponent
     // placement, it would look like it was deciding afresh each time while never changing.
     self.authoredCall = null
+    self.authoredLook = null   // …and the look it was chosen against, so a new play re-decides
+    self.coverageOnField = []  // …and who the last shell had out there
     self.players = []
     self.setAt = null
     self.manualFrozen = false
@@ -354,6 +356,20 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   // fires — place_player and assign_coverage — so nothing downstream can tell them apart.
   function placeAuthoredDefense(call, { losY, ballX, receivers }) {
     const rows = buildAuthoredDefense(call, { losY, ballX, receivers, roster })
+
+    // ⚠️ A RE-CALLED SHELL MUST TAKE THE PREVIOUS ONE'S DEFENDERS OFF. Shells field different
+    // numbers behind the line — seven behind a four-man front, eight behind a three — so going
+    // from the eight-man shell to the seven-man one placed seven and left the eighth standing
+    // where he was. Twelve men, and the extra one still had last call's assignment.
+    const wanted = new Set(rows.map(r => r.id))
+    for (const id of self.coverageOnField ?? []) {
+      if (wanted.has(id)) continue
+      self.expectMissingRemoval = true
+      socket.fire('remove_player', id)
+      self.expectMissingRemoval = false
+      self.placedAt.delete(id)
+    }
+    self.coverageOnField = [...wanted]
     for (const d of rows) {
       // ⚠️ Only a placement that actually MOVES him. Re-sending the same spot is what a player
       // sees as the defense twitching: every re-align rebroadcast eleven positions and the client
@@ -394,7 +410,24 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // all — the quarterback stands untouched and the play never ends.
     const authoredD = self.overrideDefensiveCall ? null : authoredBook()
     const runningAuthored = authoredD && hasAuthoredDefense(authoredD)
+    // ⚠️ A NEW OFFENSIVE LOOK IS A NEW QUESTION. The shell was chosen once per play and never
+    // revisited, so an offense that changed its whole personnel grouping — three receivers out,
+    // an empty set in — was answered by the call made against the formation it had abandoned. The
+    // defense realigned its bodies and kept the wrong coverage, which is exactly what "switching
+    // plays does not switch the defense" looks like from the other side of the ball.
+    //
+    // Keyed on the LOOK and not on position, which is the distinction that matters here: the whole
+    // information structure is that the defense answers the formation it can see. Re-rolling on
+    // every twitch would let a human shuffle a receiver back and forth until they liked the
+    // coverage, and would also put the twitching back that `placedAt` exists to stop. Personnel
+    // changing is a real event; a man moving two yards is not.
+    const look = formationLookId(receivers)
+    if (runningAuthored && self.authoredCall && self.authoredLook !== look) {
+      self.authoredCall = null
+      say(`offense changed to ${look} — re-calling the defense`)
+    }
     if (runningAuthored && !self.authoredCall) {
+      self.authoredLook = look
       self.authoredCall = self.forceAuthoredShell
         ? forceOneShell(authoredD, self.forceAuthoredShell)
         : callAuthoredDefense(authoredD, k, { ballX, receivers, rng, ...brains() })

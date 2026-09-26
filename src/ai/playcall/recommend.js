@@ -334,7 +334,12 @@ export function layoutPlayForClient(book, playId, { losY, ballX, mirror = false 
 // looks right and is aligned against an offense that is not on the field.
 //
 // This is the literal promise of the feature: the player gets the AI's defense, not a picture of it.
-export function layoutShellForClient(book, shellId, { losY, ballX, receivers = [], adjust = null }) {
+// How many linemen the CLIENT auto-places for a defense. It is a fixed four (`getDLPlayers` in
+// Client/src/game/formation.ts) and it is not negotiable from here.
+export const CLIENT_AUTO_DL = 4
+
+export function layoutShellForClient(book, shellId,
+  { losY, ballX, receivers = [], adjust = null, autoDL = CLIENT_AUTO_DL }) {
   const shell = book?.shells?.[shellId]
   const formation = book?.defFormations?.[shell?.formationId]
   if (!shell || !formation) return null
@@ -349,6 +354,42 @@ export function layoutShellForClient(book, shellId, { losY, ballX, receivers = [
     adjust,
   })
 
+  // ⚠️ THE CLIENT ALWAYS FIELDS FOUR LINEMEN, AND FIVE OF THE AUTHORED FORMATIONS ONLY HAVE
+  // THREE. Those five are 3 DL plus EIGHT behind them — eleven on the server, where the front is
+  // built to match the shell. The client's front is a fixed four, so loading one of them put four
+  // linemen and eight defenders on the grass: TWELVE MEN. It showed up on nickel and the other
+  // three-down fronts, which is precisely the five.
+  //
+  // The extra auto lineman is already rushing, so the defender who gives way is a RUSHER: the
+  // fourth man in the front is simply somebody else now. Dropping a coverage player instead would
+  // leave a hole in the shell and change what the call actually is.
+  const back = rows.filter(r => r.label !== 'DL')
+  const authoredFront = rows.length - back.length
+  let surplus = Math.max(0, autoDL - authoredFront)
+
+  // Who gives way, in order of how little the shell loses by it. The extra auto lineman is already
+  // rushing, so a spare rusher costs nothing at all; a spy costs a little; a man defender with
+  // NOBODY TO COVER costs nothing either, because six in man against five receivers always leaves
+  // one over. Only past all of those does a real coverage player go, and then the deepest
+  // duplicate — two men on the same deep third is the one place the shell can spare a body.
+  const kept = [...back]
+  const dropOne = (pick) => {
+    const i = kept.findIndex(pick)
+    if (i === -1) return false
+    kept.splice(i, 1)
+    surplus--
+    return true
+  }
+  while (surplus > 0) {
+    if (dropOne(r => r.job === 'rush')) continue
+    if (dropOne(r => r.job === 'spy')) continue
+    if (dropOne(r => r.job === 'man' && !r.covers)) continue
+    // Deepest zone last, and only when there is more than one deep defender to begin with.
+    const deep = kept.filter(r => r.job === 'zone').sort((a, b) => (b.zoneCenter?.depth ?? b.depth ?? 0) - (a.zoneCenter?.depth ?? a.depth ?? 0))
+    if (deep.length > 1 && dropOne(r => r === deep[0])) continue
+    break     // nothing left that can be spared without wrecking the call
+  }
+
   return {
     id: shellId,
     name: shell.name,
@@ -357,15 +398,23 @@ export function layoutShellForClient(book, shellId, { losY, ballX, receivers = [
     formationName: formation.name ?? shell.formationId,
     // The linemen are auto-placed by both sides already (see the note in authored.js), so they are
     // dropped here rather than fought over.
-    spots: rows.filter(r => r.label !== 'DL').map(r => ({
+    spots: kept.map(r => ({
       slot: r.slot,
       label: r.label,
       x: r.x,
       y: r.y,
       job: r.job,
       zone: r.zone ?? null,
-      zoneCenterX: r.zoneCenter ? clampX(ballX + r.zoneCenter.dx) : null,
-      zoneCenterY: r.zoneCenter ? losY + r.zoneCenter.depth : null,
+      // ⚠️ A ZONE CENTRE IS ALWAYS A NUMBER. `assign_coverage` validates it as one, so a shell whose
+      // zone was authored without a landmark sent null and had the WHOLE assignment refused —
+      // which leaves that defender with no job, and the engine rushes anyone it has no job for. One
+      // unlandmarked zone silently became a free rusher and an empty hook. The server path learned
+      // this already; this path was written later and repeated it.
+      //
+      // Falling back to the defender's own spot is what the engine would compute anyway: a zone
+      // with no landmark is a zone centred on the man playing it.
+      zoneCenterX: clampX(r.zoneCenter ? ballX + r.zoneCenter.dx : r.x),
+      zoneCenterY: r.zoneCenter ? losY + r.zoneCenter.depth : r.y + (DEFAULT_ZONE_DEPTH[r.zone] ?? 4),
       covers: r.covers ?? null,
       shade: r.shade ?? 'none',
     })),
@@ -373,4 +422,6 @@ export function layoutShellForClient(book, shellId, { losY, ballX, receivers = [
 }
 
 const FIELD_W = 53.33
+// How far in front of the defender an unlandmarked zone sits, by kind — mirrors runAuthored.js.
+const DEFAULT_ZONE_DEPTH = { flat: 2, curl: 5, hook: 4, deep: 8 }
 const clampX = (x) => Math.max(0.5, Math.min(FIELD_W - 0.5, x))

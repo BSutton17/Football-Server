@@ -101,6 +101,10 @@ export function registerGameHandlers(io, socket) {
     // [role drift] Derived, not the socket.data cache — see roleOf in validation.js.
     const map = roleOf(socket) === 'offense' ? state.offensePlayers : state.defensePlayers
     map.delete(id)
+    // ⚠️ AND HIS ASSIGNMENT GOES WITH HIM. A defender taken off the field left his coverage entry
+    // behind in `defenseCoverage`, so the map described players who were not out there — the count
+    // drifted above eleven and anything iterating assignments was reading a ghost.
+    state.defenseCoverage?.delete(id)
     io.to(socket.data.roomId).emit('player_removed', id)
   })
 

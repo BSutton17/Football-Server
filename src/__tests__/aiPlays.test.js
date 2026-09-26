@@ -133,7 +133,17 @@ describe('the AI takes the field', () => {
   it('gives every coverage player it places a real assignment', () => {
     if (g.state.possession === 1) return   // the AI is on offense this time; nothing to check
 
-    expect(g.state.defenseCoverage.size).toBe(7)
+    // ⚠️ SEVEN OR EIGHT, NOT ALWAYS SEVEN. A four-man front leaves seven behind it and a
+    // three-man front eight, and the authored playbook has both. What must always hold is that
+    // every defender who is NOT a lineman has a real assignment, and that nobody has one who is
+    // no longer on the field.
+    const cover = [...g.state.defensePlayers.values()].filter(p => p.label !== 'DL')
+    expect(g.state.defenseCoverage.size).toBe(cover.length)
+    expect(g.state.defenseCoverage.size).toBeGreaterThanOrEqual(7)
+    expect(g.state.defenseCoverage.size).toBeLessThanOrEqual(8)
+    for (const id of g.state.defenseCoverage.keys()) {
+      expect(g.state.defensePlayers.has(id)).toBe(true)
+    }
     const legal = new Set(['man', 'zone', 'blitz', 'spy'])
     for (const [id, cov] of g.state.defenseCoverage) {
       expect({ id, type: cov.type, ok: legal.has(cov.type) }).toEqual({ id, type: cov.type, ok: true })
