@@ -15,7 +15,7 @@
 // That is exactly the information each side is allowed, and it is the same information the AI runs
 // on — so this cannot leak anything a player could not already read for themselves.
 
-import { situationKey } from './situation.js'
+import { situationKey, distanceBand, fieldZone } from './situation.js'
 import { playDepth } from './select.js'
 import { shellFit } from './tendencies.js'
 import { layoutAuthored, routeFor } from '../playbook/authored.js'
@@ -50,12 +50,54 @@ const normalize = (w) => {
   return total > 0 ? w.map(x => x / total) : w.map(() => 1 / w.length)
 }
 
+// ⚠️ THE SHORTLIST IS SAMPLED, NOT RANKED, AND THAT IS A REVERSAL. Taking the strict top three
+// made the panel show the SAME three plays and the SAME three shells on every snap of every game,
+// because the scoring is deterministic — open it on 1st and 10 in the first quarter and in the
+// fourth and it was identical. A menu that never changes is a menu you stop opening, and it also
+// quietly retires most of an authored playbook.
+//
+// Weighted by score, so a good option is still far likelier than a poor one; it is the tie-break
+// among comparable options that varies. The AI's own call is unaffected — it samples through
+// `select.js` and always did.
+// ⚠️ VARIETY NEVER REACHES AN OPTION THAT DOES NOT BELONG. Sampling straight across the scores
+// put a thirty-yard route back on the 4th-and-goal-from-the-2 menu: its weight was tiny, but tiny
+// is not zero and three draws found it. Anything scoring below a fraction of the best is out of
+// the pool entirely, so the shortlist varies among plays that are all actually callable here.
+// Tuned against the real playbook: low enough that several comparable plays qualify on an ordinary
+// down, high enough that a route which cannot physically be run here scores orders of magnitude
+// below it and never enters the pool.
+const VARIETY_FLOOR = 0.08
+
+function sampleWeighted(items, weights, count, rng) {
+  const best = Math.max(...weights, 0)
+  const cutoff = best * VARIETY_FLOOR
+  const eligible = items
+    .map((item, i) => ({ item, w: weights[i] ?? 0 }))
+    .filter(p => p.w >= cutoff)
+  // Never hand back an empty menu because the floor was too aggressive for this playbook.
+  const pool = (eligible.length ? eligible : items.map((item, i) => ({ item, w: weights[i] ?? 0 })))
+    .map(p => ({ item: p.item, w: Math.max(p.w, 1e-9) }))
+  const out = []
+  while (out.length < count && pool.length) {
+    const total = pool.reduce((a, p) => a + p.w, 0)
+    let r = rng() * total
+    let idx = pool.length - 1
+    for (let i = 0; i < pool.length; i++) {
+      r -= pool[i].w
+      if (r <= 0) { idx = i; break }
+    }
+    out.push(pool[idx].item)
+    pool.splice(idx, 1)      // without replacement: three slots, three different answers
+  }
+  return out
+}
+
 // ── Offense ─────────────────────────────────────────────────────────────────
 //
 // Pass plays only, from ANY formation — which is what makes this worth opening. The player is not
 // being asked to pick a formation first and then live with what is behind it; the shortlist is
 // drawn across the whole playbook and brings its formation with it.
-export function recommendOffense(book, situation, { solved = null, count = 3 } = {}) {
+export function recommendOffense(book, situation, { solved = null, count = 3, rng = Math.random } = {}) {
   const all = Object.entries(book?.plays ?? {}).map(([id, p]) => ({ ...p, id }))
   const plays = all.filter(p => p.playType !== 'run')
   if (!plays.length) return []
@@ -77,24 +119,23 @@ export function recommendOffense(book, situation, { solved = null, count = 3 } =
     .map((p, i) => ({ play: p, score: scores[i] }))
     .sort((a, b) => b.score - a.score)
 
-  // ⚠️ ONE PER FORMATION, so three recommendations are three real choices. Ranking alone hands back
-  // the same formation three times with slightly different route combinations, which looks like a
-  // choice and is not — and it also means three identical personnel groupings, so the defense
-  // learns nothing it could not already see.
-  const out = []
-  const seen = new Set()
+  // ⚠️ ONE PER FORMATION, so three recommendations are three real choices. Three plays out of the
+  // same formation look like a choice and are not — same personnel, same picture for the defense,
+  // only the routes differ.
+  //
+  // The formation is sampled by its BEST play's score, then that play comes with it.
+  const best = new Map()
   for (const r of ranked) {
-    if (seen.has(r.play.formationId)) continue
-    seen.add(r.play.formationId)
-    out.push(describeOffense(r, book, situation))
-    if (out.length >= count) break
+    if (!best.has(r.play.formationId)) best.set(r.play.formationId, r)
   }
-  // A playbook thin on formations still owes the player a full menu.
-  for (const r of ranked) {
-    if (out.length >= count) break
-    if (out.some(o => o.id === r.play.id)) continue
-    out.push(describeOffense(r, book, situation))
-  }
+  const formations = [...best.values()]
+  const chosen = sampleWeighted(formations, formations.map(r => r.score), count, rng)
+  const out = chosen.map(r => describeOffense(r, book, situation))
+
+  // ⚠️ A SHORT MENU BEATS A PADDED ONE. This used to top the list up to three from the full
+  // ranking, which walked straight past the quality floor — a twenty-yard route reappeared on the
+  // 4th-and-goal-from-the-2 menu purely to make the count. Two callable plays are a better answer
+  // than three where one cannot be run, so the list is simply as long as it deserves to be.
   return out
 }
 
@@ -157,7 +198,8 @@ function whyOffense(depth, { distance = 10, yardLine = 50 } = {}) {
 // collapses onto whatever the situation favours — three zones on 3rd and 12 — which is both a
 // worse menu and a readable one. Filling one slot per bucket guarantees the player is always being
 // offered a genuine change of answer rather than three shades of the same one.
-export function recommendDefense(book, situation, look, { solved = null, adjust = null } = {}) {
+export function recommendDefense(book, situation, look,
+  { solved = null, adjust = null, rng = Math.random } = {}) {
   const shells = Object.entries(book?.shells ?? {}).map(([id, s]) => ({ ...s, id }))
   if (!shells.length) return []
 
@@ -168,17 +210,57 @@ export function recommendDefense(book, situation, look, { solved = null, adjust 
   const scored = shells.map((s, i) => ({
     shell: s,
     kind: classifyShell(s),
-    score: (table?.[s.id] ?? personnelFit(s, look)) * fit[i],
+    score: (table?.[s.id] ?? personnelFit(s, look) * situationalShellFit(s, situation)) * fit[i],
   }))
 
+  // ⚠️ ALWAYS ONE ZONE, ONE MAN AND ONE BLITZ — and, where the playbook allows it, three
+  // different PACKAGES. Three calls out of the same defensive formation show the offense the same
+  // eleven bodies in the same places, which is the thing a shortlist is supposed to avoid.
   const out = []
+  const usedFormations = new Set()
   for (const kind of ['zone', 'man', 'blitz']) {
-    const best = scored
-      .filter(s => s.kind === kind)
-      .sort((a, b) => b.score - a.score)[0]
-    if (best) out.push(describeDefense(best, book, look))
+    const ofKind = scored.filter(s => s.kind === kind)
+    if (!ofKind.length) continue
+    const fresh = ofKind.filter(s => !usedFormations.has(s.shell.formationId))
+    const pool = fresh.length ? fresh : ofKind
+    const [pick] = sampleWeighted(pool, pool.map(s => s.score), 1, rng)
+    usedFormations.add(pick.shell.formationId)
+    out.push(describeDefense(pick, book, look))
   }
   return out
+}
+
+// ⚠️ WITHOUT THIS THE DEFENSIVE SHORTLIST IGNORED THE SITUATION ENTIRELY. `personnelFit` reads
+// only the receiver count, so until a bucket is solved the same three shells came back on 3rd and
+// 1 as on 3rd and 18 — the down and the distance changed nothing at all.
+function situationalShellFit(shell, situation) {
+  const band = distanceBand(situation?.distance ?? 10).id
+  const zone = fieldZone(situation?.yardLine ?? 50).id
+  const jobs = countJobs(shell)
+  const kind = classifyShell(shell)
+
+  // How deep this shell is actually playing, which is what distance argues about.
+  let deep = 0
+  for (const a of Object.values(shell?.assignments ?? {})) {
+    if (a?.job === 'zone' && (a.zone === 'deep' || (a.center?.depth ?? 0) >= 12)) deep++
+  }
+
+  let w = 1
+  if (band === 'short') {
+    w *= 1 + 0.30 * Math.max(jobs.rush - 4, 0)    // crowd the line
+    w *= deep >= 3 ? 0.55 : 1                     // three deep on 3rd and 1 is a giveaway
+    if (kind === 'blitz') w *= 1.35
+  } else if (band === 'verylong') {
+    w *= deep >= 2 ? 1.45 : 0.75                  // keep it in front of the sticks
+    if (kind === 'blitz') w *= 0.8
+  } else if (band === 'long') {
+    w *= deep >= 2 ? 1.15 : 0.95
+  }
+
+  // The deep ball stops existing near the goal line, so depth stops being worth paying for.
+  if (zone === 'goalline' || zone === 'redzone') w *= deep >= 3 ? 0.6 : 1.15
+
+  return Math.max(w, 0.05)
 }
 
 // The same shape-matching the selector's prior uses: answering four receivers with a base defense

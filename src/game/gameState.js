@@ -324,14 +324,23 @@ export function resetPlay(state) {
   state.playClock        = 25
   state.playClockRunning = true
 
-  // [offline] "The defense is ready" is a declaration about THIS play, not about the game. Leaving
-  // it set meant the Set Defense button worked exactly once: every later press was refused, and
-  // every later countdown was silently the short 3-second one, so the "Offense is set…" banner
-  // flashed past too quickly to read. Reset here, at the one place a new play begins.
-  if (state.solo) {
-    state.solo.defenseSet = false
-    state.solo.countdown  = null
-  }
+  clearPerPlayDeclarations(state)
+}
+
+// [offline] "The defense is ready" is a declaration about THIS play, not about the game. Leaving it
+// set means the Set Defense button works exactly ONCE per game: every later press is refused by
+// `markDefenseSet`, and every later countdown is silently the short one.
+//
+// ⚠️ IT LIVES HERE BECAUSE THERE ARE TWO PLACES A PLAY BEGINS, AND ONLY ONE OF THEM IS THIS FILE.
+// `resetPlay` above is called by the TRAINING harness and by nothing else; the real game starts its
+// plays in `startNextPlay` (eventQueue.js), which had grown its own copy of the reset list and
+// never included this line. The comment here used to claim this was "the one place a new play
+// begins", which was the thing that made it look done. Both callers now share this function, so a
+// new per-play declaration cannot be added to one path and forgotten in the other.
+export function clearPerPlayDeclarations(state) {
+  if (!state?.solo) return
+  state.solo.defenseSet = false
+  state.solo.countdown  = null
 }
 
 // Advances down and distance after a play ends.

@@ -5,7 +5,7 @@ import {
 } from './stats.js'
 import { observePlay, adjustmentsFor, describeAdjustments } from '../ai/playcall/tendencies.js'
 import { RULES, FIELD, FIELD_CENTER_X } from '../constants.js'
-import { getGame, advanceDown, changePossession, yardLineFromAbsY, getLosY, clampToHash } from './gameState.js'
+import { getGame, advanceDown, changePossession, yardLineFromAbsY, getLosY, clampToHash, clearPerPlayDeclarations } from './gameState.js'
 import {
   DECISION, DECISION_SECONDS, decisionRequired, isDecisionLegal, decisionDefault, fieldGoalDistance,
   KICK, ST_PHASE, beginSpecialTeams, advanceSTPhase, endSpecialTeams, serializeSpecialTeams,
@@ -1460,6 +1460,10 @@ export function startNextPlay(roomId, io, { quiet = false } = {}) {
   state.statsRouteDepth  = null   // how deep this play's routes ran, for the tendency read
   state.statsRushers     = null   // how many the defense sent
   state.statsPlayType    = null   // what was CALLED, which is not what statsWasPass answers
+
+  // [offline] The defense may declare itself ready again on this play — see the note on the
+  // function. Without this the Set Defense button worked exactly once per game.
+  clearPerPlayDeclarations(state)
 
   transition(state, PHASE.PRE_SNAP)
 
