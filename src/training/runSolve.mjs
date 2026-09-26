@@ -179,7 +179,36 @@ const possessionValue = measurePossessionValue()
 console.log(`[solve] a possession is worth ${possessionValue.toFixed(1)} yards in this engine`)
 
 console.log('[solve] measuring which situations actually happen...')
-const situations = realSituations(MAX_BUCKETS)
+const allSituations = realSituations(MAX_BUCKETS)
+
+// ── Sharding ───────────────────────────────────────────────────────────
+//
+// SHARD=i/n solves every nth bucket starting at i, so n copies of this can run side by side on a
+// machine with cores to spare. One pass over the real playbook takes hours on a single core and
+// the buckets do not interact — each is its own game — so this is close to free speed.
+//
+// ⚠️ EACH SHARD NEEDS ITS OWN SOLVE_DIR. They checkpoint to `state.json` by name; pointed at the
+// same directory they would overwrite each other's work, and the last one to finish would look
+// like a complete solve while holding a twelfth of it. `scripts/mergeSolve.mjs` puts them back
+// together.
+//
+// The bucket list itself is measured from fixed seeds, so every shard derives the SAME ordered
+// list and the slices line up without the shards having to agree on anything at run time.
+const SHARD = process.env.SHARD ?? null
+let situations = allSituations
+if (SHARD) {
+  const [iRaw, nRaw] = SHARD.split('/')
+  const index = Number(iRaw), count = Number(nRaw)
+  if (!Number.isInteger(index) || !Number.isInteger(count) || count < 1 || index < 0 || index >= count) {
+    throw new Error(`SHARD must be "i/n" with 0 <= i < n; got "${SHARD}"`)
+  }
+  situations = allSituations.filter((_, i) => i % count === index)
+  console.log(`[solve] SHARD ${index + 1} of ${count}: ${situations.length} of ${allSituations.length} buckets`)
+  if (!situations.length) {
+    console.log('[solve] nothing in this shard; exiting cleanly')
+    process.exit(0)
+  }
+}
 const totalCells = situations.length * plays.length * shells.length * SAMPLES
 console.log(`[solve] ${situations.length} buckets x ${plays.length} plays x ${shells.length} shells x ${SAMPLES} = ${totalCells.toLocaleString()} plays to simulate`)
 
