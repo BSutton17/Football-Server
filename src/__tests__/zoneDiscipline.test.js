@@ -1,5 +1,6 @@
 import { describe, it, expect } from '@jest/globals'
 import { findZoneThreat } from '../game/systems/movement.js'
+import { pairUnderneathZones } from '../ai/playbook/alignAuthored.js'
 
 // ⚠️ "TOO MANY TIMES A RB IN THE FLAT IS WIDE OPEN BECAUSE A DEFENDER IN THE FLAT ABANDONED THEIR
 // ZONE." The threat pick took whoever was nearest the landmark, full stop — including a receiver
@@ -52,5 +53,48 @@ describe('who a zone defender answers for', () => {
       ['wr', { id: 'wr', label: 'WR', x: 9, y: 43 }],
     ]), 55)
     expect(threat.id).toBe('wr')
+  })
+})
+
+describe('where an underneath zone lines up', () => {
+  const LOS = 40
+  const split = [
+    { id: 'wide', label: 'WR', x: 5, y: LOS },
+    { id: 'slot', label: 'WR', x: 17, y: LOS },
+    { id: 'back', label: 'RB', x: 26, y: LOS - 6 },   // in the backfield, not a body to align on
+  ]
+  const zone = (slot, dx, x, z) => ({ slot, job: 'zone', zone: z, dx, x, depth: 4, label: 'CB' })
+
+  it('⚠️ TAKES A MAN EACH RATHER THAN THE AVERAGE OF SEVERAL', () => {
+    // Sliding to the mean parks a flat defender between two receivers, covering neither.
+    const pairs = pairUnderneathZones(
+      [zone('CB1', -18, 8, 'flat'), zone('LB1', -8, 18, 'curl')], split, LOS, 26.7,
+    )
+    expect(pairs.get('CB1')?.id).toBe('wide')
+    expect(pairs.get('LB1')?.id).toBe('slot')
+  })
+
+  it('never gives two defenders the same receiver', () => {
+    const pairs = pairUnderneathZones(
+      [zone('CB1', -18, 6, 'flat'), zone('LB1', -14, 7, 'curl')], split, LOS, 26.7,
+    )
+    const claimed = [...pairs.values()].map(r => r.id)
+    expect(new Set(claimed).size).toBe(claimed.length)
+  })
+
+  it('⚠️ LEAVES DEEP ZONES ALONE — they are responsible for an area behind everyone', () => {
+    const deep = [{ slot: 'S1', job: 'zone', zone: 'deep', dx: -8, x: 18, depth: 15, label: 'S' }]
+    expect(pairUnderneathZones(deep, split, LOS, 26.7).size).toBe(0)
+  })
+
+  it('does not align on a back still in the backfield', () => {
+    const pairs = pairUnderneathZones([zone('LB1', 0, 26, 'hook')], split, LOS, 26.7)
+    expect([...pairs.values()].some(r => r.id === 'back')).toBe(false)
+  })
+
+  it('holds its landmark rather than running across the formation', () => {
+    // A receiver far outside the reach is somebody else's problem.
+    const pairs = pairUnderneathZones([zone('CB1', 20, 48, 'flat')], [split[0]], LOS, 26.7)
+    expect(pairs.size).toBe(0)
   })
 })

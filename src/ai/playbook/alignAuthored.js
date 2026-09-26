@@ -40,6 +40,16 @@ const RUSHER_CREEP_MAX = 4
 // hold. This is also what stops anyone running across the field to reach a zone.
 const MAX_ZONE_SLIDE = 4
 
+// How far an UNDERNEATH zone may travel to start across from the man in it. Bigger than the plain
+// squeeze because he is going somewhere specific rather than drifting toward an average, and still
+// far short of running across the formation — `enforceNoCrossing` holds the rest of the line.
+const MAX_ZONE_ALIGN = 9
+
+// Which zones align on a man. A flat, curl or hook defender starts over somebody; a deep defender
+// is responsible for an area behind everyone and aligning him on a receiver opens the space he is
+// there to protect.
+const UNDERNEATH_ZONES = new Set(['flat', 'curl', 'hook'])
+
 // How far a man defender may travel laterally from where he was drawn. Unbounded, a corner drawn
 // at the numbers would sprint across the formation to reach a receiver on the far hash and leave
 // the picture unrecognisable.
@@ -153,6 +163,38 @@ export function shadeLean(shade, receiver, ballX) {
 
 // ── No crossing ─────────────────────────────────────────────────────────────
 //
+// Greedy nearest-receiver pairing for the underneath zones, in the same spirit as `pairMan`: the
+// defender closest to a receiver claims him, and nobody is claimed twice. Deep zones and anyone
+// not in a zone are skipped, and a back still in the backfield is not a body to line up on.
+export function pairUnderneathZones(rows, receivers, losY, ballX) {
+  const out = new Map()
+  const free = (receivers ?? []).filter(r => splitOut(r, losY))
+  if (!free.length) return out
+
+  const claimed = new Set()
+  const eligible = rows.filter(d => d.job === 'zone' && UNDERNEATH_ZONES.has(d.zone ?? ''))
+
+  // Closest pairing first, so the defender with the clearest claim gets it rather than whoever
+  // happens to come first in the formation.
+  const candidates = []
+  for (const d of eligible) {
+    for (const r of free) {
+      const sameSide = d.dx < 0 ? r.x < ballX : r.x >= ballX
+      if (!sameSide) continue
+      candidates.push({ d, r, dist: Math.abs(r.x - d.x) })
+    }
+  }
+  candidates.sort((a, b) => a.dist - b.dist)
+
+  for (const c of candidates) {
+    if (out.has(c.d.slot) || claimed.has(c.r.id)) continue
+    if (c.dist > MAX_ZONE_ALIGN) continue     // too far to be his man; he holds his landmark
+    out.set(c.d.slot, c.r)
+    claimed.add(c.r.id)
+  }
+  return out
+}
+
 // ⚠️ ZONE DEFENDERS KEEP THEIR ORDER. Two zones that swap sides have both abandoned the area they
 // were drawn to hold and are running past each other to do it. Unless the formation was AUTHORED
 // that way — which is the author's business, and is why the order preserved is the DRAWN one
@@ -198,6 +240,7 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
   const hasDeepHelp = base.some(d => d.job === 'zone' && d.zone === 'deep' && d.depth >= 10)
 
   const pairs = pairMan(base.filter(d => d.job === 'man'), receivers, ballX)
+  const zonePairs = pairUnderneathZones(base, receivers, losY, ballX)
 
   const out = base.map(d => {
     if (d.job === 'man') {
@@ -236,8 +279,23 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
       const side = receivers.filter(r =>
         splitOut(r, losY) && (d.dx < 0 ? r.x < ballX : r.x >= ballX))
       if (!side.length) return d
-      const meanX = side.reduce((a, r) => a + r.x, 0) / side.length
-      const slide = clamp(meanX - d.x, -MAX_ZONE_SLIDE, MAX_ZONE_SLIDE)
+
+      // ⚠️ AN UNDERNEATH ZONE LINES UP ON A MAN, NOT ON THE AVERAGE OF SEVERAL. Sliding to the
+      // MEAN of the receivers on his side parks a flat defender between two of them, covering the
+      // grass in between and neither of the people in it. Against trips it was worse: the mean sat
+      // well inside the widest receiver, who was then uncovered at the snap.
+      //
+      // Each underneath zone takes the nearest receiver nobody nearer has already claimed, which
+      // is the same greedy pairing man coverage uses. It is still ZONE — he plays his landmark and
+      // his area once the ball is snapped, and `enforceNoCrossing` below still guarantees two
+      // zones never run past each other to get there. This only decides where he STARTS.
+      //
+      // Deep zones are deliberately excluded: a defender responsible for a third does not align on
+      // a man, and shadowing one is how the third behind him comes open.
+      const paired = zonePairs.get(d.slot)
+      const targetX = paired ? paired.x : side.reduce((a, r) => a + r.x, 0) / side.length
+      const reach = paired ? MAX_ZONE_ALIGN : MAX_ZONE_SLIDE
+      const slide = clamp(targetX - d.x, -reach, reach)
 
       // A corner in a shallow zone may also come forward onto the receiver aligned in it.
       const nearest = side.reduce((a, r) => (Math.abs(r.x - d.x) < Math.abs(a.x - d.x) ? r : a), side[0])
