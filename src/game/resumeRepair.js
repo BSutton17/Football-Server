@@ -18,11 +18,19 @@ import { PHASE } from './stateMachine.js'
 import { startGameLoop } from './simulation.js'
 import { startNextPlay, resolveDecision } from './eventQueue.js'
 import { decisionDefault } from './specialTeams.js'
-import { serializeGameState } from './serialization.js'
+import { serializeGameState, serializePositions } from './serialization.js'
 import { getRoom } from './roomManager.js'
 
 // How long a dead ball may sit with no timer before this starts the next play itself.
 const DEAD_BALL_GRACE_MS = 1200
+
+// `serializePositions` reports where everyone is, not what they are, but `player_placed` carries the
+// label — and the label is load-bearing on arrival (movement, ratings and the auto-rush all key off
+// it). So it is read back off the live player.
+function onFieldLabel(state, pos) {
+  const map = pos.team === 'o' ? state.offensePlayers : state.defensePlayers
+  return map.get(pos.id)?.label ?? null
+}
 
 export function repairAfterResume(state, io, roomId) {
   if (!state) return []
@@ -76,6 +84,28 @@ export function repairAfterResume(state, io, roomId) {
   room?.players.forEach((socketId, slot) => {
     if (socketId) io.to(socketId).emit('game_state', serializeGameState(state, slot))
   })
+
+  // ⚠️ AND SO DOES THE FORMATION ON THE GRASS, WHICH game_state DOES NOT CARRY.
+  //
+  // Pre-snap positions reach a client only as `player_placed` events, one per body, as they are
+  // placed. A client that dropped and rebuilt during the pause — which is what a paused game on a
+  // phone does the moment the socket goes — has none of them, and nothing will ever re-send: the
+  // opponent has finished placing their eleven, and the computer only realigns when the picture
+  // changes. So the other team is invisible for the rest of the down.
+  //
+  // Re-emitting them leaks nothing: `player_placed` is already broadcast room-wide for every single
+  // placement, so this is the same data arriving a second time, and the client's handler replaces
+  // by id rather than appending.
+  if (state.phase === PHASE.PRE_SNAP || state.phase === PHASE.COUNTDOWN) {
+    for (const pos of serializePositions(state)) {
+      io.to(roomId).emit('player_placed', {
+        id: pos.id, x: pos.x, y: pos.y, team: pos.team, label: onFieldLabel(state, pos),
+      })
+    }
+  }
+  // Deliberately NOT reported in `fixed`. Like the game_state broadcast above it is part of the
+  // routine resync, not a repair of something that was broken — and the contract this file keeps is
+  // that silence means the pause was clean. A test pins that.
 
   return fixed
 }
