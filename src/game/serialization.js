@@ -3,27 +3,59 @@ import { getScoreFor, getLosY } from './gameState.js'
 import { isPlayerPaused } from './pause.js'
 import { FIELD, HIDES_OPENNESS } from '../constants.js'
 import { computeReceiverOpenness } from './utils/openness.js'
+import { ratingOf } from '../data/ratings.js'
 import { findBallCarrier } from './systems/movement.js'
 import { serializeSpecialTeams, serializeDecision, serializeConversion } from './specialTeams.js'
 import { activeXFactorIds } from './systems/xFactors.js'
 
 const RECEIVER_LABELS = new Set(['WR', 'TE', 'RB'])
 
-// Openness color is revealed only once a receiver has DECLARED ([openness reveal]): after it makes
-// its first cut (clears the first route waypoint) or, on a route with no cut (go/seam), after this
-// many seconds. Before that the coverage hasn't shown its hand, so the receiver keeps its base color.
-const OPENNESS_REVEAL_DELAY = 1.3   // seconds since snap for a no-cut route
+// A receiver with no cut to make — a go, a seam — has nothing to clear, so time stands in for a
+// break. This applies ONLY to those routes; see the note in `isReceiverReady`.
+const OPENNESS_REVEAL_DELAY = 1.3
 
-// A receiver has "declared" — the client light turns on and it becomes a viable throw target — once
-// it has made its first cut (cleared the first waypoint) or, on a no-cut route, held long enough for
-// the read to develop. Single source of truth for the ready gate (openness reveal + throw-early check).
+// ⚠️ A LAST-RESORT VALVE, NOT THE NORMAL PATH. If a receiver is jammed, blocked or otherwise
+// stuck short of his last break, the quarterback would have nobody to throw to for the whole play
+// and would simply eat the sack. Long enough that it is never the ordinary way a route declares.
+const STUCK_ROUTE_FALLBACK = 3.6
+
+// A route runner good enough to sell the break declares one waypoint early: the throw goes out in
+// anticipation of the cut rather than after it. Elite only.
+const EARLY_DECLARE_RATING = 82
+
+// A receiver has "declared" — the client light turns on and it becomes a viable throw target.
+// Single source of truth for the ready gate (openness reveal + throw-early check).
+//
+// ⚠️ PAST THE LAST BREAK, NOT THE FIRST. This used to declare after ONE waypoint, and the comment
+// describing the time fallback as being "on a route with no cut" did not match the code: the `||`
+// applied it to every route, so 1.3 seconds after the snap EVERY receiver was a legal, lit-up
+// target no matter where he was in his route. That is why receivers came open far too early and
+// why the quarterback threw to the first body rather than letting the play develop — on a
+// twelve-yard dig the throw was available while the receiver was still running his stem.
+//
+// A route declares when its last break is behind it. An elite route runner declares a beat early,
+// which is the one place anticipation belongs.
 export function isReceiverReady(p) {
   // [screen] A route the receiver does not run has nothing to declare — he is standing exactly
   // where the route puts him from the moment the ball is snapped, and no amount of waiting will
   // reveal more. So the light is on immediately. Read from the route's GEOMETRY, like every other
   // route question in the sim, rather than from a list of route names.
   if (p.routeTraits?.goesNowhere) return true
-  return (p.routeWaypointIdx ?? 0) >= 1 || (p.routeElapsed ?? 0) >= OPENNESS_REVEAL_DELAY
+  // Sat down at the end of the route and waiting for the ball — as declared as it gets.
+  if (p.routePhase === 'settled') return true
+
+  const total = p.routeWaypoints?.length ?? 0
+  const idx = p.routeWaypointIdx ?? 0
+  const elapsed = p.routeElapsed ?? 0
+
+  // A route with nothing to cut cannot signal by clearing a waypoint, so time stands in — which
+  // is what the original comment always said this delay was for.
+  if (total <= 1) return elapsed >= OPENNESS_REVEAL_DELAY
+
+  if (idx >= total - 1) return true                       // past the last break
+  if (idx >= total - 2 && (ratingOf(p, 'routeRunning') ?? 55) >= EARLY_DECLARE_RATING) return true
+
+  return elapsed >= STUCK_ROUTE_FALLBACK
 }
 
 // ── Coordinate rounding ───────────────────────────────────────────────────────

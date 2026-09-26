@@ -22,9 +22,9 @@ function state(difficulty) {
   s.offensePlayers = new Map([
     ['qb',  { id: 'qb',  label: 'QB', x: 26, y: 30 }],
     // declared (made its first cut) — the openness read is available for it
-    ['wr1', { id: 'wr1', label: 'WR', x: 40, y: 55, routeWaypointIdx: 2 }],
+    ['wr1', { id: 'wr1', label: 'WR', x: 40, y: 55, routeWaypoints: [{}, {}, {}], routeWaypointIdx: 2 }],
     // not yet declared — no read for anyone, in either difficulty
-    ['wr2', { id: 'wr2', label: 'WR', x: 12, y: 52, routeWaypointIdx: 0, routeElapsed: 0 }],
+    ['wr2', { id: 'wr2', label: 'WR', x: 12, y: 52, routeWaypoints: [{}, {}, {}], routeWaypointIdx: 0, routeElapsed: 0 }],
   ])
   s.defensePlayers = new Map([['cb1', { id: 'cb1', label: 'CB', x: 44, y: 57 }]])
   return s
@@ -148,7 +148,7 @@ describe('defense vision', () => {
     s.playDesign = { playType: 'pass', players: [] }
     s.offensePlayers = new Map([
       ['qb',  { id: 'qb',  label: 'QB', x: 26, y: 30 }],
-      ['wr1', { id: 'wr1', label: 'WR', x: 40, y: 55, routeWaypointIdx: 2 }],
+      ['wr1', { id: 'wr1', label: 'WR', x: 40, y: 55, routeWaypoints: [{}, {}, {}], routeWaypointIdx: 2 }],
     ])
     s.defensePlayers = new Map([['cb1', { id: 'cb1', label: 'CB', x: 44, y: 57 }]])
     return s

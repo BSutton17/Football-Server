@@ -165,16 +165,24 @@ describe('the defensive shortlist', () => {
   it('⚠️ ANSWERS 3RD AND 1 DIFFERENTLY FROM 3RD AND 18', () => {
     // `personnelFit` reads only the receiver count, so before `situationalShellFit` the down and
     // the distance changed nothing at all about what the defense was offered.
-    const tally = (situation) => {
-      const seen = new Set()
-      for (let i = 0; i < 60; i++) {
-        for (const s of recommendDefense(book, situation, look)) seen.add(s.id)
+    //
+    // ⚠️ MEASURED AS A FREQUENCY, NOT AS A SET. Comparing which shells appear at all over many
+    // draws is a coin-flip test: with sampling, both unions saturate to every shell of every kind
+    // and the assertion fails at random. What the fix actually changes is HOW OFTEN the deep
+    // shells come up, so that is what is measured.
+    const deepRate = (situation) => {
+      let deep = 0, n = 0
+      for (let i = 0; i < 400; i++) {
+        for (const s of recommendDefense(book, situation, look)) {
+          n++
+          if (s.id === 'cover3' || s.id === 'man2') deep++   // the two that play it deep
+        }
       }
-      return seen
+      return deep / n
     }
-    const short = tally({ down: 3, distance: 1, yardLine: 50 })
-    const long = tally({ down: 3, distance: 18, yardLine: 50 })
-    expect([...short].join()).not.toBe([...long].join())
+    const short = deepRate({ down: 3, distance: 1, yardLine: 50 })
+    const long = deepRate({ down: 3, distance: 18, yardLine: 50 })
+    expect(long).toBeGreaterThan(short + 0.05)
   })
 
   it('⚠️ ALWAYS ONE ZONE, ONE MAN AND ONE BLITZ', () => {
@@ -185,10 +193,12 @@ describe('the defensive shortlist', () => {
   })
 
   it('names how many are coming on the blitz', () => {
+    // The book has more than one pressure and the pick is sampled, so the COUNT varies — what has
+    // to hold is that it is a blitz and that the label says the true number.
     const blitz = recommendDefense(book, { down: 1, distance: 10, yardLine: 50 }, look)
       .find(o => o.kind === 'blitz')
-    expect(blitz.rushers).toBe(6)
-    expect(blitz.why).toMatch(/6-man/)
+    expect(blitz.rushers).toBeGreaterThanOrEqual(5)
+    expect(blitz.why).toMatch(new RegExp(`${blitz.rushers}-man`))
   })
 
   it('still fills what it can when the playbook has no blitz at all', () => {
