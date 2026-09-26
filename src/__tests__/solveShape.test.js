@@ -13,6 +13,22 @@ describe('⚠️ FAILING TO CONVERT COSTS SOMETHING', () => {
   // beat a one-yard conversion and the solve called 3rd and 1 a throwing down.
   const v = (o) => playValue(o, { possessionValue: POSSESSION })
 
+  it('⚠️ BARELY PAYS FOR YARDS THAT DO NOT CONVERT', () => {
+    // Charging for the failure was only half of it. Paying full price for the yardage as well meant
+    // a four-yard run on 3rd and 16 scored four yards better than an incompletion, when both punt.
+    // That is what made the solve prefer the run MORE on 3rd and 16 than on 3rd and 1.
+    const shortOfTheSticks = v({ yards: 4, down: 3, firstDown: false })
+    const incomplete = v({ yards: 0, down: 3, firstDown: false })
+    expect(shortOfTheSticks - incomplete).toBeLessThan(1)
+    // Not zero, though: a punt from four yards further up is worth something.
+    expect(shortOfTheSticks).toBeGreaterThan(incomplete)
+  })
+
+  it('still pays full price for yards on a down that continues', () => {
+    expect(v({ yards: 6, down: 1 })).toBe(6)
+    expect(v({ yards: 6, down: 2 })).toBe(6)
+  })
+
   it('charges nothing extra on first down — there are downs left', () => {
     expect(v({ yards: 0, down: 1 })).toBe(0)
     expect(v({ yards: 3, down: 2 })).toBe(3)

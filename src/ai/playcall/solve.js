@@ -79,9 +79,19 @@ export function playValue(outcome, { possessionValue }) {
   // loss the turnover branch above charges. Third down is softer: you punt, so what is lost is the
   // continuation the conversion would have bought, priced symmetrically with the bonus for getting
   // it. A team was going to punt sooner or later, so charging a whole possession would overstate it.
+  //
+  // ⚠️ AND ON THOSE DOWNS THE YARDS THEMSELVES BARELY COUNT. Charging for the failure was only
+  // half of it: this still paid full price for yardage that did not convert, so on 3rd and 16 a
+  // four-yard run scored -2.6 against an incompletion's -6.6 and looked four yards better. Both
+  // punt. Those four yards buy a marginally better punt and nothing else.
+  //
+  // That is what made the solve prefer the run MORE on 3rd and 16 (50%) than on 3rd and 1 (39%),
+  // which is backwards: the run was collecting a consolation prize for gaining yards nobody needed.
+  // Discounted hard rather than zeroed, because field position on the punt is real, just small.
   const down = outcome.down ?? 1
-  if (down >= 4) return yards - possessionValue
-  if (down === 3) return yards - possessionValue * 0.25
+  const FAILED_YARDS = 0.15
+  if (down >= 4) return yards * FAILED_YARDS - possessionValue
+  if (down === 3) return yards * FAILED_YARDS - possessionValue * 0.25
   return yards
 }
 
