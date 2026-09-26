@@ -202,18 +202,19 @@ export function decideShade(defender, receiver,
   }
   if (forced === 'in' || forced === 'out') return forced
 
-  // ⚠️ LEVERAGE POINTS AWAY FROM YOUR HELP, AND THIS HAD IT BACKWARDS. The deep help is a safety
-  // in the MIDDLE of the field, so on a receiver split wide the inside is covered and the corner's
-  // job is the outside — the comeback, the out, the fade. Playing him inside instead, on the
-  // reasoning that "the sideline is your help", left every out-breaking route uncontested: a star
-  // split wide drew inside leverage in 25 of 30 man shells and won comebacks all day.
+  // ⚠️ I FLIPPED THIS AND IT MADE THE DEFENSE WORSE. The argument was sound football — the deep
+  // help is a safety in the MIDDLE, so a corner on a receiver split wide should own the outside —
+  // and it did fix the reported problem, comebacks against a star split wide. Measured over ~1,600
+  // plays it also cost 0.30 yards a play and nine touchdowns, because taking the outside away
+  // opens everything working back in, and there is far more of that.
   //
-  // A receiver lined up TIGHT is the mirror of it. He is already next to the help, his dangerous
-  // routes are the ones working back inside, and the sideline is a long way off — so that defender
-  // takes the inside away and lets the boundary do the rest.
+  // So the default stands: funnel a wide receiver toward the sideline and the help, and take the
+  // outside away from somebody tight who already has help inside him. What handles the comeback is
+  // the HALF-TIME read above — `outsideBias` shades out once an opponent has actually shown they
+  // throw outs. Evidence about this opponent, rather than a blanket rule about every opponent.
   const outsideness = Math.abs(receiver.x - ballX)
-  if (outsideness > 14) return 'out'            // split wide: help is inside, so take the outside
-  if (outsideness < 6) return 'in'              // tight: deny the inside, the sideline is far away
+  if (outsideness > 14) return 'in'             // wide: the sideline is your help outside
+  if (outsideness < 6) return 'out'             // tight: the traffic inside is your help
   return 'over'
 }
 
