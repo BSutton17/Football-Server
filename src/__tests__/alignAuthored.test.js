@@ -446,3 +446,94 @@ describe('⚠️ TRIPS TO ONE SIDE — everybody in man is NEAR his man', () => 
     expect(rows.filter(r => r.job === 'rush')).toHaveLength(5)
   })
 })
+
+// ── Reported from a real game: congested zones ([alignment]) ───────────────
+//
+// ⚠️ "LOOK HOW CONGESTED THE ZONES ARE. WE HAVE MULTIPLE PEOPLE BASICALLY GUARDING THE SAME AREA."
+//
+// Cover 4 with the ball on a hash. The authored deep landmarks in this playbook ARE field
+// divisions — read them off and they are ±13.3 for two-deep (halves), ±17.8 and 0 for three
+// (thirds), ±20 and ±6.7 for four (quarters), all measured from the middle of a 53.33-yard field.
+// They were being resolved against the BALL, so on a hash the whole structure slid eight yards and
+// two quarters ended up on top of each other by one sideline with seventeen yards of the other
+// side unaccounted for.
+describe('⚠️ DEEP ZONES DIVIDE THE FIELD, NOT THE BALL', () => {
+  const LEFT_HASH = 53.33 * 0.35     // 18.67 — where most snaps actually happen
+  const FIELD_MID = 53.33 / 2
+  const L = 45
+
+  const quarters = {
+    category: '5-3',
+    spots: [
+      { slot: 'DL1', dx: -2.6, depth: 1 }, { slot: 'DL2', dx: -0.2, depth: 1.1 },
+      { slot: 'DL3', dx: 2.2, depth: 1.1 }, { slot: 'DL4', dx: 4.8, depth: 1.2 },
+      { slot: 'CB1', dx: -16.3, depth: 7 }, { slot: 'CB2', dx: 16.2, depth: 7 },
+      { slot: 'S1', dx: -8, depth: 9.1 }, { slot: 'S2', dx: 8, depth: 9 },
+      { slot: 'LB1', dx: -5.2, depth: 1 }, { slot: 'LB2', dx: -2.5, depth: 4.3 },
+      { slot: 'LB3', dx: 2.2, depth: 4.3 },
+    ],
+  }
+  const cover4 = {
+    assignments: {
+      DL1: { job: 'rush' }, DL2: { job: 'rush' }, DL3: { job: 'rush' }, DL4: { job: 'rush' },
+      CB1: { job: 'zone', zone: 'deep', center: { dx: -20, depth: 14 } },
+      CB2: { job: 'zone', zone: 'deep', center: { dx: 20, depth: 14 } },
+      S1:  { job: 'zone', zone: 'deep', center: { dx: -6.7, depth: 14 } },
+      S2:  { job: 'zone', zone: 'deep', center: { dx: 6.7, depth: 14 } },
+      LB1: { job: 'zone', zone: 'hook', center: { dx: -15.8, depth: 6.2 } },
+      LB2: { job: 'zone', zone: 'curl', center: { dx: 0, depth: 8 } },
+      LB3: { job: 'zone', zone: 'hook', center: { dx: 16.2, depth: 6 } },
+    },
+  }
+  const wide = [
+    { id: 'wr1', x: 7.9,  y: L, label: 'WR' },
+    { id: 'te1', x: 13.5, y: L, label: 'TE' },
+    { id: 'te2', x: 23.8, y: L, label: 'TE' },
+    { id: 'wr2', x: 37.3, y: L, label: 'WR' },
+    { id: 'rb1', x: 21.0, y: L - 6, label: 'RB' },
+  ]
+  const at = (ballX) => alignAuthored({
+    formation: quarters, shell: cover4, receivers: wide, ballX, losY: L, ready: true,
+  }).filter(r => r.zone === 'deep').map(r => r.zoneCenterX).sort((a, b) => a - b)
+
+  it('⚠️ FOUR DEEP LANDMARKS SPAN THE FIELD EVEN WITH THE BALL ON A HASH', () => {
+    const deep = at(LEFT_HASH)
+    expect(deep).toHaveLength(4)
+    // Ball-relative, these came out at roughly 0, 12, 25 and 39 — everything left, nothing right.
+    expect(deep[0]).toBeGreaterThan(2)
+    expect(deep[3]).toBeGreaterThan(40)
+  })
+
+  it('⚠️ NOBODY IS STANDING IN SOMEBODY ELSE’S QUARTER', () => {
+    const deep = at(LEFT_HASH)
+    for (let i = 1; i < deep.length; i++) expect(deep[i] - deep[i - 1]).toBeGreaterThan(8)
+  })
+
+  it('⚠️ THE STRUCTURE SHIFTS AS A UNIT — its shape is identical on either hash', () => {
+    // Each man sliding toward his own side is what closes the gaps. A secondary rotates; it does
+    // not compress. The spacing must therefore be the same wherever the ball is.
+    const gapsOf = (v) => v.slice(1).map((x, i) => +(x - v[i]).toFixed(3))
+    const left = gapsOf(at(LEFT_HASH))
+    const mid = gapsOf(at(FIELD_MID))
+    const right = gapsOf(at(53.33 * 0.65))
+    expect(left).toEqual(mid)
+    expect(right).toEqual(mid)
+  })
+
+  it('it still shades toward the formation, just not far', () => {
+    const deep = at(FIELD_MID)
+    // Drawn at the quarters off field centre; allowed to lean, never to chase.
+    for (const [i, drawn] of [FIELD_MID - 20, FIELD_MID - 6.7, FIELD_MID + 6.7, FIELD_MID + 20].entries()) {
+      expect(Math.abs(deep[i] - drawn)).toBeLessThanOrEqual(2 + 1e-9)
+    }
+  })
+
+  it('a quarter with nobody in it is still covered', () => {
+    // Everybody to one side used to leave the backside deep defender on his ball-relative spot.
+    const allLeft = wide.filter(r => r.x < 18)
+    const deep = alignAuthored({
+      formation: quarters, shell: cover4, receivers: allLeft, ballX: LEFT_HASH, losY: L, ready: true,
+    }).filter(r => r.zone === 'deep').map(r => r.zoneCenterX).sort((a, b) => a - b)
+    expect(deep[3]).toBeGreaterThan(40)
+  })
+})

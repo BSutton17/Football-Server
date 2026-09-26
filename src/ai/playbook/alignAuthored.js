@@ -86,10 +86,20 @@ const MAX_ZONE_SLIDE = 4
 // be more to the middle".
 const MAX_DEEP_SLIDE = 2
 
-// How far an UNDERNEATH zone may travel to start across from the man in it. Bigger than the plain
-// squeeze because he is going somewhere specific rather than drifting toward an average, and still
-// far short of running across the formation — `enforceNoCrossing` holds the rest of the line.
-const MAX_ZONE_ALIGN = 9
+// How far an UNDERNEATH zone may travel to start across from the man in it.
+//
+// ⚠️ THIS WAS 9, WHICH IS NOT "A LITTLE". The rule this file is built on is that a zone slides
+// toward the formation but only a little, because one that chases completely is man coverage with
+// extra steps — and nine yards is most of the way across a hook zone's whole area. In the reported
+// Cover 4 it let the middle curl defender chase eight yards to the play side, which turned three
+// evenly drawn underneath landmarks (gaps of 16 and 16) into gaps of 7 and 27: two defenders on one
+// patch and a twenty-seven yard hole beside them.
+//
+// Four matches MAX_ZONE_SLIDE and the bound the tests have always asserted on a zone defender's
+// movement, so the file now says one thing rather than two. Measured over 1,800 downs this is a
+// wash on yardage (3.82 -> 3.86 yds/play) and takes explosive plays from 1.9% to 1.6%; it is chosen
+// for holding the shape of the coverage, which is what was actually reported, not for the number.
+const MAX_ZONE_ALIGN = 4
 
 // Which zones align on a man. A flat, curl or hook defender starts over somebody; a deep defender
 // is responsible for an area behind everyone and aligning him on a receiver opens the space he is
@@ -108,6 +118,23 @@ const UNDERNEATH_ZONES = new Set(['flat', 'curl', 'hook'])
 // keeping travel sane belongs where it should have been all along — the assignment (see pairMan),
 // which no longer hands anybody a receiver on the far hash while somebody nearer is free.
 const MAX_MAN_TRAVEL = 53.33
+
+// ⚠️ A DEEP ZONE DIVIDES THE FIELD, SO IT IS ANCHORED TO THE FIELD — NOT TO THE BALL.
+//
+// This is the single most consequential line in the file. Every zone landmark was resolved as
+// `ballX + dx`, and the authored deep landmarks are field divisions: read them off the playbook and
+// they are exactly ±13.3 for two-deep (halves), ±17.8 and 0 for three (thirds), ±20 and ±6.7 for
+// four (quarters). Those numbers are measured from the middle of a 53.33-yard field.
+//
+// With the ball on a hash — which is most snaps — the ball is eight yards off centre, so the whole
+// deep structure slid eight yards with it. In Cover 4 that put two quarters on top of each other by
+// one sideline and left seventeen yards of the other side with nobody responsible for it. Reported
+// as "look how congested the zones are, multiple people basically guarding the same area", with a
+// screenshot of a hand-set defense next to it whose landmarks sat almost exactly on the quarters.
+//
+// UNDERNEATH zones stay ball-relative, and that is not an inconsistency: a flat or a hook relates to
+// the formation, which lines up on the ball. A deep quarter relates to the grass.
+const FIELD_CENTER_X = 53.33 / 2
 
 // Deeper than this behind the line and a player is in the backfield, not split out.
 const BACKFIELD_DEPTH = 2
@@ -483,6 +510,36 @@ export function enforceNoCrossing(rows) {
   return rows
 }
 
+// ⚠️ THE DEEP ZONES SHIFT AS ONE BODY, THEY DO NOT EACH DRIFT.
+//
+// Letting every deep defender slide toward the receivers on his own side is what closes the gaps
+// between them: in Cover 4 with two receivers left, the boundary quarter slid right and the left
+// inside quarter slid left, and the pair ended seven yards apart with fourteen between the others.
+// Two men covering one patch of grass is exactly the "multiple people basically guarding the same
+// area" that was reported, and it is a compression, not a rotation.
+//
+// A real secondary rotates as a unit. So one shift is computed for the whole structure — the
+// average of what each deep defender wanted — and everybody moves by it. The shape the shell was
+// drawn with is preserved exactly; only where it sits on the field changes.
+function deepStructureSlide(rows, receivers, losY, ballX) {
+  const deeps = rows.filter(d => d.job === 'zone' && d.zone === 'deep' && d.zoneCenter)
+  if (!deeps.length) return 0
+  const split = (receivers ?? []).filter(r => splitOut(r, losY))
+  if (!split.length) return 0
+
+  let total = 0
+  let n = 0
+  for (const d of deeps) {
+    const side = split.filter(r => (d.dx < 0 ? r.x < ballX : r.x >= ballX))
+    if (!side.length) continue
+    const mean = side.reduce((a, r) => a + r.x, 0) / side.length
+    total += mean - (FIELD_CENTER_X + d.zoneCenter.dx)
+    n++
+  }
+  if (!n) return 0
+  return clamp(total / n, -MAX_DEEP_SLIDE, MAX_DEEP_SLIDE)
+}
+
 // ── The adjustment ──────────────────────────────────────────────────────────
 export function alignAuthored({ formation, shell, receivers, ballX, losY, ready = true, adjust = null }) {
   const spots = formation?.spots ?? []
@@ -517,6 +574,7 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
 
   const pairs = pairMan(base.filter(d => d.job === 'man'), receivers, ballX)
   const zonePairs = pairUnderneathZones(base, receivers, losY, ballX)
+  const deepSlide = deepStructureSlide(base, receivers, losY, ballX)
 
   const out = base.map(d => {
     if (d.job === 'man') {
@@ -586,7 +644,20 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
       // flat-zone corner four yards inside, away from the receiver he was out there for.
       const side = receivers.filter(r =>
         splitOut(r, losY) && (d.dx < 0 ? r.x < ballX : r.x >= ballX))
-      if (!side.length) return d
+      // ⚠️ NOBODY ON HIS SIDE STILL MEANS HIS QUARTER NEEDS COVERING. Returning the drawn row
+      // untouched left a deep zone on the ball-relative spot, so the boundary quarter stayed
+      // bunched exactly when there was nothing over there to justify it.
+      if (!side.length) {
+        if (d.zone !== 'deep' || !d.zoneCenter) return d
+        // He still moves with the structure — a quarter with nobody in it is still his quarter.
+        const shift = (FIELD_CENTER_X - ballX) + deepSlide
+        return {
+          ...d,
+          x: d.x + shift,
+          zoneCenterX: FIELD_CENTER_X + d.zoneCenter.dx + deepSlide,
+          zoneCenter: { dx: d.zoneCenter.dx + deepSlide, depth: d.zoneCenter.depth },
+        }
+      }
 
       // ⚠️ AN UNDERNEATH ZONE LINES UP ON A MAN, NOT ON THE AVERAGE OF SEVERAL. Sliding to the
       // MEAN of the receivers on his side parks a flat defender between two of them, covering the
@@ -603,7 +674,19 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
       const paired = zonePairs.get(d.slot)
       const targetX = paired ? paired.x : side.reduce((a, r) => a + r.x, 0) / side.length
       const reach = paired ? MAX_ZONE_ALIGN : (d.zone === 'deep' ? MAX_DEEP_SLIDE : MAX_ZONE_SLIDE)
-      const slide = clamp(targetX - d.x, -reach, reach)
+
+      // Where this zone actually belongs before any shading. A deep zone belongs at its share of
+      // the FIELD (see FIELD_CENTER_X above); everything else belongs where the shell drew it
+      // relative to the ball.
+      const deepZone = d.zone === 'deep' && d.zoneCenter != null
+      // ⚠️ THE BODY MOVES WITH THE LANDMARK, IT DOES NOT MOVE ONTO IT. A shell draws a safety's
+      // body INSIDE the zone he owns on purpose — he aligns there and widens at the snap. Parking
+      // him on top of his landmark throws that away and is a different call. So re-anchoring a
+      // deep zone to the field shifts the pair together and their relationship is preserved.
+      const fieldShift = deepZone ? FIELD_CENTER_X - ballX : 0
+      const anchorX = deepZone ? FIELD_CENTER_X + d.zoneCenter.dx : d.x
+      // A deep zone takes the structure's shared shift; everyone else answers his own side.
+      const slide = deepZone ? deepSlide : clamp(targetX - anchorX, -reach, reach)
 
       // A corner in a shallow zone may also come forward onto the receiver aligned in it.
       const nearest = side.reduce((a, r) => (Math.abs(r.x - d.x) < Math.abs(a.x - d.x) ? r : a), side[0])
@@ -612,7 +695,7 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
 
       return {
         ...d,
-        x: d.x + slide,
+        x: d.x + fieldShift + slide,
         y: losY + depth,
         depth,
         pressing: depth < d.depth,
@@ -620,7 +703,7 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
         // The landmark in absolute yards, resolved here because this is where ballX is known.
         // Downstream (coverageFor) has the row and nothing else; leaving it to resolve `dx` itself
         // is what led to it giving up and using the defender's own position instead.
-        zoneCenterX: d.zoneCenter ? ballX + d.zoneCenter.dx + slide : null,
+        zoneCenterX: d.zoneCenter ? (deepZone ? anchorX : ballX + d.zoneCenter.dx) + slide : null,
       }
     }
 
