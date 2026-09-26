@@ -38,6 +38,24 @@ const RUSHER_CREEP_MAX = 4
 // How far a zone may slide toward the offense. A zone that chases the formation completely is not
 // a zone any more — it is man coverage with extra steps, and it vacates the area it was drawn to
 // hold. This is also what stops anyone running across the field to reach a zone.
+// ⚠️ THE FIELD ENDS. A defensive spot is `losY + depth`, and nothing clamped it — so on the
+// goal line a safety drawn fifteen yards deep came out at y = 115 and `place_player` refused him,
+// while a deep zone's landmark went past the back of the end zone and `assign_coverage` refused
+// the WHOLE assignment. A defender with no assignment is one the engine RUSHES, so a red-zone
+// shell quietly turned into a blitz with two holes in it. Offensive spots were already clamped by
+// `legalSpot`; the defense never was.
+//
+// The validator's range is -10..110. Half a yard inside it, so rounding cannot push a spot back
+// over the line.
+export const FIELD_MIN_Y = -9.5
+export const FIELD_MAX_Y = 109.5
+export const clampFieldY = (y) => Math.max(FIELD_MIN_Y, Math.min(FIELD_MAX_Y, y))
+// The sidelines, for the same reason: a zone slide or a man-coverage travel can push a defender
+// past them, and `place_player` refuses an x outside 0..53.33.
+export const FIELD_MIN_X = 0.5
+export const FIELD_MAX_X = 52.8
+export const clampFieldX = (x) => Math.max(FIELD_MIN_X, Math.min(FIELD_MAX_X, x))
+
 const MAX_ZONE_SLIDE = 4
 
 // How far an UNDERNEATH zone may travel to start across from the man in it. Bigger than the plain
@@ -199,6 +217,23 @@ export function pairUnderneathZones(rows, receivers, losY, ballX) {
 // were drawn to hold and are running past each other to do it. Unless the formation was AUTHORED
 // that way — which is the author's business, and is why the order preserved is the DRAWN one
 // rather than any canonical left-to-right — the order after adjustment matches the order before.
+// Every row's y, brought inside the field. Applied last, so no adjustment above can push a
+// defender back out.
+export function clampRowsToField(rows) {
+  for (const r of rows) {
+    r.x = clampFieldX(r.x)
+    const y = clampFieldY(r.y)
+    if (y !== r.y) {
+      r.y = y
+      // Depth is read downstream (press checks, deep-help tests), so it has to agree with where he
+      // actually is rather than where the shell drew him.
+      if (r.losY != null) r.depth = y - r.losY
+    }
+    if (r.zoneCenter) r.zoneCenter = { ...r.zoneCenter }
+  }
+  return rows
+}
+
 export function enforceNoCrossing(rows) {
   const zones = rows.filter(r => r.job === 'zone')
   if (zones.length < 2) return rows
@@ -319,5 +354,7 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
     return d
   })
 
-  return enforceNoCrossing(out)
+  // Last of all, inside the field — see clampRowsToField. Nothing after this may move anyone.
+  for (const r of out) r.losY = losY
+  return clampRowsToField(enforceNoCrossing(out))
 }

@@ -11,7 +11,8 @@
     "playbook:restore": "node scripts/playbook.mjs restore",
     "playbook:shells": "node scripts/playbook.mjs shells",
     "start": "node src/index.js",
-    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "solve:publish": "node scripts/publishSolve.mjs"
   },
   "dependencies": {
     "cors": "^2.8.5",

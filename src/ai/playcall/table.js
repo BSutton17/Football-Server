@@ -17,9 +17,29 @@
 
 import { readFileSync, existsSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// ⚠️ THE SOLVE HAS TO BE ABLE TO REACH PRODUCTION, AND IT COULD NOT. The runner writes into
+// `training-output/`, which is in .gitignore — so the table existed only on the machine that
+// solved it and the deployed server always fell back to the situational prior. Hours of compute
+// that the game could never actually use, and nothing said so: a missing table is a normal,
+// silent condition.
+//
+// The shipped copy lives beside the code that reads it and IS tracked. `npm run solve:publish`
+// copies a finished solve over it.
+//
+// Order matters. A fresh local solve wins over the shipped one, so a developer mid-run sees their
+// own work immediately (that is what the mtime re-read is for); the shipped copy is what every
+// other machine gets; and SOLVE_TABLE_PATH overrides both for one-off experiments.
+// ⚠️ `fileURLToPath`, NOT `.pathname`. On Windows a file URL's pathname is "/C:/Users/..." with a
+// leading slash, which fs cannot open — so the shipped table silently failed to load and the
+// server fell back to the prior, which is precisely the bug this constant exists to fix. It only
+// showed up because the check asked the shipped path directly instead of trusting the fallback.
+export const SHIPPED_TABLE_PATH = fileURLToPath(new URL('./solved.json', import.meta.url))
+export const LOCAL_TABLE_PATH = join(process.cwd(), 'training-output', 'solve', 'table.json')
 
 export const TABLE_PATH = process.env.SOLVE_TABLE_PATH
-  ?? join(process.cwd(), 'training-output', 'solve', 'table.json')
+  ?? (existsSync(LOCAL_TABLE_PATH) ? LOCAL_TABLE_PATH : SHIPPED_TABLE_PATH)
 
 const EMPTY = { offense: {}, defense: {} }
 

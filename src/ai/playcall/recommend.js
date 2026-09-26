@@ -19,7 +19,7 @@ import { situationKey, distanceBand, fieldZone } from './situation.js'
 import { playDepth } from './select.js'
 import { shellFit } from './tendencies.js'
 import { layoutAuthored, routeFor } from '../playbook/authored.js'
-import { alignAuthored } from '../playbook/alignAuthored.js'
+import { alignAuthored, clampFieldY } from '../playbook/alignAuthored.js'
 
 // At or above this many rushers a shell is a blitz rather than a coverage that happens to send
 // somebody. Four is the ordinary front.
@@ -414,7 +414,9 @@ export function layoutShellForClient(book, shellId,
       // Falling back to the defender's own spot is what the engine would compute anyway: a zone
       // with no landmark is a zone centred on the man playing it.
       zoneCenterX: clampX(r.zoneCenter ? ballX + r.zoneCenter.dx : r.x),
-      zoneCenterY: r.zoneCenter ? losY + r.zoneCenter.depth : r.y + (DEFAULT_ZONE_DEPTH[r.zone] ?? 4),
+      // Clamped for the same reason the server path is: a landmark past the back of the end zone
+      // gets the whole assignment refused, and an unassigned defender rushes.
+      zoneCenterY: clampFieldY(r.zoneCenter ? losY + r.zoneCenter.depth : r.y + (DEFAULT_ZONE_DEPTH[r.zone] ?? 4)),
       covers: r.covers ?? null,
       shade: r.shade ?? 'none',
     })),

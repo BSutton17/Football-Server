@@ -16,7 +16,7 @@
 // hand-drawn route reaches the server — so authored plays ride a path that already works.
 
 import { layoutAuthored, routeFor, slotLabel } from './authored.js'
-import { alignAuthored } from './alignAuthored.js'
+import { alignAuthored, clampFieldY } from './alignAuthored.js'
 import { adjustOffense } from './adjustOffense.js'
 import { chooseOffensivePlay, chooseDefensiveShell, offenseLookOf } from '../playcall/select.js'
 import { expectedRushers, adjustmentsFor } from '../playcall/tendencies.js'
@@ -209,7 +209,10 @@ function coverageFor(row, receivers) {
       type: 'zone',
       zoneType: row.zone ?? 'hook',
       zoneCenterX: clampToField(row.x),
-      zoneCenterY: row.y + depthBelow,
+      // ⚠️ AND THE LANDMARK HAS TO BE ON THE FIELD TOO. A deep zone near the goal line landed past
+      // the back of the end zone, `assign_coverage` refused the whole assignment, and the engine
+      // rushes anyone it has no assignment for — a red-zone shell became a blitz with holes in it.
+      zoneCenterY: clampFieldY(row.y + depthBelow),
     }
   }
   // blitz and spy are coverage TYPES in this engine rather than placements.
