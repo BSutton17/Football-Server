@@ -245,3 +245,51 @@ describe('manual rooms', () => {
     expect(socket.of('go_release')).toHaveLength(0)
   })
 })
+
+describe('⚠️ ON THIRD DOWN, OPEN IS NOT THE SAME AS USEFUL', () => {
+  // Ranking purely by openness meant that on 3rd and 15 the wide-open checkdown at four yards beat
+  // the covered receiver at sixteen every time: the quarterback took the completion and the drive
+  // ended anyway. Measured over 191 snaps of 3rd and 14, the sticks read took it from 3.04 yds/play
+  // and a 2% conversion rate to 5.78 and 11%.
+  const at = (id, y, openness) => ({ id, team: 'o', x: 26, y, ready: true, openness })
+  const field = (down, distance) => {
+    const live = new Map()
+    live.set('qb', { id: 'qb', team: 'o', x: 26, y: 34, carrier: true })
+    for (const p of [at('check', 44, 0.85), at('mid', 50, 0.55), at('deep', 57, 0.40)]) live.set(p.id, p)
+    return { down, distance, yardLine: 40, live }
+  }
+
+  it('discounts a catch that cannot convert', () => {
+    const ranked = rankTargets(field(3, 15))
+    const check = ranked.find(t => t.id === 'check')
+    expect(check.shortOfSticks).toBe(true)
+    expect(check.score).toBeLessThan(check.trueScore * 0.7)
+  })
+
+  it('⚠️ SCALES WITH HOW FAR SHORT, not merely short at all', () => {
+    // A flat discount treated a ten-yard catch on 3rd and 12 like a two-yard one, and the passer
+    // stopped throwing it at all — wrong twice over, since it makes 4th and 2 instead of 4th and 10
+    // and a sack is worse than either.
+    const ranked = rankTargets(field(3, 15))
+    const near = ranked.find(t => t.id === 'mid')
+    const far = ranked.find(t => t.id === 'check')
+    expect(near.score / near.trueScore).toBeGreaterThan(far.score / far.trueScore)
+  })
+
+  it('leaves a receiver past the sticks alone', () => {
+    const deep = rankTargets(field(3, 15)).find(t => t.id === 'deep')
+    expect(deep.shortOfSticks).toBe(false)
+    expect(deep.score).toBeCloseTo(deep.trueScore, 5)
+  })
+
+  it('does nothing on a down that does not end the drive', () => {
+    for (const t of rankTargets(field(1, 15))) {
+      expect(t.shortOfSticks).toBe(false)
+      expect(t.score).toBeCloseTo(t.trueScore, 5)
+    }
+  })
+
+  it('does nothing on 3rd and 1, where everyone is past the sticks', () => {
+    for (const t of rankTargets(field(3, 1))) expect(t.shortOfSticks).toBe(false)
+  })
+})

@@ -91,16 +91,51 @@ export function rankTargets(k, { noise = 0, rng = Math.random } = {}) {
     if (p.ready != null) own.push(p)           // only pass catchers carry `ready`
   }
 
+  // ⚠️ ON THIRD DOWN, OPEN IS NOT THE SAME AS USEFUL. This ranked purely by how open somebody was,
+  // so on 3rd and 15 the wide-open checkdown at four yards beat the covered receiver at sixteen
+  // every time — the quarterback took the completion and the drive ended anyway. "On 3rd and long
+  // the qb is too quick to throw it short instead of going for the first down."
+  //
+  // A PENALTY on being short of the sticks rather than a bonus for being past them, because the
+  // scores are compared against a patience/pressure bar: inflating them would make him throw
+  // EARLIER, which is the opposite of what is wanted. Discounting the checkdown makes him hold the
+  // ball and look for the conversion, and the bar still falls with time and pressure, so a
+  // checkdown remains better than a sack once nothing else has come open.
+  //
+  // It needs no distance test of its own. On 3rd and 1 the sticks are a yard away and almost
+  // everybody is past them, so this does nothing; the further the sticks, the more it bites.
+  const sticks = (k.yardLine ?? 0) + (k.distance ?? 10)
+  const mustConvert = (k.down ?? 1) >= 3
+
   return own
     .filter(p => p.ready)
     .map(p => {
       // The server's number when it was sent, our own estimate when it was withheld. On easy these
       // agree closely; on medium and hard only the estimate exists.
       const trueScore = p.openness ?? estimateOpenness(p, defenders, qb)
-      const score = noise ? clamp01(trueScore + (rng() * 2 - 1) * noise) : trueScore
-      return { ...p, score, trueScore, estimated: p.openness == null }
+      const noisy = noise ? clamp01(trueScore + (rng() * 2 - 1) * noise) : trueScore
+      // A yard of slack, so somebody standing on the marker counts as past it.
+      const shortOfSticks = mustConvert && (p.y ?? 0) < sticks - 1
+      const score = shortOfSticks ? noisy * shortReach(p, k) : noisy
+      return { ...p, score, trueScore, estimated: p.openness == null, shortOfSticks }
     })
     .sort((a, b) => b.score - a.score)
+}
+
+// ⚠️ HOW FAR SHORT, NOT MERELY SHORT. A flat discount for being inside the sticks treated a
+// ten-yard catch on 3rd and 12 the same as a two-yard one, and the quarterback stopped throwing it
+// at all — which is wrong twice over: it makes 4th and 2 instead of 4th and 10, and eating a sack
+// is worse than either. A test caught it.
+//
+// So the discount scales with the fraction of the needed yardage the catch actually covers. Nearly
+// there keeps nearly all its value; a checkdown at the line of scrimmage keeps the floor.
+const SHORT_FLOOR = 0.40
+
+function shortReach(p, k) {
+  const need = Math.max(1, k.distance ?? 10)
+  const gained = (p.y ?? 0) - (k.yardLine ?? 0)
+  const fraction = Math.max(0, Math.min(1, gained / need))
+  return SHORT_FLOOR + (1 - SHORT_FLOOR) * fraction
 }
 
 function clamp01(v) { return Math.max(0, Math.min(1, v)) }
