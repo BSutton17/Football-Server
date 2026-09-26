@@ -10,9 +10,25 @@ const TACKLE_RADIUS = PLAYER.CONTACT_RADIUS  // 1.5 yd — defender and carrier 
 
 // ── Run power: breaking tackles ([run power]) ───────────────────────────────────
 //
-// Base chance to break the Nth tackle attempt of the play (0-indexed): 1st 45%, 2nd 30%, 3rd 50%,
-// none after that. Scaled by the carrier's run power (99 → full chance, 0 → none).
-const BREAK_CHANCE = [0.45, 0.30, 0.5]
+// Base chance to break the Nth tackle attempt of the play (0-indexed), scaled by the carrier's run
+// power (99 = full chance, 0 = none).
+//
+// ⚠️ THESE WERE [0.45, 0.30, 0.50] AND THAT IS WHY TACKLING LOOKED BROKEN. Measured over 600 downs,
+// 0.30 tackles were broken PER PLAY - against roughly one successful tackle a play, so about a
+// quarter of every contact made was shrugged off, and three-break plays happened. Getting a
+// defender's hands on the carrier and watching him run through it is what "the tackling is terrible"
+// looks like, and it was NOT the pursuit angles: those measure within 3 degrees of the aim the engine
+// gives them, and both attempts at improving them made the defense worse (see scripts/pursuitLab.mjs).
+//
+// The old series was also NOT MONOTONIC - the third tackle (50%) was easier to break than the second
+// (30%). Nothing about a back with two men already hanging off him is easier. Each successive hit is
+// now harder: more defenders have arrived, and the carrier has already spent his momentum on the
+// last break.
+//
+// At these numbers breaks fell to 0.15/play (~13% of contacts, which is roughly life) and cost the
+// offense 0.13 yds/play - a small price for contact meaning something. Run power still matters: an
+// elite 99 back breaks the first hit 28% of the time where a 40 breaks it 11%.
+const BREAK_CHANCE = [0.28, 0.14, 0.06]
 
 export function tackleBreakChance(runPower, brokenCount) {
   const base = BREAK_CHANCE[brokenCount] ?? 0

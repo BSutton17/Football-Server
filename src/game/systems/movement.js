@@ -1009,6 +1009,9 @@ function edgeRushTarget(p, qb) {
 // a slow defender's large time gives a deep angle — while still bounding an absurd downfield aim.
 const PURSUIT_MAX_LEAD = 3.5
 
+// Opt-in pursuit telemetry (scripts/pursuitLab.mjs). Off in every normal run.
+const PURSUIT_TRACE = process.env.PURSUIT_TRACE === '1'
+
 // Flow-around avoidance ([priority 6]): a pursuing defender shouldn't grind face-first into a
 // blocker — it arcs around it. If a blocker (not the one it's already engaged with) sits in
 // the defender's path to its target, nudge the steering point laterally to go around it.
@@ -2275,6 +2278,11 @@ function pursueCarrier(p, target, spd, accel, dt, blockers) {
   p.pursuitReaction = (p.pursuitReaction ?? 0) + dt
   const quality = p.pursuitReaction >= pursuitReactionTime(awareness) ? pursuitLeadQuality(awareness) : 0
   const aim = avoidBlockerInPath(p, getPursuitTarget(p, target, spd, quality), blockers)
+  // [pursuit] Telemetry only, and only when asked for: the aim this defender was ACTUALLY given, so a
+  // measurement can tell a man who is pursuing badly from one who is not pursuing at all (holding a
+  // gap, sliding at depth, still in coverage). Recomputing the aim outside the engine cannot tell
+  // those apart, and guessing wrong is how you "fix" pursuit and make the defense worse.
+  if (PURSUIT_TRACE) p.lastPursuitAim = { x: aim.x, y: aim.y, t: (p.pursuitReaction ?? 0) }
   steer(p, aim.x, aim.y, spd, dt, accel)
 }
 

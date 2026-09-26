@@ -251,7 +251,9 @@ export function playDown(ctx, opts = {}) {
   // thing the pre-snap brain actually controls; where defenders end up later is the engine's doing.
   const crowded = countCrowdedDefenders(state)
 
-  const ticks = stepUntil(ctx.roomId, io, s => s.phase !== PHASE.LIVE, { maxTicks: MAX_PLAY_TICKS })
+  // `onTick` is telemetry only (see harness.js) — nothing in training passes it.
+  const ticks = stepUntil(ctx.roomId, io, s => s.phase !== PHASE.LIVE,
+    { maxTicks: MAX_PLAY_TICKS, onTick: opts.onTick ?? null })
   const after = getGame(ctx.roomId)
 
   if (ticks === -1) {

@@ -57,12 +57,20 @@ export const TICK_SECONDS = 0.05
 
 // Runs ticks until `done(state)` is true or the budget runs out. Returns how many ticks it took,
 // or -1 if it never happened — callers assert on that rather than hanging.
-export function stepUntil(roomId, io, done, { maxTicks = 2000 } = {}) {
+// `onTick` observes the state after each tick, for telemetry that has to be sampled DURING a play
+// rather than read off the result — pursuit angles, coverage separation, anything per-frame. It must
+// not mutate: it is handed the live state, and a measurement that changes what it measures is worse
+// than no measurement. See scripts/pursuitLab.mjs.
+export function stepUntil(roomId, io, done, { maxTicks = 2000, onTick = null } = {}) {
   for (let i = 0; i < maxTicks; i++) {
     const state = getGame(roomId)
     if (!state) return -1
     if (done(state, i)) return i
     tick(roomId, io)
+    if (onTick) {
+      const after = getGame(roomId)
+      if (after) onTick(after, i)
+    }
   }
   return -1
 }

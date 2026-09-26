@@ -82,13 +82,43 @@ describe('overlap tackle detection ([161])', () => {
 // ── Run power: breaking tackles ([run power]) ───────────────────────────────────
 
 describe('tackleBreakChance', () => {
-  it('scales the per-attempt base by run power (99 → full, 0 → none)', () => {
-    expect(tackleBreakChance(99, 0)).toBeCloseTo(0.45)
-    expect(tackleBreakChance(99, 1)).toBeCloseTo(0.30)
-    expect(tackleBreakChance(99, 2)).toBeCloseTo(0.50)
+  it('scales the per-attempt base by run power (99 = full, 0 = none)', () => {
+    expect(tackleBreakChance(99, 0)).toBeCloseTo(0.28)
+    expect(tackleBreakChance(99, 1)).toBeCloseTo(0.14)
+    expect(tackleBreakChance(99, 2)).toBeCloseTo(0.06)
     expect(tackleBreakChance(0,  0)).toBe(0)
     expect(tackleBreakChance(99, 3)).toBe(0)   // no break after the third attempt
-    expect(tackleBreakChance(50, 0)).toBeCloseTo(0.45 * 50 / 99)
+    expect(tackleBreakChance(50, 0)).toBeCloseTo(0.28 * 50 / 99)
+  })
+
+  it('⚠️ EACH SUCCESSIVE HIT IS HARDER TO BREAK, NOT EASIER', () => {
+    // The series used to be [0.45, 0.30, 0.50] — the THIRD tackle was easier to break than the
+    // second. Nothing about a back with two men already hanging off him is easier, and the number was
+    // almost certainly never meant to read that way. A guard rather than a comment, because the next
+    // person to tune these will be tuning three numbers in a row and one of them can slip.
+    const chances = [0, 1, 2].map(n => tackleBreakChance(99, n))
+    for (let i = 1; i < chances.length; i++) expect(chances[i]).toBeLessThan(chances[i - 1])
+  })
+
+  it('⚠️ CONTACT MEANS SOMETHING — most first hits bring the carrier down', () => {
+    // At [0.45, ...] roughly a quarter of every tackle attempt in a game was shrugged off (0.30
+    // breaks per play, measured), which is what made the tackling look broken. Even an elite back
+    // should be brought down by the first man far more often than not.
+    expect(tackleBreakChance(99, 0)).toBeLessThan(0.35)
+
+    // …and the expected number of breaks in a whole play stays under half of one.
+    const expected = (rp) => {
+      let p = 1, total = 0
+      for (let n = 0; n < 3; n++) { p *= tackleBreakChance(rp, n); total += p }
+      return total
+    }
+    expect(expected(99)).toBeLessThan(0.5)
+    expect(expected(75)).toBeLessThan(0.3)
+  })
+
+  it('run power still separates an elite back from a poor one', () => {
+    expect(tackleBreakChance(99, 0)).toBeGreaterThan(tackleBreakChance(40, 0) * 2)
+    expect(tackleBreakChance(40, 0)).toBeGreaterThan(0)
   })
 })
 
