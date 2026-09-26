@@ -79,6 +79,13 @@ export const clampFieldX = (x) => Math.max(FIELD_MIN_X, Math.min(FIELD_MAX_X, x)
 
 const MAX_ZONE_SLIDE = 4
 
+// ⚠️ A DEEP ZONE SLIDES LESS, BECAUSE ITS JOB IS THE MIDDLE. A single-high safety shades toward
+// the strength; he does not follow it. Sliding him the same four yards as a flat defender put the
+// only deep landmark on the field a dozen yards off centre against a three-receiver side, which is
+// how the back half gets thrown behind on the other one. Reported as "the safety deep zone should
+// be more to the middle".
+const MAX_DEEP_SLIDE = 2
+
 // How far an UNDERNEATH zone may travel to start across from the man in it. Bigger than the plain
 // squeeze because he is going somewhere specific rather than drifting toward an average, and still
 // far short of running across the formation — `enforceNoCrossing` holds the rest of the line.
@@ -89,10 +96,18 @@ const MAX_ZONE_ALIGN = 9
 // there to protect.
 const UNDERNEATH_ZONES = new Set(['flat', 'curl', 'hook'])
 
-// How far a man defender may travel laterally from where he was drawn. Unbounded, a corner drawn
-// at the numbers would sprint across the formation to reach a receiver on the far hash and leave
-// the picture unrecognisable.
-const MAX_MAN_TRAVEL = 14
+// ⚠️ MAN COVERAGE TRAVELS, AND THIS CAP USED TO STOP IT. The idea was that a corner should not
+// sprint across the formation and leave the picture unrecognisable. But a man defender has no area
+// to abandon — he has a MAN, and one who stops fourteen yards short of him is not playing coverage,
+// he is standing in a gap the offense does not have to account for. Reported from a real game: "a
+// corner in the box manned up with a man all the way across the field", with two receivers open
+// before the snap.
+//
+// Against trips a real defense shifts to the formation; the picture is SUPPOSED to change. So the
+// cap is now only a guard against nonsense (a defender leaving the field of play), and the job of
+// keeping travel sane belongs where it should have been all along — the assignment (see pairMan),
+// which no longer hands anybody a receiver on the far hash while somebody nearer is free.
+const MAX_MAN_TRAVEL = 53.33
 
 // Deeper than this behind the line and a player is in the backfield, not split out.
 const BACKFIELD_DEPTH = 2
@@ -133,35 +148,101 @@ const PREFERS = {
   LB: ['TE', 'RB'],
 }
 
+// How much lateral travel a bad matchup is worth avoiding, in yards. A corner will walk this much
+// further to get a receiver rather than take a tight end standing next to him — but no further,
+// because a defender who never reaches anybody covers nothing at all.
+const MISMATCH_YARDS = { 0: 0, 1: 7, 2: 14 }
+const UNPREFERRED_YARDS = 22
+
+// Larger than any real cost, so a spare defender is only ever chosen when there is no one left.
+const SPARE_COST = 1000
+
+// ⚠️ A CORNER WANTS THE OUTERMOST MAN ON HIS SIDE, and pure distance loses that. The widest
+// receiver is the one who can run away from you with the whole sideline to work in; inside
+// receivers have help around them. Left to distance alone a corner drawn at the numbers takes the
+// SLOT (two yards nearer) and leaves the outside man to a safety, which is backwards.
+//
+// Priced per receiver still outside him rather than enforced, so it yields when the alternative is
+// somebody standing twenty yards from anybody — which is the failure that started all this.
+const CB_INSIDE_YARDS = 3
+
+function matchCost(d, r, ballX, receivers) {
+  const label = slotLabel(d.slot)
+  const prefer = PREFERS[label] ?? []
+  const rank = prefer.indexOf(r.label)
+  const penalty = rank === -1 ? UNPREFERRED_YARDS : (MISMATCH_YARDS[rank] ?? UNPREFERRED_YARDS)
+
+  let leverage = 0
+  if (label === 'CB') {
+    const side = d.dx < 0 ? -1 : 1
+    // Only counts receivers on the corner's own side: against a formation with nobody over there
+    // he has no outside to protect, and the term correctly falls away.
+    for (const other of receivers) {
+      if (other === r) continue
+      if (Math.sign(other.x - ballX) !== side) continue
+      if (Math.sign(r.x - ballX) !== side) continue
+      if (Math.abs(other.x - ballX) > Math.abs(r.x - ballX)) leverage += CB_INSIDE_YARDS
+    }
+  }
+  return Math.abs(r.x - (ballX + d.dx)) + penalty + leverage
+}
+
+// ⚠️ ASSIGNED AS A GROUP, NOT ONE AT A TIME. This used to hand each corner "the widest receiver on
+// his own side, outside in", taking them in order. Against three receivers to one side that is
+// catastrophic and was reported as such: the play-side corner took the outside man, and the
+// BACKSIDE corner — forty yards from anybody — was handed a receiver on the far hash, while a
+// safety got another. Two receivers were effectively uncovered before the snap.
+//
+// The failure is that a greedy pass cannot see what its choice costs everybody else. So every
+// assignment is scored (lateral distance, plus a penalty for a matchup the position is wrong for)
+// and the cheapest COMBINATION wins. With at most six man defenders that is a handful of
+// permutations, so it is simply solved rather than approximated.
+//
+// Position still comes first in practice — the penalty for a corner on a back is larger than any
+// sane travel — but it is now a price rather than a veto, which is what stops the matcher painting
+// itself into a corner on the last defender.
 export function pairMan(manSlots, receivers, ballX) {
   const pairs = new Map()
-  const free = [...receivers].sort((a, b) => a.x - b.x)
-  const nearestOf = (list, d) => list.reduce(
-    (best, r) => (Math.abs(r.x - (ballX + d.dx)) < Math.abs(best.x - (ballX + d.dx)) ? r : best), list[0])
-  const take = (d, r) => { if (r) { pairs.set(d.slot, r); free.splice(free.indexOf(r), 1) } }
+  if (!manSlots.length || !receivers?.length) return pairs
 
-  // 1. Corners take the widest receiver on their OWN side, outside in.
-  //
-  //    ⚠️ `dx` is an offset from the ball, so the side test is against ZERO. Comparing it to the
-  //    absolute hash made every offset look negative and every corner take the leftmost receiver.
-  for (const d of manSlots.filter(s => slotLabel(s.slot) === 'CB').sort((a, b) => a.dx - b.dx)) {
-    const wanted = free.filter(r => PREFERS.CB.includes(r.label))
-    if (!wanted.length) continue
-    take(d, d.dx < 0 ? wanted[0] : wanted[wanted.length - 1])
+  // Nearest-first is a good starting order and makes the search settle quickly.
+  const defs = [...manSlots].sort((a, b) => Math.abs(a.dx) - Math.abs(b.dx))
+  const recv = [...receivers]
+
+  let bestCost = Infinity
+  let best = null
+  const current = new Array(defs.length).fill(-1)
+  const used = new Array(recv.length).fill(false)
+
+  const search = (i, cost) => {
+    if (cost >= bestCost) return                 // this branch is already worse than one we have
+    if (i === defs.length) { bestCost = cost; best = [...current]; return }
+    for (let j = 0; j < recv.length; j++) {
+      if (used[j]) continue
+      used[j] = true
+      current[i] = j
+      search(i + 1, cost + matchCost(defs[i], recv[j], ballX, recv))
+      used[j] = false
+      current[i] = -1
+    }
+    // ⚠️ COVERING NOBODY IS AN OPTION FOR EVERY DEFENDER, NOT JUST THE LAST ONE. More men than
+    // receivers means somebody is spare (he spies — see coverageFor), and WHICH one is a real
+    // choice: the first version only allowed a skip once every receiver was taken, so the spare was
+    // always whoever came last in the order. That made a CORNER the odd man out against three
+    // receivers while linebackers covered them, which is the matchup this file exists to prevent.
+    //
+    // The cost is large enough that covering always beats not covering, so no solution ever leaves
+    // a receiver free while a defender stands idle. Every complete solution pays it the same number
+    // of times, so it cancels out and only the distribution is actually being compared.
+    current[i] = -1
+    search(i + 1, cost + SPARE_COST)
   }
+  search(0, 0)
 
-  // 2. Everyone else takes the position he is meant to have, nearest first.
-  for (const d of manSlots.filter(s => !pairs.has(s.slot)).sort((a, b) => Math.abs(a.dx) - Math.abs(b.dx))) {
-    const prefer = PREFERS[slotLabel(d.slot)] ?? []
-    const wanted = free.filter(r => prefer.includes(r.label))
-    if (wanted.length) take(d, nearestOf(wanted, d))
-  }
-
-  // 3. ⚠️ OUT OF OPTIONS. Anyone still unassigned takes whoever is left, whatever the positions —
-  //    a bad matchup is recoverable and an uncovered receiver is a touchdown.
-  for (const d of manSlots.filter(s => !pairs.has(s.slot)).sort((a, b) => Math.abs(a.dx) - Math.abs(b.dx))) {
-    if (!free.length) break
-    take(d, nearestOf(free, d))
+  if (best) {
+    for (let i = 0; i < defs.length; i++) {
+      if (best[i] >= 0) pairs.set(defs[i].slot, recv[best[i]])
+    }
   }
   return pairs
 }
@@ -470,10 +551,16 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
       // hands him a man instead, that depth stops making sense. A safety standing twelve yards off
       // the tight end he is supposedly covering is the case that showed it.
       //
-      // The exception is a safety on a RECEIVER: that is him playing over the top of a vertical
-      // threat with the whole field behind him, which is a real assignment and needs the cushion.
-      // On a tight end or a back there is nothing to get over the top of — he is just late.
-      const overTheTop = d.label === 'S' && target.label !== 'TE' && target.label !== 'RB'
+      // The exception is a safety on a RECEIVER with NOBODY BEHIND HIM: that is him playing over the
+      // top of a vertical threat as the last line, which is a real assignment and needs the
+      // cushion. On a tight end or a back there is nothing to get over the top of — he is just late.
+      //
+      // ⚠️ AND IT DOES NOT APPLY WHEN THERE IS A DEEP SAFETY BEHIND HIM. The cushion is bought with
+      // the field at his back; with single-high help already there he is buying nothing and simply
+      // standing thirteen yards off the man he is supposed to be covering — reported from a real
+      // game as a defender "15 yards off" an outside receiver who was open before the snap. A
+      // safety manned up underneath a single-high safety is ordinary Cover 1, and he plays it tight.
+      const overTheTop = d.label === 'S' && target.label !== 'TE' && target.label !== 'RB' && !hasDeepHelp
       const capped = overTheTop ? depth : Math.min(depth, MAN_MAX_DEPTH)
       // ⚠️ THE CAP IS NOT A PRESS. `pressing` means he walked up to jam, and the renderer and the
       // engine both read it that way; a defender merely brought to a sane man-coverage depth has
@@ -515,7 +602,7 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
       // a man, and shadowing one is how the third behind him comes open.
       const paired = zonePairs.get(d.slot)
       const targetX = paired ? paired.x : side.reduce((a, r) => a + r.x, 0) / side.length
-      const reach = paired ? MAX_ZONE_ALIGN : MAX_ZONE_SLIDE
+      const reach = paired ? MAX_ZONE_ALIGN : (d.zone === 'deep' ? MAX_DEEP_SLIDE : MAX_ZONE_SLIDE)
       const slide = clamp(targetX - d.x, -reach, reach)
 
       // A corner in a shallow zone may also come forward onto the receiver aligned in it.
@@ -530,6 +617,10 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
         depth,
         pressing: depth < d.depth,
         zoneCenter: d.zoneCenter ? { dx: d.zoneCenter.dx + slide, depth: d.zoneCenter.depth } : null,
+        // The landmark in absolute yards, resolved here because this is where ballX is known.
+        // Downstream (coverageFor) has the row and nothing else; leaving it to resolve `dx` itself
+        // is what led to it giving up and using the defender's own position instead.
+        zoneCenterX: d.zoneCenter ? ballX + d.zoneCenter.dx + slide : null,
       }
     }
 

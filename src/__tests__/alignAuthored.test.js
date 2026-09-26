@@ -347,3 +347,102 @@ describe('⚠️ ZONES NEVER CROSS EACH OTHER', () => {
     expect(enforceNoCrossing(rows)[0].x).toBe(10)
   })
 })
+
+// ── Reported from a real game: trips to one side ([alignment]) ──────────────
+//
+// ⚠️ "THERE IS ONE CB FOR 3 WR. THERE IS A CORNER IN THE BOX MANNED UP WITH A MAN ALL THE WAY
+// ACROSS THE FIELD AND ANOTHER CB AT THE TOP WHO IS 15 YARDS OFF. THIS PLAY IS TERRIBLE, THERE WILL
+// BE 2 WR WIDE OPEN BECAUSE OF ALIGNMENT."
+//
+// A balanced man shell against three receivers bunched to one side. Three separate faults combined:
+//
+//   • the matcher assigned each corner "the widest receiver on his own side" one at a time, so the
+//     BACKSIDE corner — with nobody on his side at all — was handed a receiver on the far hash;
+//   • MAX_MAN_TRAVEL then stopped him fourteen yards short, leaving him standing in the box;
+//   • and the safety's depth exemption kept a third defender thirteen yards off his man.
+//
+// The shape below is that formation. What it asserts is not a particular assignment but the thing
+// the report was actually about: everybody in man coverage is standing near the man he has.
+describe('⚠️ TRIPS TO ONE SIDE — everybody in man is NEAR his man', () => {
+  const B = 26.8
+  const L = 25
+
+  // Balanced shell, two corners, three receivers to the left: the case that broke it.
+  const tripsFormation = {
+    category: '3-4',
+    spots: [
+      { slot: 'DL1', dx: -3, depth: 1 }, { slot: 'DL2', dx: 0, depth: 1 }, { slot: 'DL3', dx: 3, depth: 1 },
+      { slot: 'LB1', dx: -5.6, depth: 0.8 }, { slot: 'LB2', dx: -2.5, depth: 4.8 },
+      { slot: 'LB3', dx: 5.5, depth: 0.8 }, { slot: 'LB4', dx: 2.9, depth: 5.1 },
+      { slot: 'CB1', dx: -16, depth: 6 }, { slot: 'CB2', dx: 16, depth: 6 },
+      { slot: 'S1', dx: -8, depth: 13 }, { slot: 'S2', dx: 8, depth: 13 },
+    ],
+  }
+  const tripsShell = {
+    assignments: {
+      DL1: { job: 'rush' }, DL2: { job: 'rush' }, DL3: { job: 'rush' },
+      LB1: { job: 'rush' }, LB3: { job: 'rush' },
+      CB1: { job: 'man' }, CB2: { job: 'man' }, S2: { job: 'man' },
+      LB2: { job: 'man' }, LB4: { job: 'man' },
+      S1: { job: 'zone', zone: 'deep', center: { dx: 0, depth: 20 } },
+    },
+  }
+  const trips = [
+    { id: 'wr_wide',  x: 4.9,  y: L, label: 'WR' },
+    { id: 'wr_slot',  x: 9.3,  y: L, label: 'WR' },
+    { id: 'wr_inner', x: 13.7, y: L, label: 'WR' },
+    { id: 'te',       x: 32.0, y: L, label: 'TE' },
+    { id: 'rb',       x: 29.8, y: L - 6, label: 'RB' },
+  ]
+  const rows = alignAuthored({
+    formation: tripsFormation, shell: tripsShell, receivers: trips, ballX: B, losY: L, ready: true,
+  })
+  const manRows = rows.filter(r => r.job === 'man' && r.covers)
+  const gap = (r) => Math.abs(r.x - trips.find(t => t.id === r.covers).x)
+
+  it('⚠️ NOBODY IS COVERING SOMEBODY FROM ACROSS THE FORMATION', () => {
+    // The reported alignment had a corner 15.1 yards from his man and a safety 11.5 from his.
+    for (const r of manRows) {
+      expect({ slot: r.slot, covers: r.covers, gap: Math.round(gap(r)) })
+        .toMatchObject({ gap: expect.any(Number) })
+      expect(gap(r)).toBeLessThan(3)
+    }
+  })
+
+  it('every receiver is covered, and nobody twice', () => {
+    const covered = manRows.map(r => r.covers)
+    expect(new Set(covered).size).toBe(covered.length)
+    expect(new Set(covered)).toEqual(new Set(trips.map(t => t.id)))
+  })
+
+  it('⚠️ THE CORNERS HAVE THE OUTSIDE RECEIVERS, even though both had to travel', () => {
+    const cbs = manRows.filter(r => r.slot.startsWith('CB')).map(r => r.covers)
+    expect(cbs).toContain('wr_wide')
+    expect(cbs).toContain('wr_inner')
+  })
+
+  it('the tight end and the back still go to linebackers', () => {
+    const lb = manRows.filter(r => r.slot.startsWith('LB')).map(r => r.covers).sort()
+    expect(lb).toEqual(['rb', 'te'])
+  })
+
+  it('⚠️ THE SAFETY MANNED UNDER SINGLE-HIGH HELP PLAYS TIGHT, not thirteen yards off', () => {
+    // The cushion is bought with the whole field at his back. With a deep safety already there he is
+    // buying nothing, and standing off is just a receiver open before the snap.
+    const s2 = rows.find(r => r.slot === 'S2')
+    expect(s2.job).toBe('man')
+    expect(s2.depth).toBeLessThanOrEqual(5)
+  })
+
+  it('⚠️ THE SINGLE-HIGH DEEP ZONE HOLDS THE MIDDLE', () => {
+    // It shades toward three receivers; it does not follow them. The reported landmark was twelve
+    // yards off centre, which is how the back half gets thrown behind on the other side.
+    const s1 = rows.find(r => r.slot === 'S1')
+    expect(s1.zone).toBe('deep')
+    expect(Math.abs(s1.zoneCenterX - B)).toBeLessThanOrEqual(3)
+  })
+
+  it('the blitz still brings five', () => {
+    expect(rows.filter(r => r.job === 'rush')).toHaveLength(5)
+  })
+})

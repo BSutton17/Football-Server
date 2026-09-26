@@ -240,10 +240,20 @@ function coverageFor(row, receivers) {
     // Falling back to the defender's own spot is what the engine would have computed anyway: a
     // zone with no landmark is a zone centred on the man playing it.
     const depthBelow = row.zoneCenter ? row.zoneCenter.depth - row.depth : DEFAULT_ZONE_DEPTH[row.zone] ?? 4
+    // ⚠️ THE AUTHORED LANDMARK WAS BEING THROWN AWAY. This used the defender's own x for every
+    // zone, so a shell that placed a deep safety's zone dead centre (`center.dx: 0`) got a landmark
+    // wherever his BODY happened to end up after sliding toward the formation — twelve yards off
+    // the middle against a three-receiver side. The shell's horizontal intent was simply discarded,
+    // and only the depth of it survived.
+    //
+    // `alignAuthored` already slides `zoneCenter.dx` along with the body, so the authored landmark
+    // arrives here correctly adjusted. Falling back to the defender's own spot is still right when
+    // a shell was authored WITHOUT a landmark: an unlandmarked zone is one centred on the man
+    // playing it.
     return {
       type: 'zone',
       zoneType: row.zone ?? 'hook',
-      zoneCenterX: clampToField(row.x),
+      zoneCenterX: clampToField(row.zoneCenterX ?? row.x),
       // ⚠️ AND THE LANDMARK HAS TO BE ON THE FIELD TOO. A deep zone near the goal line landed past
       // the back of the end zone, `assign_coverage` refused the whole assignment, and the engine
       // rushes anyone it has no assignment for — a red-zone shell became a blitz with holes in it.
