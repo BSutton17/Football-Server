@@ -35,6 +35,21 @@ import { solveZeroSum, withMixingFloor, diagnose } from './nash.js'
 // less than the best is called about a third as often.
 const FORMATION_TEMPERATURE = 1.5
 
+// ⚠️ NO FORMATION MAY OWN A SITUATION. Measured values came back spanning -0.2 to 9.6 yards, and
+// at a temperature of 1.5 that is not a softmax, it is an argmax: one formation took 87% of 2nd and
+// medium. The temperature above was calibrated for a spread of a yard or two, which is the regime
+// its comment describes; the real playbook is nowhere near it.
+//
+// Two things go wrong when a situation collapses onto one formation, and neither is about hiding
+// information — the defense sees the formation anyway, and that argument still holds:
+//
+//   • THE ESTIMATE IS NOT THAT GOOD. Eight samples a cell cannot justify a nine-yard separation,
+//     and a bare softmax reads it as though it could.
+//   • IT CALLS FOOTBALL THAT IS NOT FOOTBALL. The best-valued formation on 3rd and short measured
+//     out as an EMPTY set — no back, so it cannot run — and the bucket came out at 14% run on
+//     3rd and 1, with sixteen other authored formations sitting unused behind it.
+const FORMATION_CEILING = 0.35
+
 // ── What a play is worth ────────────────────────────────────────────────────
 //
 // ⚠️ THE CONSTANTS ARE MEASURED, NOT INVENTED. The last fitness function I wrote was a pile of
@@ -51,6 +66,22 @@ export function playValue(outcome, { possessionValue }) {
   // A conversion is worth the yards plus a fresh set of downs, which is a possession continued
   // rather than a new one — the same currency, discounted.
   if (outcome.firstDown) return yards + possessionValue * 0.25
+
+  // ⚠️ FAILING TO CONVERT HAS TO COST SOMETHING, AND IT DID NOT. This took `firstDown` but never
+  // the DOWN, so a 3rd-and-1 incompletion scored exactly 0 — the same as a 1st-and-10 incompletion,
+  // though the first ends the drive and the second costs almost nothing.
+  //
+  // With no price on failure, the only thing separating plays in short yardage was raw yardage, so
+  // a twelve-yard pass beat a one-yard conversion and the solve called 3rd and 1 a throwing down:
+  // 26% run where football says about 73%.
+  //
+  // Fourth down is unambiguous — not converting hands the ball over on the spot, which is the same
+  // loss the turnover branch above charges. Third down is softer: you punt, so what is lost is the
+  // continuation the conversion would have bought, priced symmetrically with the bonus for getting
+  // it. A team was going to punt sooner or later, so charging a whole possession would overstate it.
+  const down = outcome.down ?? 1
+  if (down >= 4) return yards - possessionValue
+  if (down === 3) return yards - possessionValue * 0.25
   return yards
 }
 
@@ -112,12 +143,42 @@ export function solveSubgame({ estimates, counts, iterations = 8000 }) {
 // ── Formation choice ────────────────────────────────────────────────────────
 //
 // Softmax over what each formation's subgame turned out to be worth.
-export function formationMix(values) {
+export function formationMix(values, { ceiling = FORMATION_CEILING } = {}) {
   if (!values.length) return []
   const best = Math.max(...values)
   const weights = values.map(v => Math.exp((v - best) / FORMATION_TEMPERATURE))
   const total = weights.reduce((a, b) => a + b, 0)
-  return weights.map(w => w / total)
+  return withCeiling(weights.map(w => w / total), ceiling)
+}
+
+// Caps any single share and hands the excess to the others, repeating because redistributing can
+// push a second formation over the line. The mirror of `withMixingFloor`.
+//
+// ⚠️ AND ONLY WHERE THE SUPPORT CAN ACTUALLY SATISFY IT. Two formations cannot both sit under 35%,
+// and forcing it there does not spread the call — it flattens them to 50/50 and throws away the
+// solve's preference entirely, which is a worse answer than the collapse it was meant to fix. A
+// ceiling is a cap on a wide distribution; with two options there is no width to cap.
+export function withCeiling(mix, ceiling) {
+  if (!(ceiling > 0) || ceiling >= 1) return mix.slice()
+  const support = mix.reduce((a, p) => a + (p > 1e-9 ? 1 : 0), 0)
+  if (support * ceiling <= 1) return mix.slice()
+  const out = mix.slice()
+  for (let pass = 0; pass < 12; pass++) {
+    let excess = 0
+    const room = []
+    for (let i = 0; i < out.length; i++) {
+      if (out[i] > ceiling) { excess += out[i] - ceiling; out[i] = ceiling; room.push(0) }
+      // Only onto the support the solve chose. Handing weight to a formation it gave none would
+      // resurrect an option it had rejected, which is the same trap `withMixingFloor` avoids.
+      else room.push(mix[i] > 1e-9 ? ceiling - out[i] : 0)
+    }
+    if (excess <= 1e-9) break
+    const capacity = room.reduce((a, b) => a + b, 0)
+    if (capacity <= 1e-9) break
+    for (let i = 0; i < out.length; i++) out[i] += excess * (room[i] / capacity)
+  }
+  const total = out.reduce((a, b) => a + b, 0)
+  return out.map(p => p / total)
 }
 
 // ── Assembling the table select.js reads ────────────────────────────────────

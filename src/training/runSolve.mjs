@@ -139,6 +139,8 @@ function samplePlay({ situation, playId, shellId, seed, possessionValue }) {
       turnover: !!r.turnover,
       touchdown: r.outcome === 'touchdown',
       firstDown: (r.yards ?? 0) >= situation.distance,
+      // Without the down, failing to convert is free — see playValue.
+      down: situation.down,
     }, { possessionValue })
   } catch {
     return null
