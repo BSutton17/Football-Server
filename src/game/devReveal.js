@@ -18,9 +18,11 @@
 
 import { getRoom } from './roomManager.js'
 import { isAiSocketId } from '../ai/virtualSocket.js'
+import { devFlag } from './devFlags.js'
 
-const enabled = () =>
-  process.env.NODE_ENV !== 'production' && process.env.ENABLE_DEV_REVEAL === '1'
+// Gates 1 and 2 (not production, and opted in) both live in devFlag — see devFlags.js. Gate 3, solo
+// only, is specific to this feature and is checked at each call site below.
+const enabled = () => devFlag('ENABLE_DEV_REVEAL')
 
 // What the computer is doing this play, as data a screenshot can be taken of. Null whenever any gate
 // says no, which is the normal case.
