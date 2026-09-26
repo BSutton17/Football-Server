@@ -188,9 +188,13 @@ export function statLine(line) {
 
 // ⚠️ ONLY PLAYERS WHO DID SOMETHING. Everyone on the field has a line the moment he is seen, and a
 // list padded with three players who recorded nothing is worse than a short list.
-export function topPerformers(stats, n = 3) {
+// The best players by impact. With `slot`, only that team's — which is what the halftime screen
+// shows, so each side gets its own three rather than both being drawn from whoever had the
+// better half.
+export function topPerformers(stats, n = 3, slot = null) {
   if (!stats) return []
   return [...stats.players.values()]
+    .filter(line => slot == null || line.slot === slot)
     .map(line => ({ ...line, score: impactScore(line), summary: statLine(line) }))
     .filter(p => p.score > 0 && p.summary)
     .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
@@ -215,6 +219,11 @@ export function teamTotals(stats, slot) {
 export function serializeStats(stats, { top = 3 } = {}) {
   return {
     top: topPerformers(stats, top),
+    // ⚠️ PER TEAM AS WELL AS OVERALL. A single ranked three is usually three players from
+    // whichever side had the better half, so the other team's best game goes unmentioned. The
+    // halftime screen wants each team's own top three; `top` stays for anything that wants the
+    // outright leaders.
+    byTeam: [topPerformers(stats, top, 0), topPerformers(stats, top, 1)],
     teams: [teamTotals(stats, 0), teamTotals(stats, 1)],
   }
 }

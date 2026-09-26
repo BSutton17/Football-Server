@@ -245,3 +245,52 @@ describe('the summary line', () => {
     expect(statLine(s.players.get('lb1'))).toBe('1 tkl · 1 sack')
   })
 })
+
+describe('⚠️ EACH TEAM GETS ITS OWN THREE', () => {
+  // A single ranked three is usually three players from whichever side had the better half, so the
+  // other team's best game goes unmentioned entirely. The halftime screen shows both.
+  const p = (id, name, label, slot) => ({ id, name, label, slot })
+
+  function twoSidedGame() {
+    const box = createStats()
+    // Slot 0 had the better half.
+    recordPassYards(box, { passer: p('qb0', 'Passer Zero', 'QB', 0), receiver: p('wr0', 'Wideout Zero', 'WR', 0), yards: 220 })
+    recordRush(box, { runner: p('rb0', 'Back Zero', 'RB', 0), yards: 70 })
+    recordRush(box, { runner: p('rb0b', 'Back Zero B', 'RB', 0), yards: 40 })
+    // Slot 1 did less, but still has a best player.
+    recordTackle(box, { tackler: p('lb1', 'Backer One', 'LB', 1) })
+    recordTackle(box, { tackler: p('lb1', 'Backer One', 'LB', 1) })
+    recordInterception(box, { defender: p('lb1', 'Backer One', 'LB', 1), passer: p('qb0', 'Passer Zero', 'QB', 0) })
+    return box
+  }
+
+  it('splits the leaders by team', () => {
+    const { byTeam } = serializeStats(twoSidedGame())
+    expect(byTeam).toHaveLength(2)
+    expect(byTeam[0].length).toBeGreaterThan(0)
+    expect(byTeam[0].every(x => x.slot === 0)).toBe(true)
+    expect(byTeam[1].every(x => x.slot === 1)).toBe(true)
+  })
+
+  it('⚠️ SHOWS EACH SIDE ITS OWN BEST PLAYER', () => {
+    const { byTeam } = serializeStats(twoSidedGame())
+    expect(byTeam[1].length).toBeGreaterThan(0)
+    expect(byTeam[1][0].name).toBe('Backer One')
+  })
+
+  it('still reports the outright leaders for anything that wants them', () => {
+    expect(serializeStats(twoSidedGame()).top.length).toBeGreaterThan(0)
+  })
+
+  it('gives an empty list for a team that has done nothing', () => {
+    const box = createStats()
+    recordRush(box, { runner: p('rb0', 'Only Runner', 'RB', 0), yards: 12 })
+    expect(serializeStats(box).byTeam[1]).toEqual([])
+  })
+
+  it('caps each side at three', () => {
+    const box = createStats()
+    for (let i = 0; i < 6; i++) recordRush(box, { runner: p('r' + i, 'Runner ' + i, 'RB', 0), yards: 20 + i })
+    expect(serializeStats(box).byTeam[0].length).toBeLessThanOrEqual(3)
+  })
+})
