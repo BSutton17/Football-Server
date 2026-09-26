@@ -219,7 +219,11 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
   const base = spots.map(s => ({
     slot: s.slot,
     label: slotLabel(s.slot),
-    job: assignments[s.slot]?.job ?? 'rush',
+    // ⚠️ AN UNASSIGNED DEFENDER COVERS SOMEBODY — he does not rush. A slot the shell forgot used to
+    // fall through to 'rush', which is the worst possible default: a free runner the offense never
+    // accounted for, and a receiver nobody is on. Covering is the safe failure. Linemen are the
+    // exception, because rushing IS their assignment and a shell does not state it.
+    job: assignments[s.slot]?.job ?? (slotLabel(s.slot) === 'DL' ? 'rush' : 'man'),
     dx: s.dx,
     depth: s.depth,
     x: ballX + s.dx,

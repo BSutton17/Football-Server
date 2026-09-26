@@ -1144,6 +1144,9 @@ export function isQbScrambling(qb, center, losY, dir) {
 //   coverage  → anticipation lead: elite defenders break on the ball more cleanly.
 
 const ZONE_RADIUS          = 7      // yards — the area a zone defender patrols and defends
+// How far forward a DEEP zone may squeeze off its landmark. Small on purpose: his job is to be on
+// top of everything, and the radius alone would let him come seven yards down to shade a dig.
+const DEEP_ZONE_GIVE       = 3
 const ZONE_AWARENESS_RANGE = 4      // extra detection yards beyond the zone at 99 awareness
 // [zone strength] Anticipation raised across the board. With no ball flight to read, a zone
 // defender only ever gets to the throw if he was already moving to the right spot — so he leads
@@ -1289,6 +1292,10 @@ export function getZoneTarget(zoneCenter, threat, coverage = 55, opts = {}) {
   const radius     = opts.radius ?? ZONE_RADIUS
   const qb         = opts.qb ?? null
   const commitment = opts.commitment ?? 1
+  // The shallowest this defender may be steered, in absolute y, or null for no floor. Only a deep
+  // zone sets it — see the note where it is applied.
+  const holdDepthY = opts.holdDepthY ?? null
+  const dir        = opts.dir ?? 1
 
   if (!threat) return { x: zoneCenter.x, y: zoneCenter.y, reacting: false }
 
@@ -1319,14 +1326,29 @@ export function getZoneTarget(zoneCenter, threat, coverage = 55, opts = {}) {
   const oy   = ty - zoneCenter.y
   const dist = Math.hypot(ox, oy)
 
-  if (dist <= radius) return { x: tx, y: ty, reacting: true }
+  const out = dist <= radius
+    ? { x: tx, y: ty, reacting: true }
+    // Threat is beyond the boundary — break to the edge toward it, but hold the zone.
+    : {
+      x: zoneCenter.x + (ox / dist) * radius,
+      y: zoneCenter.y + (oy / dist) * radius,
+      reacting: true,
+    }
 
-  // Threat is beyond the boundary — break to the edge toward it, but hold the zone.
-  return {
-    x: zoneCenter.x + (ox / dist) * radius,
-    y: zoneCenter.y + (oy / dist) * radius,
-    reacting: true,
+  // ⚠️ A DEEP DEFENDER DOES NOT COME DOWN. His landmark is fifteen yards off the line and the
+  // zone radius is seven, so reacting to anything underneath could pull him to eight — and the
+  // ball goes over the top of exactly the man who is there to prevent that. "The safety is coming
+  // down too soon and deep passes open."
+  //
+  // He may squeeze forward a little, because a zone that never moves is not covering anything, but
+  // the floor is absolute: it is applied AFTER the radius clamp, so no combination of threat
+  // position and boundary break can get him shallower than this. The deep-carry branch above still
+  // takes precedence when a vertical is actually assigned to him, and the pursuit branch still
+  // brings him down once the ball is loose.
+  if (holdDepthY != null) {
+    out.y = dir === 1 ? Math.max(out.y, holdDepthY) : Math.min(out.y, holdDepthY)
   }
+  return out
 }
 
 // ── Deep-zone reach ───────────────────────────────────────────────────────────
@@ -2169,11 +2191,18 @@ function moveDefense(state, dt) {
           // double move drags the defender out of his zone ([zone strength]).
           const declared   = !!rawThreat && ((rawThreat.routeWaypointIdx ?? 0) >= 1 || rawThreat.routePhase === 'settled')
           const commitment = declared ? 1 : ZONE_SHADE_COMMIT
+          // A deep zone keeps its depth. It may squeeze forward by DEEP_ZONE_GIVE and no further,
+          // whatever is happening underneath it.
+          const holdDepthY = cov.zoneType === 'deep'
+            ? (dir === 1 ? center.y - DEEP_ZONE_GIVE : center.y + DEEP_ZONE_GIVE)
+            : null
           const t = getZoneTarget(center, rawThreat, coverage, {
             radius: zc?.radius ?? ZONE_RADIUS,
             qb,
             commitment,
             self: p,
+            holdDepthY,
+            dir,
           })
           // [zone trace] Record what this defender decided this tick so the coverage lab can show
           // WHY it moved where it did. Off in normal play — one null check per zone defender.

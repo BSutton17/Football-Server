@@ -32,6 +32,7 @@ import { enqueue, EVENT, resolveDecision, resolveConversion, resolvePuntReturn, 
 import { startGameLoop } from '../game/simulation.js'
 import { getRoom } from '../game/roomManager.js'
 import { serializeGameState } from '../game/serialization.js'
+import { repairAfterResume } from '../game/resumeRepair.js'
 import {
   recommendOffense, recommendDefense, layoutPlayForClient, layoutShellForClient,
 } from '../ai/playcall/recommend.js'
@@ -328,6 +329,14 @@ export function registerGameHandlers(io, socket) {
     if (!resumePlayerPause(state)) return
 
     io.to(roomId).emit('game_resumed')
+
+    // [pause repair] A pause freezes the simulation but not the world around it: real-time timers
+    // keep firing, sockets drop and reconnect, and a client that resyncs mid-countdown throws away
+    // state it cannot get back. Check everything that can strand a game and fix what is actually
+    // stuck — a clean pause repairs nothing and says nothing.
+    const repaired = repairAfterResume(state, io, roomId)
+    for (const what of repaired) console.log(`[pause repair] ${roomId}: ${what}`)
+
     console.log(`[game] ${roomId} resumed`)
   })
 

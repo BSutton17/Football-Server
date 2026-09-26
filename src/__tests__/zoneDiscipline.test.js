@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
-import { findZoneThreat } from '../game/systems/movement.js'
+import { findZoneThreat, getZoneTarget } from '../game/systems/movement.js'
 import { pairUnderneathZones } from '../ai/playbook/alignAuthored.js'
 
 // ⚠️ "TOO MANY TIMES A RB IN THE FLAT IS WIDE OPEN BECAUSE A DEFENDER IN THE FLAT ABANDONED THEIR
@@ -96,5 +96,49 @@ describe('where an underneath zone lines up', () => {
     // A receiver far outside the reach is somebody else's problem.
     const pairs = pairUnderneathZones([zone('CB1', 20, 48, 'flat')], [split[0]], LOS, 26.7)
     expect(pairs.size).toBe(0)
+  })
+})
+
+describe('⚠️ A DEEP DEFENDER DOES NOT COME DOWN', () => {
+  // His landmark is fifteen yards off the line and the zone radius is seven, so reacting to
+  // anything underneath could pull him to eight — and the ball goes over the top of exactly the
+  // man who is there to prevent that.
+  const LOS = 40
+  const landmark = { x: 26, y: LOS + 15 }
+  const underneath = { id: 'dig', label: 'WR', x: 24, y: LOS + 6, vx: 0, vy: 0 }
+
+  it('holds its depth against an underneath threat', () => {
+    const free = getZoneTarget(landmark, underneath, 99, { dir: 1 })
+    const held = getZoneTarget(landmark, underneath, 99, { dir: 1, holdDepthY: LOS + 12 })
+    // Unfloored it is dragged forward; floored it is not.
+    expect(free.y).toBeLessThan(LOS + 12)
+    expect(held.y).toBeGreaterThanOrEqual(LOS + 12)
+  })
+
+  it('⚠️ THE FLOOR SURVIVES THE BOUNDARY BREAK, which is applied first', () => {
+    // A threat beyond the radius makes the target the zone edge toward him — that edge is shallow,
+    // so the floor has to be applied after it or it achieves nothing.
+    const faraway = { id: 'far', label: 'WR', x: 26, y: LOS + 2, vx: 0, vy: 0 }
+    const held = getZoneTarget(landmark, faraway, 99, { dir: 1, holdDepthY: LOS + 12, radius: 7 })
+    expect(held.y).toBeGreaterThanOrEqual(LOS + 12)
+  })
+
+  it('still lets him squeeze, so the zone is not frozen', () => {
+    const held = getZoneTarget(landmark, underneath, 99, { dir: 1, holdDepthY: LOS + 12 })
+    expect(held.y).toBeLessThan(landmark.y)
+  })
+
+  it('works the other way when the offense runs the other way', () => {
+    const southbound = { x: 26, y: LOS - 15 }
+    const under = { id: 'u', label: 'WR', x: 24, y: LOS - 6, vx: 0, vy: 0 }
+    const held = getZoneTarget(southbound, under, 99, { dir: -1, holdDepthY: LOS - 12 })
+    expect(held.y).toBeLessThanOrEqual(LOS - 12)
+  })
+
+  it('leaves an underneath zone alone — no floor, no change', () => {
+    const flat = { x: 8, y: LOS + 3 }
+    const a = getZoneTarget(flat, underneath, 99, { dir: 1 })
+    const b = getZoneTarget(flat, underneath, 99, { dir: 1, holdDepthY: null })
+    expect(a).toEqual(b)
   })
 })
