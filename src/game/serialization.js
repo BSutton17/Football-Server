@@ -1,6 +1,7 @@
 import { serializeStats } from './stats.js'
 import { getScoreFor, getLosY } from './gameState.js'
 import { isPlayerPaused } from './pause.js'
+import { serializeDevReveal } from './devReveal.js'
 import { FIELD, HIDES_OPENNESS } from '../constants.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { ratingOf } from '../data/ratings.js'
@@ -102,6 +103,9 @@ export function serializeGameState(state, viewerSlot) {
     // [Special Teams][2][3] 4th-down menu, or [51] the post-TD extra-point / 2-pt menu — both render
     // through the same client menu (scoring/offense team only).
     decision: serializeDecision(state, viewerSlot) ?? serializeConversion(state, viewerSlot),
+    // [dev reveal] The computer's own call, for comparing alignment against what it should be.
+    // Triple-gated and null in every ordinary case — see devReveal.js.
+    devReveal: serializeDevReveal(state, viewerSlot),
     xfActiveIds: activeXFactorIds(state),   // [294] active-X-Factor players → star shows pre-snap too
     fatigue:  serializeFatigue(state, viewerSlot),   // [fatigue] own-team stamina (drives the bars)
     // [manual] Fixed for the game. The client needs both: mode switches HIKE for GO, and difficulty

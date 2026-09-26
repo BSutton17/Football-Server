@@ -252,6 +252,11 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
       self.recentPlays = [authoredCall.play.id, ...(self.recentPlays ?? [])].slice(0, REPEAT_DELAY)
     }
 
+    if (authoredCall?.play?.name) {
+      const g = getGame(socket?.data?.roomId)
+      if (g) g.aiCallName = `${authoredCall.play.name} / ${authoredCall.formation?.name ?? ''}`
+    }
+
     let call
     if (authoredCall) {
       call = {
@@ -445,6 +450,10 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
         : callAuthoredDefense(authoredD, k, { ballX, receivers, rng, ...brains() })
       if (self.authoredCall) {
         say(`${self.authoredCall.shell.name} — ${self.authoredCall.formation.name} vs ${self.authoredCall.look.id}`)
+        // [dev reveal] Named on the state so a screenshot can say WHICH shell this is, not just
+        // where eleven dots ended up. Harmless when the reveal is off: nothing reads it.
+        const g = getGame(socket?.data?.roomId)
+        if (g) g.aiCallName = `${self.authoredCall.shell.name} / ${self.authoredCall.formation.name}`
       }
     }
     const frontSize = self.authoredCall
