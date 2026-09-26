@@ -13,6 +13,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync, renameSync, readdirSync, statSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { buildTable } from '../src/ai/playcall/solve.js'
+import { loadPlaybook } from '../src/playbook/store.js'
 
 const args = process.argv.slice(2)
 const outFlag = args.indexOf('-o')
@@ -69,7 +70,10 @@ const save = (name, data) => {
 }
 
 save('state.json', { subgames: merged, possessionValue })
-const table = buildTable(merged)
+// The run/pass split comes from the situation, so the merge needs the playbook to tell the two
+// kinds apart — see withRunShare in solve.js.
+const book = loadPlaybook()
+const table = buildTable(merged, { playType: (id) => (book.plays?.[id]?.playType === 'run' ? 'run' : 'pass') })
 save('table.json', table)
 
 const buckets = new Set(merged.map(s => s.situation))

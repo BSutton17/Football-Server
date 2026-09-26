@@ -17,6 +17,7 @@ import {
   callAuthoredDefense, buildAuthoredDefense, formationLookId,
 } from './playbook/runAuthored.js'
 import { adjustOffense } from './playbook/adjustOffense.js'
+import { REPEAT_DELAY } from './playcall/select.js'
 import { solvedTable } from './playcall/table.js'
 import { getGame } from '../game/gameState.js'
 const forceDeps = { adjustOffense }
@@ -241,8 +242,15 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     const authoredCall = authored && hasAuthoredOffense(authored)
       ? (self.forceAuthoredPlay
         ? forceOnePlay(authored, self.forceAuthoredPlay, k, ballX)
-        : callAuthoredOffense(authored, k, { ballX, rng, ...brains() }))
+        : callAuthoredOffense(authored, k, { ballX, rng, recent: self.recentPlays, ...brains() }))
       : null
+
+    // ⚠️ KEPT ACROSS PLAYS, DELIBERATELY. This is the one piece of offensive memory that must NOT
+    // be in `resetPlay` — the whole point is that it outlives the play. Bounded to the delay length
+    // so it cannot grow for a whole game.
+    if (authoredCall?.play?.id) {
+      self.recentPlays = [authoredCall.play.id, ...(self.recentPlays ?? [])].slice(0, REPEAT_DELAY)
+    }
 
     let call
     if (authoredCall) {

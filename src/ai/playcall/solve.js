@@ -30,6 +30,7 @@
 // behind on noisy evidence should not vanish from the playbook.
 
 import { solveZeroSum, withMixingFloor, diagnose } from './nash.js'
+import { runShare, situationFromKey } from './situation.js'
 
 // How sharply formation values turn into a distribution. In yards: a formation worth this much
 // less than the best is called about a third as often.
@@ -196,7 +197,42 @@ export function withCeiling(mix, ceiling) {
 // The shape is deliberately the one the selector already expects: situation key -> play id ->
 // probability, and situation+formation -> shell id -> probability. Nothing downstream has to know
 // a solve happened.
-export function buildTable(subgames) {
+// ⚠️ THE SOLVE DECIDES WHICH PLAY, THE SITUATION DECIDES RUN OR PASS. Three complete solves have
+// now disagreed with football about the run/pass SPLIT, and in both directions: 61-65% run on third
+// and long in one, 0% run on second and short at the goal line in another, and 12% run on third and
+// one when the answer is about three quarters. The split is the one thing this model is bad at.
+//
+// It is bad at it for a structural reason, not a tuning one. A play-level equilibrium treats seven
+// similar pass concepts as seven independent actions, so the pass side accumulates weight simply by
+// being numerous; and the value function cannot price "we needed one yard and got four" the way a
+// coach does. Meanwhile the solve is GOOD at the thing it was built for: which concept beats which
+// shell, measured in this engine.
+//
+// So the two questions are separated. The situational share sets how often the ball is run, and the
+// solved distribution decides which run and which pass — keeping everything the sampling actually
+// learned and discarding only the part it kept getting wrong.
+function withRunShare(playProbs, situationKey, playType) {
+  const target = runShare(situationFromKey(situationKey))
+  let runTotal = 0, passTotal = 0
+  for (const [id, p] of Object.entries(playProbs)) {
+    if (playType(id) === 'run') runTotal += p
+    else passTotal += p
+  }
+  // A bucket with only one kind of play in it has no split to set.
+  if (runTotal <= 0 || passTotal <= 0) return playProbs
+
+  const runScale = target / runTotal
+  const passScale = (1 - target) / passTotal
+  const out = {}
+  for (const [id, p] of Object.entries(playProbs)) {
+    out[id] = p * (playType(id) === 'run' ? runScale : passScale)
+  }
+  return out
+}
+
+// `playType` maps a play id to 'run' or 'pass'. Passed in rather than imported, because this module
+// is pure post-processing over solved numbers and has no business loading a playbook.
+export function buildTable(subgames, { playType = null } = {}) {
   const offense = {}
   const defense = {}
 
@@ -223,7 +259,7 @@ export function buildTable(subgames) {
       const key = `${situation}|${g.formation}`
       defense[key] = Object.fromEntries(g.shells.map((id, j) => [id, g.defense[j] ?? 0]))
     })
-    offense[situation] = playProbs
+    offense[situation] = playType ? withRunShare(playProbs, situation, playType) : playProbs
   }
   return { offense, defense }
 }

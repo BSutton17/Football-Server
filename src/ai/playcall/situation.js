@@ -84,6 +84,22 @@ export function allSituations() {
 // The mix is decided FIRST, from the situation alone, and the plays of each type then share out
 // what their type was given. Authoring twenty more pass concepts now changes WHICH pass is called
 // and not whether the team ever runs.
+// ⚠️ A BUCKET IS COARSE BY DESIGN, so one representative snap stands for all of it — that is what
+// bucketing means. Used to ask situational questions of a SOLVED bucket, which is stored by key and
+// not by the numbers it came from.
+const BAND_DISTANCE = { short: 1, medium: 5, long: 10, verylong: 16 }
+const ZONE_YARDLINE = { backedup: 12, normal: 45, redzone: 90, goalline: 97 }
+
+export function situationFromKey(key) {
+  const [down, band, zone] = String(key).split('|')
+  return {
+    // '3rd/4th' share a bucket; three is the representative of the pair.
+    down: down === 'down1' ? 1 : down === 'down2' ? 2 : 3,
+    distance: BAND_DISTANCE[band] ?? 10,
+    yardLine: ZONE_YARDLINE[zone] ?? 45,
+  }
+}
+
 export function runShare(situation) {
   // League-ish baseline, then moved by the same reads `runLean` encodes. Expressed in odds so the
   // multipliers compose without ever leaving 0..1.

@@ -328,13 +328,20 @@ describe('the information boundary', () => {
 
 describe('special teams', () => {
   it('matches the specified field-goal curve', () => {
-    // ⚠️ THE ARGUMENT IS THE KICK DISTANCE (goal line + 17), which the old straight line was not
-    // built for: it made a 37-yarder a coin flip when a real kicker makes about 88% of them.
-    expect(fieldGoalChance(20)).toBeCloseTo(0.99, 2)    // a chip shot is a chip shot
-    expect(fieldGoalChance(37)).toBeGreaterThan(0.85)   // the attempt that started this
-    expect(fieldGoalChance(45)).toBeCloseTo(0.79, 2)
-    expect(fieldGoalChance(55)).toBeCloseTo(0.51, 2)
-    expect(fieldGoalChance(90)).toBeCloseTo(0.02, 2)    // never quite impossible
+    // ⚠️ THE BANDS THAT WERE ASKED FOR, checked at each edge so the spec is the test:
+    //   inside 35 100%, inside 45 90%, inside 50 80%, inside 55 75%.
+    // The argument is the KICK distance (goal line + 17).
+    expect(fieldGoalChance(20)).toBeCloseTo(1.00, 2)
+    expect(fieldGoalChance(35)).toBeCloseTo(1.00, 2)
+    expect(fieldGoalChance(45)).toBeCloseTo(0.90, 2)
+    expect(fieldGoalChance(50)).toBeCloseTo(0.80, 2)
+    expect(fieldGoalChance(55)).toBeCloseTo(0.75, 2)
+    // Interpolated inside a band rather than stepped — no cliff between 34 and 36 yards.
+    expect(fieldGoalChance(40)).toBeGreaterThan(0.90)
+    expect(fieldGoalChance(40)).toBeLessThan(1.00)
+    // And it keeps falling past the last band: seventy yards is not a 75% proposition.
+    expect(fieldGoalChance(70)).toBeLessThan(0.5)
+    expect(fieldGoalChance(90)).toBeGreaterThan(0)
 
     // …and it only ever gets harder with distance.
     for (let d = 10; d < 70; d += 5) {

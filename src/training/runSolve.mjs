@@ -166,6 +166,9 @@ for (const p of plays) {
   byFormation.get(p.formationId).push(p)
 }
 
+// The run/pass split is set from the situation rather than left to the solve — see withRunShare.
+const playType = (id) => (book.plays[id]?.playType === 'run' ? 'run' : 'pass')
+
 console.log(`[solve] ${plays.length} plays across ${byFormation.size} formations, ${shells.length} shells`)
 
 let done = []
@@ -291,7 +294,7 @@ for (const sit of situations) {
 // The run is over: save the state one last time (the budget may not have come round again) and
 // build the table from it.
 saveJson(statePath, { subgames: done, possessionValue })
-const table = buildTable(done)
+const table = buildTable(done, { playType })
 saveJson(tablePath, table)
 const mins = (Date.now() - started) / 60000
 console.log(`\n── Done: ${done.length} subgames in ${mins.toFixed(1)} min ──`)

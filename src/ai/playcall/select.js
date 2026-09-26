@@ -101,7 +101,13 @@ export function priorWeights(plays, situation) {
 //
 // `solved` is optional: a map of situation key -> { playId -> probability }. Where a bucket has
 // been solved, its distribution is used exactly; where it has not, the prior stands in.
-export function chooseOffensivePlay(plays, situation, { solved = null, rng = Math.random } = {}) {
+// How many plays must pass before a call can come round again. Sampling from a distribution will
+// happily draw the same play twice in a row — that is what independent draws do — and the run of
+// snaps a player actually watches is short enough that it reads as the AI having three plays.
+export const REPEAT_DELAY = 5
+
+export function chooseOffensivePlay(plays, situation,
+  { solved = null, rng = Math.random, recent = null } = {}) {
   if (!plays?.length) return null
   const key = situationKey(situation)
   const table = solved?.[key]
@@ -113,7 +119,17 @@ export function chooseOffensivePlay(plays, situation, { solved = null, rng = Mat
     ? normalize(plays.map(p => table[p.id] ?? 0))
     : normalize(priorWeights(plays, situation))
 
-  const usable = probs.some(p => p > 0) ? probs : normalize(priorWeights(plays, situation))
+  let usable = probs.some(p => p > 0) ? probs : normalize(priorWeights(plays, situation))
+
+  // ⚠️ THE LAST FEW CALLS ARE OFF THE TABLE, and the guard below is the important half. With a
+  // thin playbook — or a bucket the solve has concentrated — excluding the last five could leave
+  // nothing at all, and an offense that cannot choose a play does not line up. So the exclusion is
+  // abandoned rather than allowed to empty the pool.
+  if (recent?.length) {
+    const fresh = usable.map((p, i) => (recent.includes(plays[i].id) ? 0 : p))
+    if (fresh.some(p => p > 0)) usable = normalize(fresh)
+  }
+
   return sample(plays, withMixingFloor(usable, { floor: FLOOR }), rng)
 }
 

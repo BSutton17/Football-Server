@@ -34,20 +34,39 @@ export const ONE_MORE_PLAY_SECONDS = 8
 //
 // Two segments, because real accuracy does not fall off at one rate: it is nearly flat out to the
 // high thirties and then drops away quickly past 45.
-const FG_AUTOMATIC_TO = 25      // a kick this short is as close to certain as anything in football
-const FG_MAX = 0.99
-const FG_NEAR_FALLOFF = 0.010   // per yard from 25 to 45
-const FG_LONG_FROM = 45
-const FG_LONG_FALLOFF = 0.028   // per yard past 45, where legs start to matter
-const FG_FLOOR = 0.02           // never quite impossible
+// ⚠️ THESE ARE THE RATES THAT WERE ASKED FOR, NOT A CURVE I FITTED. Written as bands so they can
+// be checked against the request rather than reverse-engineered out of an equation:
+//
+//   inside 35  100%      inside 45  90%      inside 50  80%      inside 55  75%
+//
+// Interpolated WITHIN each band rather than stepped, because a cliff between 34 and 36 yards would
+// be visible and strange. Past the last band it keeps falling at the same kind of slope to a floor:
+// a seventy-yard attempt is not a 75% proposition.
+//
+// The argument is the KICK distance — goal line plus seventeen — which is what the caller passes.
+const FG_BANDS = [
+  { to: 35, rate: 1.00 },
+  { to: 45, rate: 0.90 },
+  { to: 50, rate: 0.80 },
+  { to: 55, rate: 0.75 },
+]
+const FG_BEYOND_FALLOFF = 0.03   // per yard past the last band
+const FG_FLOOR = 0.05
 
-// Chance the AI makes a field goal of this KICK distance. Roughly:
-//   30 yd 94%   35 yd 89%   40 yd 84%   45 yd 79%   50 yd 65%   55 yd 51%   60 yd 37%
 export function fieldGoalChance(kickDistance) {
   const d = Math.max(0, kickDistance)
-  const near = FG_MAX - Math.max(0, Math.min(d, FG_LONG_FROM) - FG_AUTOMATIC_TO) * FG_NEAR_FALLOFF
-  const long = Math.max(0, d - FG_LONG_FROM) * FG_LONG_FALLOFF
-  return clamp01(Math.max(near - long, FG_FLOOR))
+  if (d <= FG_BANDS[0].to) return FG_BANDS[0].rate
+
+  for (let i = 1; i < FG_BANDS.length; i++) {
+    const lo = FG_BANDS[i - 1]
+    const hi = FG_BANDS[i]
+    if (d > hi.to) continue
+    // Linear across the band, so it lands exactly on the stated rate at the band's edge.
+    return clamp01(lo.rate + (hi.rate - lo.rate) * ((d - lo.to) / (hi.to - lo.to)))
+  }
+
+  const last = FG_BANDS[FG_BANDS.length - 1]
+  return clamp01(Math.max(last.rate - (d - last.to) * FG_BEYOND_FALLOFF, FG_FLOOR))
 }
 
 // ── Punt returns ──────────────────────────────────────────────────────────────
@@ -138,6 +157,17 @@ export function specialTeamsAction(k, rng = Math.random) {
     return { event: 'fg_block', payload: { position: 0 } }
   }
 
+  // ⚠️ BACKSPIN, WHICH THE COMPUTER NEVER USED. It is a punt-only setup toggle that checks the
+  // ball up instead of letting it roll, and it is the difference between pinning somebody inside
+  // the ten and watching the ball trickle into the end zone for a touchback. A human had it and the
+  // AI did not, so the AI gave away field position it never had to.
+  //
+  // Decided before any power is built, and only when there is something to pin against: from deep
+  // in its own end the roll is worth more than the placement.
+  if (st.kicking && st.kickType === 'punt' && st.backspin !== true && wantsBackspin(k)) {
+    return { event: 'special_teams_input', payload: { backspin: true } }
+  }
+
   // Kicking. The meter is tapped up with alternating aim so the angle lands where it was aimed:
   // each tap adds power AND rotates, so an odd number of taps leaves the aim off-centre unless the
   // rotations cancel.
@@ -165,6 +195,14 @@ function nextTap(st, k, rng) {
 
   const wanted = st.__aiIntent === 'make' ? target : (target > 0 ? -0.8 : 0.8)
   return aim < wanted ? 'right' : 'left'
+}
+
+// Punting from far enough upfield that the ball would otherwise reach the end zone on the roll.
+// Inside this the placement is worth more than the extra yards, so the ball gets checked up.
+const BACKSPIN_FROM = 55        // own 55 and beyond — the opponent's 45 and in
+
+function wantsBackspin(k) {
+  return (k?.yardLine ?? 0) >= BACKSPIN_FROM
 }
 
 function clamp01(v) { return Math.max(0, Math.min(1, v)) }

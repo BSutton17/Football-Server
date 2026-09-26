@@ -11,6 +11,17 @@ import { ratingOf, cutThresholdFromRating, cutSpeedRetentionFromRating } from '.
 // resolves to it instead of to the LOS, so a stand-still route really does stand still for a
 // receiver lined up off the ball rather than walking him up to the line. Every other segment is
 // measured from the LOS as it always was. Omitting startY keeps the old LOS-relative behaviour.
+// How close to the boundary counts as being on it. A player is a yard across, so this is "his
+// outside shoulder is over the line" rather than "his middle is".
+const SIDELINE_MARGIN = 1.6
+
+// On the boundary AND still heading out of it. Somebody working back inbounds is not done.
+function atSideline(player) {
+  const out = player.x <= SIDELINE_MARGIN ? -1 : player.x >= FIELD.WIDTH - SIDELINE_MARGIN ? 1 : 0
+  if (!out) return false
+  return Math.sign(player.vx ?? 0) === out || Math.abs(player.vx ?? 0) < 0.5
+}
+
 export function buildWaypoints(route, startX, losY, dir, scale, pivotX, startY) {
   const s    = scale ?? 1
   const near = startX >= (pivotX ?? FIELD.WIDTH / 2) ? 1 : -1
@@ -92,6 +103,13 @@ export function getRouteTarget(player, losY, dir, dt, pivotX) {
       // Whether the receiver sits down at the end is read from the route's shape: one that finishes
       // working back toward the passer is one he settles on.
       // Stop route — player is settled at their spot, waiting for the ball.
+      player.routePhase = 'settled'
+    } else if (atSideline(player)) {
+      // ⚠️ THE SIDELINE IS THE END OF THE ROUTE. A continuation extends the target twenty yards
+      // along the current heading with x clamped to the field — so a receiver whose route took him
+      // to the boundary had his x pinned and his y kept running, and he jogged up the sideline for
+      // the rest of the play. Out there he has nowhere left to go and no room to work back into, so
+      // he stops and waits for the ball like any other settled route.
       player.routePhase = 'settled'
     } else {
       // Continuation route — extend target 20 yards in current velocity direction.
