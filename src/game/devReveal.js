@@ -16,6 +16,9 @@
 // harmless but pointless, and keeping the direction one-way means there is no version of this that
 // helps anybody compete.
 
+import { getRoom } from './roomManager.js'
+import { isAiSocketId } from '../ai/virtualSocket.js'
+
 const enabled = () =>
   process.env.NODE_ENV !== 'production' && process.env.ENABLE_DEV_REVEAL === '1'
 
@@ -35,6 +38,35 @@ export function serializeDevReveal(state, viewerSlot) {
     // to, with every assignment, which is the thing being inspected.
     play: aiHasBall ? revealOffense(state) : null,
     shell: aiHasBall ? null : revealDefense(state),
+  }
+}
+
+// ── Pushing it at the right moment ([dev reveal]) ───────────────────────────
+//
+// ⚠️ THE SNAPSHOT ON `game_state` IS TOO EARLY TO BE USEFUL, AND THAT NEARLY WASTED AN EVENING OF
+// SCREENSHOTS. `game_state` is broadcast when the play BEGINS. The computer's defense cannot line up
+// until it has seen the offense, so at that instant `defensePlayers` and `defenseCoverage` are empty
+// or still hold the last play's picture — the overlay drew either nothing or a lie, and a lie is
+// worse, because the whole point of the tool is to photograph where the AI actually stood.
+//
+// So the reveal is also PUSHED, on the same events the alignment itself fires (place_player and
+// assign_coverage from the computer's seat). The human's overlay therefore tracks the computer live:
+// drag a receiver, watch the defense answer it. Chatty by design — seven small payloads per
+// re-align, pre-snap only, dev only, solo only — because "always current" is the property that
+// makes a screenshot worth acting on.
+export function pushDevReveal(io, state, roomId) {
+  if (!enabled()) return
+  if (!state?.solo) return
+  const room = getRoom(roomId)
+  if (!room) return
+  for (const [slot, socketId] of room.players.entries()) {
+    // ⚠️ HUMAN SEATS, IDENTIFIED AS SUCH. The first version of this skipped "the seat that just
+    // acted" instead, which is backwards: the human is the one placing receivers, so it skipped the
+    // human and mailed the computer a description of its own opponent. A test caught it; the rule
+    // that is actually meant is "not a computer", so that is the rule it asks.
+    if (!socketId || isAiSocketId(socketId)) continue
+    const reveal = serializeDevReveal(state, slot)
+    if (reveal) io.to(socketId).emit('dev_reveal', reveal)
   }
 }
 

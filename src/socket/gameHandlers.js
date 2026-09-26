@@ -20,6 +20,7 @@ import {
   isManualPlay, isManualFrozen,
 } from '../game/manual.js'
 import { cancelRpo } from '../game/systems/rpo.js'
+import { pushDevReveal } from '../game/devReveal.js'
 import { armChewClock, chewRefusal, CHEW_STOP_AT, CHEW_SPEED } from '../game/chewClock.js'
 import {
   isSoloRoom, markDefenseSet, soloCountdownFor, DEFENSE_SET_COUNTDOWN, OFFENSE_SET_COUNTDOWN,
@@ -93,6 +94,9 @@ export function registerGameHandlers(io, socket) {
 
     // Echo the original relative y — both clients render in relative coordinates
     io.to(socket.data.roomId).emit('player_placed', { id, x, y, label, team })
+    // [dev reveal] Keep the inspection overlay current — see pushDevReveal. No-op in every ordinary
+    // game, and it must come AFTER the placement or it would describe the field one man ago.
+    pushDevReveal(io, state, socket.data.roomId)
   })
 
   socket.on('remove_player', (id) => {
@@ -132,6 +136,7 @@ export function registerGameHandlers(io, socket) {
       manCommit:   manCommit   ?? null,
     })
     socket.emit('coverage_assigned', payload)
+    pushDevReveal(io, state, socket.data.roomId)   // [dev reveal]
   })
 
   socket.on('clear_coverage', (payload) => {
