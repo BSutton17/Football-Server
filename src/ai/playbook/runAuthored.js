@@ -59,6 +59,10 @@ export function hasAuthoredDefense(book) {
   return Object.keys(book?.shells ?? {}).length > 0 && Object.keys(book?.defFormations ?? {}).length > 0
 }
 
+// Who may stand on the defensive side of the ball at all. A roster carries both teams, so the
+// last-resort fill has to be told where the line is.
+const DEFENSIVE_POSITIONS = new Set(['CB', 'S', 'LB', 'DL', 'DE', 'DT', 'EDGE', 'NT'])
+
 const withIds = (map) => Object.entries(map ?? {}).map(([id, v]) => ({ ...v, id }))
 
 const FIELD_WIDTH = 53.33
@@ -217,13 +221,19 @@ export function buildAuthoredDefense(call, { losY, ballX, receivers, roster, adj
     // a bad matchup; a spot with NOBODY IN IT is an uncovered receiver or an unmanned zone, and there
     // is no version of that which is better.
     if (!pick) {
-      pick = roster.find(p => !used.has(p.id))
+      // ⚠️ STILL A DEFENDER. The first version of this fell back to the whole roster, and a roster
+      // holds the offense too — so a shell that ran out of linebackers put a WIDE RECEIVER at
+      // safety. It showed up immediately in a solve's logs ("LB4 wanted LB, took a WR"), which is
+      // fortunate: a solve run against a defense with receivers in it would have been days of
+      // sampling a game nobody plays. A bad matchup means a linebacker covering a slot, not a
+      // wideout playing defense.
+      pick = roster.find(p => !used.has(p.id) && DEFENSIVE_POSITIONS.has(p.label ?? p.position))
       if (pick) {
         console.warn(`[defense] ${row.slot} wanted ${coverOrder(row.job, target?.label, row.label).join('/')}` +
           `, took a ${pick.label ?? pick.position} — the preferred positions are all out there already`)
       }
     }
-    if (!pick) continue      // genuinely nobody left: the roster is short, not the matcher
+    if (!pick) continue      // genuinely no defenders left: the roster is short, not the matcher
     used.add(pick.id)
 
     out.push({

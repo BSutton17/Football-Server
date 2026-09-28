@@ -217,3 +217,44 @@ describe('⚠️ NO TWO DEFENDERS OCCUPY THE SAME SPOT', () => {
     })
   }
 })
+
+// ⚠️ A WIDE RECEIVER MAY NOT PLAY SAFETY.
+//
+// The "eleven men, whatever it takes" fallback originally searched the whole roster, and a roster
+// holds the offense too — so a shell that ran out of linebackers filled the spot with a WR. It
+// surfaced in a solve's logs within a minute of starting ("LB4 wanted LB, took a WR"), which was
+// lucky: a solve run against a defense with receivers in it is days of sampling a game nobody plays.
+// A bad matchup means a linebacker on a slot receiver, not a wideout playing defense.
+describe('⚠️ THE LAST-RESORT FILL IS STILL A DEFENDER', () => {
+  const DEFENSIVE = new Set(['CB', 'S', 'LB', 'DL'])
+  // A roster with both sides on it and deliberately few linebackers, so the fallback has to fire.
+  const mixed = [
+    ...['cb1', 'cb2'].map((id, i) => ({ id, label: 'CB', ovr: 85 - i, ratings: {} })),
+    ...['s1', 's2'].map((id, i) => ({ id, label: 'S', ovr: 84 - i, ratings: {} })),
+    { id: 'lb1', label: 'LB', ovr: 83, ratings: {} },
+    ...['wr1', 'wr2', 'wr3'].map((id, i) => ({ id, label: 'WR', ovr: 90 - i, ratings: {} })),
+    { id: 'te1', label: 'TE', ovr: 80, ratings: {} },
+    { id: 'rb1', label: 'RB', ovr: 80, ratings: {} },
+  ]
+  const heavy = [
+    { id: 'r1', label: 'WR', x: 6, y: 40 }, { id: 'r2', label: 'TE', x: 20, y: 40 },
+    { id: 'r3', label: 'TE', x: 33, y: 40 }, { id: 'r4', label: 'WR', x: 45, y: 40 },
+    { id: 'r5', label: 'RB', x: 28, y: 34 },
+  ]
+
+  it('never puts an offensive player on the field as a defender', () => {
+    const offenders = []
+    for (const [id, sh] of Object.entries(book.shells ?? {})) {
+      const f = book.defFormations[sh.formationId]
+      if (!f) continue
+      const rows = buildAuthoredDefense(
+        { shell: { ...sh, id }, formation: { ...f, id: sh.formationId }, look: { id: 'x' } },
+        { losY: 40, ballX: 26.7, receivers: heavy, roster: mixed },
+      )
+      for (const r of rows ?? []) {
+        if (!DEFENSIVE.has(r.label)) offenders.push(`${id}: ${r.id} is a ${r.label}`)
+      }
+    }
+    expect(offenders).toEqual([])
+  })
+})
