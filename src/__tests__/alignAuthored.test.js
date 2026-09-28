@@ -69,6 +69,8 @@ const align = (shell, opts = {}) =>
   alignAuthored({ formation, shell, receivers, ballX: BALL_X, losY: LOS, ready: true, ...opts })
 const find = (rows, slot) => rows.find(r => r.slot === slot)
 const SHADES = ['none', 'in', 'out', 'over', 'under']
+// How far a zone may lean off its authored share of the field (MAX_ZONE_SLIDE / MAX_DEEP_SLIDE).
+const MAX_UNDER_LEAN = 4.001
 
 describe('⚠️ NOTHING IS DECIDED UNTIL THE OFFENSE HAS SET', () => {
   it('reads the engine’s own adjust window', () => {
@@ -535,5 +537,84 @@ describe('⚠️ DEEP ZONES DIVIDE THE FIELD, NOT THE BALL', () => {
       formation: quarters, shell: cover4, receivers: allLeft, ballX: LEFT_HASH, losY: L, ready: true,
     }).filter(r => r.zone === 'deep').map(r => r.zoneCenterX).sort((a, b) => a - b)
     expect(deep[3]).toBeGreaterThan(40)
+  })
+})
+
+// ── Zone landmarks belong to the field ([alignment]) ──────────────────────
+//
+// ⚠️ "THE HOOK CURL IN THE MIDDLE SHOULD ALWAYS BE IN THE MIDDLE" and "ZONES SHOULD NEVER BE
+// SMUSHED AGAINST THE SIDE LIKE THAT."
+//
+// The deep zones were field-anchored first. The underneath ones had the same disease: a hook drawn
+// at dx 0 is the MIDDLE hook, and resolving it against the ball put it eight yards off centre on
+// every hash snap, while an outside hook drawn at -15.8 landed on the sideline at x 2.9.
+describe('⚠️ A ZONE IS A SHARE OF THE FIELD, NOT AN OFFSET FROM THE BALL', () => {
+  const HASH = 53.33 * 0.35
+  const MID = 53.33 / 2
+  const L = 45
+  const wide = [
+    { id: 'w1', x: 7.9, y: L, label: 'WR' }, { id: 't1', x: 13.5, y: L, label: 'TE' },
+    { id: 't2', x: 23.8, y: L, label: 'TE' }, { id: 'w2', x: 37.3, y: L, label: 'WR' },
+    { id: 'r1', x: 21, y: L - 6, label: 'RB' },
+  ]
+  const shape = {
+    category: '4-3',
+    spots: [
+      { slot: 'DL1', dx: -3.25, depth: 1 }, { slot: 'DL2', dx: -1.25, depth: 1 },
+      { slot: 'DL3', dx: 1.25, depth: 1 }, { slot: 'DL4', dx: 3.25, depth: 1 },
+      { slot: 'LB1', dx: -5, depth: 5 }, { slot: 'LB2', dx: 0, depth: 5 }, { slot: 'LB3', dx: 5, depth: 5 },
+      { slot: 'CB1', dx: -16, depth: 7 }, { slot: 'CB2', dx: 16, depth: 7 },
+      { slot: 'S1', dx: -8, depth: 13 }, { slot: 'S2', dx: 8, depth: 13 },
+    ],
+  }
+  const quarters = {
+    assignments: {
+      DL1: { job: 'rush' }, DL2: { job: 'rush' }, DL3: { job: 'rush' }, DL4: { job: 'rush' },
+      CB1: { job: 'zone', zone: 'deep', center: { dx: -20, depth: 14 } },
+      CB2: { job: 'zone', zone: 'deep', center: { dx: 20, depth: 14 } },
+      S1: { job: 'zone', zone: 'deep', center: { dx: -6.7, depth: 14 } },
+      S2: { job: 'zone', zone: 'deep', center: { dx: 6.7, depth: 14 } },
+      LB1: { job: 'zone', zone: 'hook', center: { dx: -16, depth: 6 } },
+      LB2: { job: 'zone', zone: 'curl', center: { dx: 0, depth: 8 } },
+      LB3: { job: 'zone', zone: 'hook', center: { dx: 16, depth: 6 } },
+    },
+  }
+  const at = (ballX) => alignAuthored({
+    formation: shape, shell: quarters, receivers: wide, ballX, losY: L, ready: true,
+  })
+
+  it('⚠️ THE MIDDLE HOOK IS IN THE MIDDLE, WHEREVER THE BALL IS SPOTTED', () => {
+    // Ball-relative, on the left hash this landmark sat at 18.7 — eight yards off centre — and the
+    // middle of the field had nobody responsible for it.
+    for (const ballX of [HASH, MID, 53.33 * 0.65]) {
+      const mid = at(ballX).find(r => r.slot === 'LB2')
+      expect(Math.abs(mid.zoneCenterX - MID)).toBeLessThanOrEqual(MAX_UNDER_LEAN)
+    }
+  })
+
+  it('⚠️ NO ZONE LANDMARK IS JAMMED AGAINST A SIDELINE', () => {
+    for (const ballX of [HASH, MID, 53.33 * 0.65]) {
+      for (const r of at(ballX).filter(x => x.job === 'zone')) {
+        expect(r.zoneCenterX).toBeGreaterThan(4)
+        expect(r.zoneCenterX).toBeLessThan(53.33 - 4)
+      }
+    }
+  })
+
+  it('⚠️ A CORNER IN A DEEP ZONE STILL LINES UP OVER SOMEBODY — that is the disguise', () => {
+    // A corner standing in open grass has announced he is not in man before the offense has set.
+    const rows = at(HASH)
+    for (const slot of ['CB1', 'CB2']) {
+      const cb = rows.find(r => r.slot === slot)
+      const nearest = Math.min(...wide.filter(w => w.label !== 'RB').map(w => Math.abs(w.x - cb.x)))
+      expect(nearest).toBeLessThan(3)
+    }
+  })
+
+  it('…but his AREA is still a quarter of the field, not the man he is standing on', () => {
+    const rows = at(HASH)
+    const cb1 = rows.find(r => r.slot === 'CB1')
+    // Body out on the receiver, landmark still near the drawn quarter.
+    expect(Math.abs(cb1.zoneCenterX - (MID - 20))).toBeLessThanOrEqual(MAX_UNDER_LEAN)
   })
 })

@@ -87,6 +87,10 @@ const MAX_ZONE_SLIDE = 4
 // be more to the middle".
 const MAX_DEEP_SLIDE = 2
 
+// How far a deep-zone CORNER may walk from his landmark to stand over a receiver. Far enough to
+// look like man coverage, short enough that he is still in the quarter he is responsible for.
+const DISGUISE_TRAVEL = 7
+
 // How far an UNDERNEATH zone may travel to start across from the man in it.
 //
 // ⚠️ THIS WAS 9, WHICH IS NOT "A LITTLE". The rule this file is built on is that a zone slides
@@ -707,14 +711,15 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
       // untouched left a deep zone on the ball-relative spot, so the boundary quarter stayed
       // bunched exactly when there was nothing over there to justify it.
       if (!side.length) {
-        if (d.zone !== 'deep' || !d.zoneCenter) return d
-        // He still moves with the structure — a quarter with nobody in it is still his quarter.
-        const shift = (FIELD_CENTER_X - ballX) + deepSlide
+        if (!d.zoneCenter) return d
+        // An empty side is still his side. A deep zone moves with the structure; an underneath one
+        // simply sits on its own landmark, because there is nobody over there to slide toward.
+        const shift = d.zone === 'deep' ? deepSlide : 0
         return {
           ...d,
-          x: d.x + shift,
-          zoneCenterX: FIELD_CENTER_X + d.zoneCenter.dx + deepSlide,
-          zoneCenter: { dx: d.zoneCenter.dx + deepSlide, depth: d.zoneCenter.depth },
+          x: d.x + (FIELD_CENTER_X - ballX) + shift,
+          zoneCenterX: FIELD_CENTER_X + d.zoneCenter.dx + shift,
+          zoneCenter: { dx: d.zoneCenter.dx + shift, depth: d.zoneCenter.depth },
         }
       }
 
@@ -734,16 +739,27 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
       const targetX = paired ? paired.x : side.reduce((a, r) => a + r.x, 0) / side.length
       const reach = paired ? MAX_ZONE_ALIGN : (d.zone === 'deep' ? MAX_DEEP_SLIDE : MAX_ZONE_SLIDE)
 
-      // Where this zone actually belongs before any shading. A deep zone belongs at its share of
-      // the FIELD (see FIELD_CENTER_X above); everything else belongs where the shell drew it
-      // relative to the ball.
+      // Where this zone actually belongs before any shading: its share of the FIELD (see
+      // FIELD_CENTER_X above).
+      //
+      // ⚠️ UNDERNEATH ZONES ARE ANCHORED TO THE FIELD TOO. Deep zones went first, because their
+      // authored numbers are plainly field divisions. The underneath ones turned out to have the
+      // same disease: a hook drawn at dx 0 is the MIDDLE hook, and resolving it against the ball
+      // put it eight yards off centre on every hash snap, while an outside hook drawn at -15.8
+      // landed at x 2.9 — on the sideline, with a twenty-three yard hole beside it. Reported as
+      // "the hook curl in the middle should always be in the middle" and "zones should never be
+      // smushed against the side like that".
+      //
+      // The zone still SLIDES toward the receivers on its side, which is how it answers the
+      // formation. What it no longer does is start from wherever the ball happens to be spotted.
       const deepZone = d.zone === 'deep' && d.zoneCenter != null
+      const anchored = d.zoneCenter != null
       // ⚠️ THE BODY MOVES WITH THE LANDMARK, IT DOES NOT MOVE ONTO IT. A shell draws a safety's
       // body INSIDE the zone he owns on purpose — he aligns there and widens at the snap. Parking
       // him on top of his landmark throws that away and is a different call. So re-anchoring a
       // deep zone to the field shifts the pair together and their relationship is preserved.
-      const fieldShift = deepZone ? FIELD_CENTER_X - ballX : 0
-      const anchorX = deepZone ? FIELD_CENTER_X + d.zoneCenter.dx : d.x
+      const fieldShift = anchored ? FIELD_CENTER_X - ballX : 0
+      const anchorX = anchored ? FIELD_CENTER_X + d.zoneCenter.dx : d.x
       // A deep zone takes the structure's shared shift; everyone else answers his own side.
       const slide = deepZone ? deepSlide : clamp(targetX - anchorX, -reach, reach)
 
@@ -752,9 +768,25 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
       const mayPress = d.label === 'CB' && d.zone === 'flat' && Math.abs(nearest.x - d.x) < 8
       const depth = mayPress ? Math.min(d.depth, PRESS_DEPTH + 2) : d.depth
 
+      // ⚠️ A CORNER IN A DEEP ZONE STANDS OVER SOMEBODY ANYWAY — THAT IS THE DISGUISE.
+      //
+      // His LANDMARK is a quarter of the field and stays one; a defender responsible for an area
+      // behind everyone must not chase a man to it. But where he starts is a different question,
+      // and a corner who lines up in open grass has announced that he is not in man before the
+      // offense has even set. Reported directly: "that slot corner should be aligned with a man
+      // even though they are in zone — this helps disguise the shell that the defense is in."
+      //
+      // So the BODY walks out over the widest receiver to his side, bounded, while the area he owns
+      // is untouched. It is what a quarters corner does: show press, bail at the snap.
+      let bodyX = d.x + fieldShift + slide
+      if (deepZone && d.label === 'CB') {
+        const widest = side.reduce((a, r) => (Math.abs(r.x - ballX) > Math.abs(a.x - ballX) ? r : a), side[0])
+        bodyX = clamp(widest.x, bodyX - DISGUISE_TRAVEL, bodyX + DISGUISE_TRAVEL)
+      }
+
       return {
         ...d,
-        x: d.x + fieldShift + slide,
+        x: bodyX,
         y: losY + depth,
         depth,
         pressing: depth < d.depth,
@@ -762,7 +794,7 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
         // The landmark in absolute yards, resolved here because this is where ballX is known.
         // Downstream (coverageFor) has the row and nothing else; leaving it to resolve `dx` itself
         // is what led to it giving up and using the defender's own position instead.
-        zoneCenterX: d.zoneCenter ? (deepZone ? anchorX : ballX + d.zoneCenter.dx) + slide : null,
+        zoneCenterX: anchored ? anchorX + slide : null,
       }
     }
 
