@@ -460,6 +460,30 @@ export function validateThrowaway(socket) {
 // call_timeout — [70] either team may call a timeout, but only while the ball is dead (pre-snap) and
 // no other stoppage / kick / decision menu is already in progress. The caller's remaining-count check
 // happens in the handler (it needs the caller's slot). Returns null when the timeout may proceed.
+// [run adjust] ⚠️ ONE LOOK AT THE DEFENSE, ON A RUN, AFTER IT HAS SHOWN ITS HAND.
+//
+// The offense locks its formation and its run angle BEFORE the defense aligns — that is the whole
+// shape of a down here. So the gap it picked was chosen against a defense that had not lined up
+// yet, which is backwards: the lane you run is the one the front leaves you.
+//
+// This is the one adjustment it gets, and the limits are what keep it from being a second play call:
+// run plays only, after the offense has already set, and ONCE. Nothing about the play changes except
+// which way the back goes.
+export function validateRunAngleAdjust(socket, payload) {
+  const state = resolveState(socket)
+  if (!state) return 'No active game found for this room'
+  if (roleOf(socket) !== 'offense') return 'Only the offense may change the run angle'
+
+  const phaseErr = checkPhase(state, PHASE.COUNTDOWN)
+  if (phaseErr) return phaseErr
+
+  const type = state.playDesign?.playType
+  if (type !== 'run' && type !== 'rpo') return 'The run angle only applies to a run'
+  if (state.runAngleAdjusted) return 'The offense has already adjusted this play'
+
+  return checkNumber(payload?.runAngle, 'runAngle', -60, 60)
+}
+
 export function validateCallTimeout(socket) {
   const state = resolveState(socket)
   if (!state) return 'No active game found for this room'

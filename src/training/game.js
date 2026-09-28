@@ -234,6 +234,13 @@ export function playDown(ctx, opts = {}) {
     return { yards: 0, ticks: 0, outcome: 'no_snap', ok: false, problems, startYardLine }
   }
 
+  // [run adjust] ⚠️ THE LAST BEAT OF THE COUNTDOWN HAS TO HAPPEN HERE TOO. A real game ticks the
+  // hike countdown down to zero and the offense takes its one look at the front on the way past;
+  // this harness fires the snap directly, so that beat never arrived and the adjustment never
+  // happened in training. The solve samples training, so without this the table would be solved
+  // against an offense that does not exist in the real game.
+  seats[offenseSlot].emit('hike_countdown', { count: 1 })
+
   // Snap. Fired directly rather than waiting out the countdown's real setTimeout chain.
   seats[offenseSlot].fire('snap_ball')
   if (state.phase !== PHASE.LIVE) {

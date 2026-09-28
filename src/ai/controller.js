@@ -30,6 +30,11 @@ import { specialTeamsAction, fourthDownChoice } from './specialTeams.js'
 import { shouldCallTimeout } from './clockManagement.js'
 import { makeRng } from '../game/utils/rng.js'
 import { chooseSetTime, shouldSetNow } from './timing.js'
+
+// [run adjust] How late the offense takes its one look at the front, in seconds of hike countdown.
+// One beat before the snap: late enough that the defense has finished moving, early enough to be a
+// decision rather than a reaction.
+const RUN_ADJUST_AT = 1
 import { rankTargets } from './reads.js'
 import { skillFor } from './difficulty.js'
 
@@ -117,7 +122,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // What the AI decided this play, kept for logs, tests and (later) training telemetry.
     lastCall: null,
     // Guards so a decision is made once per play rather than on every event that arrives.
-    done: { personnel: false, formation: false, coverage: false, set: false, snapped: false, timeout: false },
+    done: { personnel: false, formation: false, coverage: false, set: false, snapped: false, timeout: false, runAdjust: false },
 
     onEvent(event, payload) {
       applyEvent(k, event, payload)
@@ -173,7 +178,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   }
 
   function resetPlay() {
-    self.done = { personnel: false, formation: false, coverage: false, set: false, snapped: false, timeout: false }
+    self.done = { personnel: false, formation: false, coverage: false, set: false, snapped: false, timeout: false, runAdjust: false }
     self.lastCall = null
     // ⚠️ The authored shell is per PLAY. Left set, the defense would keep calling last down's
     // coverage for the rest of the drive — and because alignDefense re-runs on every opponent
@@ -183,6 +188,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     self.coverageOnField = []  // …and who the last shell had out there
     self.players = []
     self.setAt = null
+    self.hurriedSeconds = 0
     self.manualFrozen = false
     self.heldFor = 0
     self.looks = 0
@@ -316,11 +322,25 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     if (self.setAt == null) self.setAt = chooseSetTime(rng)
     if (!self.forceSet && !shouldSetNow(k.playClock ?? 0, self.setAt)) return
 
+    // ⚠️ BEING HURRIED MUST NOT SAVE THE OFFENSE TIME ON THE GAME CLOCK.
+    //
+    // The computer picks a moment to snap — somewhere between 20 and 5 seconds left — and the game
+    // clock runs while it waits. A human defense pressing Set Defense short-circuits that wait, so
+    // the snap came sooner in real time and the seconds the offense had every intention of burning
+    // simply never happened. Declaring ready was therefore a free way to stop the clock, which is
+    // the opposite of what it should cost.
+    //
+    // So the skipped play clock is reported with the set, and the server takes it off the game
+    // clock at the snap. The defense still gets to play sooner; it just does not get the time back.
+    const skipped = self.forceSet ? Math.max(0, (k.playClock ?? 0) - self.setAt) : 0
+    self.hurriedSeconds = skipped
+
     const losY = k.yardLine
     const ballX = k.ballX            // the line and the quarterback pivot on the hash, like the client's
     // The line and the quarterback are not dragged by anyone — they are auto-placed, and they
     // travel in the set_offense payload rather than as place_player events.
     socket.fire('set_offense', {
+        hurriedSeconds: self.hurriedSeconds ?? 0,
       playSerial: k.playSerial,
       playType: self.lastCall.playType,
       runAngle: self.lastCall.runAngle,
@@ -669,6 +689,18 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
 
   function onCountdown(payload) {
     if (!isOffense(k)) return
+
+    // [run adjust] The last beat before the snap: look at where the front actually lined up and take
+    // the lane it left. `chooseRunAngle` already scores every gap by how crowded it is — it was just
+    // being asked before the defense had shown anything.
+    if ((payload?.count ?? 99) <= RUN_ADJUST_AT && !self.done.runAdjust && self.lastCall?.playType === 'run') {
+      self.done.runAdjust = true
+      const lane = chooseRunAngle(k, k.ballX, rng)
+      if (lane && Number.isFinite(lane.angle)) {
+        say(`run adjust → ${lane.angle}°`)
+        socket.fire('adjust_run_angle', { runAngle: lane.angle })
+      }
+    }
     // The hike unlocks at zero. Snapping is the offense's own decision, so it is made here rather
     // than reacting to a server prompt.
     if ((payload?.count ?? 1) <= 0 && !self.done.snapped) {

@@ -1,4 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
+import { fourthDownChoice } from '../ai/specialTeams.js'
 import {
   DECISION, DECISION_SECONDS,
   canFieldGoal, canPunt, isDecisionLegal, decisionDefault, decisionRequired,
@@ -151,5 +152,56 @@ describe('runDecisionClock — auto-pick on timeout', () => {
     runDecisionClock(state, mockIo(), 0.05)
     expect(state.decisionPending).toBe(true)
     expect(state.decisionTimer).toBeCloseTo(2.95)
+  })
+})
+
+// ── Fourth and inches ([4th down]) ────────────────────────────────────────
+//
+// ⚠️ "THE GAME SHOULD NEVER PUNT ON 4TH AND INCHES UNLESS THEY ARE ON THEIR OWN 40 YARD LINE OR
+// BELOW, BUT THEY CAN STILL KICK A FIELD GOAL IF IN RANGE AND IF THE SITUATION MAKES SENSE."
+//
+// It used to punt anywhere short of midfield, so the computer kicked the ball away on 4th and a
+// foot from its own 45. A yard is the easiest thing in football to gain; punting concedes the drive
+// rather than take it.
+describe('⚠️ FOURTH AND INCHES', () => {
+  const at = (yardLine, distance = 1) => ({
+    down: 4, distance, yardLine, quarter: 2, clock: 600, score: { own: 7, opp: 7 },
+    decision: {
+      fieldGoalDistance: (100 - yardLine) + 17,
+      options: [
+        { id: 'go_for_it', legal: true },
+        { id: 'punt', legal: true },
+        { id: 'field_goal', legal: (100 - yardLine) + 17 <= 60 },
+      ],
+    },
+  })
+  const pick = (yardLine, distance) => fourthDownChoice(at(yardLine, distance))?.payload?.option
+
+  it('goes for it past the own 40', () => {
+    for (const yl of [41, 45, 50, 60, 70]) expect(pick(yl)).toBe('go_for_it')
+  })
+
+  it('⚠️ STILL PUNTS FROM DEEP IN ITS OWN END — there a turnover is points, not field position', () => {
+    for (const yl of [10, 25, 38, 40]) expect(pick(yl)).toBe('punt')
+  })
+
+  it('…and the floor is the own 40 exactly', () => {
+    expect(pick(40)).toBe('punt')
+    expect(pick(41)).toBe('go_for_it')
+  })
+
+  it('⚠️ TAKES A NEAR-AUTOMATIC FIELD GOAL OVER THE YARD', () => {
+    // Inside the 23 the kick is close to free and worth more than a yard.
+    expect(pick(85)).toBe('field_goal')
+    expect(pick(78)).toBe('field_goal')
+  })
+
+  it('…but not a long one — a fifty-yarder is a worse bet than a sneak', () => {
+    expect(pick(70)).toBe('go_for_it')   // a 47-yard attempt
+  })
+
+  it('leaves ordinary fourth downs alone', () => {
+    expect(pick(45, 3)).toBe('punt')
+    expect(pick(70, 6)).toBe('field_goal')
   })
 })

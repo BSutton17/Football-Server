@@ -11,6 +11,7 @@ import {
   validateScramble,
   validateThrowaway,
   validateCallTimeout,
+  validateRunAngleAdjust,
   roleOf,
   slotOf,
 } from '../game/validation.js'
@@ -33,7 +34,7 @@ import { initLivePhase } from '../game/systems/init.js'
 import { enqueue, EVENT, resolveDecision, resolveConversion, resolvePuntReturn, resolveFieldGoalBlock, broadcastSpecialTeams, sampleForTendencies, startNextPlay } from '../game/eventQueue.js'
 import { startGameLoop } from '../game/simulation.js'
 import { getRoom } from '../game/roomManager.js'
-import { serializeGameState } from '../game/serialization.js'
+import { serializeGameState, serializeClock } from '../game/serialization.js'
 import { repairAfterResume } from '../game/resumeRepair.js'
 import {
   recommendOffense, recommendDefense, layoutPlayForClient, layoutShellForClient,
@@ -160,6 +161,16 @@ export function registerGameHandlers(io, socket) {
       runAngle:  payload.runAngle,
       players:   payload.players,
     }
+
+    // [hurry] How much play clock the offense was going to burn but did not, because the defense
+    // declared itself ready early. Banked here and spent at the snap — see snap_ball. Only counts
+    // when the game clock was actually RUNNING: after an incompletion it is already stopped, and
+    // there is nothing to take off.
+    const wasRunning = !state.clockStopped
+    const hurried = Number(payload?.hurriedSeconds ?? 0)
+    state.pendingClockBurn = wasRunning && Number.isFinite(hurried) && hurried > 0
+      ? Math.min(hurried, RULES.PLAY_CLOCK_NEW_DRIVE)
+      : 0
 
     state.playClockRunning = false
     // [70] Pausing on Set: freeze the GAME clock too (not just the play clock) so no time bleeds off
@@ -303,6 +314,21 @@ export function registerGameHandlers(io, socket) {
     console.log(`[game] ${roomId} timeout by slot ${slot} — ${state.timeouts[slot]} left; clock stopped`)
   })
 
+  // ── Changing the run lane once the defense has shown itself ([run adjust]) ─
+
+  socket.on('adjust_run_angle', (payload) => {
+    const err = validateRunAngleAdjust(socket, payload)
+    if (err) return reject(socket, 'adjust_run_angle', err)
+
+    const state = getGame(socket.data.roomId)
+    state.playDesign.runAngle = payload.runAngle
+    state.runAngleAdjusted = true
+
+    // Only the offense is told. The defense never learns the play call, and the lane the back is
+    // about to take is the play call.
+    socket.emit('run_angle_adjusted', { runAngle: payload.runAngle })
+  })
+
   // ── Chewing the clock ([chew clock]) ───────────────────────────────────────
   //
   // The offense asking for the pre-snap seconds to go away faster. All the rules live in
@@ -385,6 +411,17 @@ export function registerGameHandlers(io, socket) {
 
     state.newDrive = false   // [first play] the drive's opening snap is away — back to the 5 s window next time
     state.clockStopped = false   // [70] the snap restarts the game clock (paused since the offense set)
+
+    // [hurry] Spend the play clock the offense was hurried out of — see set_offense. The game clock
+    // jumps at the hike, which is exactly where a viewer expects it: 2:15 with the offense intending
+    // to snap at :05 of a 25-second play clock becomes 1:55 as the ball moves.
+    const burn = state.pendingClockBurn ?? 0
+    state.pendingClockBurn = 0
+    if (burn > 0) {
+      state.clock = Math.max(0, state.clock - burn)
+      io.to(roomId).emit('clock_update', serializeClock(state))
+      if (state.clock <= 0) enqueue(roomId, EVENT.CLOCK_EXPIRED, {})
+    }
     initLivePhase(state)
     transition(state, PHASE.LIVE)
     // [manual] On a manual pass play the snap IS the first GO press — the play opens with the button

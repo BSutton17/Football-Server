@@ -339,6 +339,9 @@ export function resetPlay(state) {
 // begins", which was the thing that made it look done. Both callers now share this function, so a
 // new per-play declaration cannot be added to one path and forgotten in the other.
 export function clearPerPlayDeclarations(state) {
+  // [run adjust] One per play, so the record of having used it dies with the play.
+  if (state) state.runAngleAdjusted = false
+
   // [chew clock] Not solo-gated: the flag is only ever SET in a solo room, but clearing it has to be
   // unconditional or an early return above it would leave a stale one armed.
   clearChewClock(state)

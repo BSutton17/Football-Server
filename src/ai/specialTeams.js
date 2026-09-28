@@ -88,6 +88,17 @@ export function puntReturnChoice(landingYardLine) {
   return landingYardLine <= BOUNCE_INSIDE ? 'let_it_bounce' : 'return'
 }
 
+// [4th and inches] A yard or less. Anywhere past the floor below, this is a down to go for.
+const INCHES_YARDS = 1
+
+// Own 40 and in: here a failed conversion is points for the other side rather than field position,
+// so the punt keeps its place. Past it, punting a yard away is giving the drive up.
+const PUNT_FLOOR_YARDLINE = 40
+
+// On 4th and inches a kick has to be near-automatic to be worth more than the yard. Inside the 23,
+// roughly — a fifty-yarder is a worse bet than a quarterback sneak.
+const SHORT_YARDAGE_FG_MAX = 40
+
 // ── Fourth down ───────────────────────────────────────────────────────────────
 //
 // Field position first, then distance. The thresholds are the ordinary ones: kick it when you are
@@ -127,14 +138,26 @@ export function fourthDownChoice(k, rng = Math.random) {
     return choose(noTimeLeft && fgDistance <= 52 ? 'field_goal' : 'go_for_it')
   }
 
+  // ⚠️ FOURTH AND INCHES IS NOT A PUNTING SITUATION. It used to be, anywhere short of midfield —
+  // so the computer punted the ball away on 4th and a foot from its own 45, which no coach has done
+  // in twenty years. A yard is the easiest thing in football to gain and punting concedes the drive
+  // to avoid it.
+  //
+  // The one place it stays right is deep in your own end, where losing it hands over points rather
+  // than field position — hence the floor at the own 40.
+  if (togo <= INCHES_YARDS && k.yardLine > PUNT_FLOOR_YARDLINE) {
+    // …unless the kick is the better score. A near-automatic field goal is worth more than a yard;
+    // a fifty-yarder is not, and going for it from there is the higher-value call.
+    if (legal.has('field_goal') && fgDistance <= SHORT_YARDAGE_FG_MAX) return choose('field_goal')
+    if (legal.has('go_for_it')) return choose('go_for_it')
+  }
+
   // In range and it is worth more than the down.
   if (legal.has('field_goal') && fgDistance <= 52 && togo > 2) return choose('field_goal')
 
   // Short yardage in plus territory: take the shot.
   if (legal.has('go_for_it') && togo <= 2 && yardsToGoal(k) <= 45) return choose('go_for_it')
 
-  // Fourth and inches anywhere past midfield.
-  if (legal.has('go_for_it') && togo <= 1 && k.yardLine >= 50) return choose('go_for_it')
 
   if (legal.has('field_goal') && fgDistance <= 52) return choose('field_goal')
   if (legal.has('punt')) return choose('punt')
