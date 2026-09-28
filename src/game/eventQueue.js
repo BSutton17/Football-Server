@@ -18,7 +18,7 @@ import { getSpecialist } from '../data/specialists.js'
 import { getRoom } from './roomManager.js'
 import { serializeClock, serializeScore, serializeGameState, serializeGameOver, serializePlayResult, isReceiverReady, laneContext } from './serialization.js'
 import { recoverStamina, applyTackleStamina } from './systems/stamina.js'
-import { CATCH_MOMENTUM_TIME } from './systems/movement.js'
+import { CATCH_MOMENTUM_TIME, DEEP_CATCH_YARDS, CATCH_SLOW_TIME } from './systems/movement.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { isManualPlay, beginPassSuspense } from './manual.js'
 import { resolvePass, opennessTier } from './utils/passOutcome.js'
@@ -424,6 +424,13 @@ function onPassComplete({ receiverId, x, y }, state, _io) {
   if (catcher) {
     catcher.catchMomentum = CATCH_MOMENTUM_TIME
     catcher.caughtPass    = true   // [73] cap this carrier at its true top speed (no run breakaway gear)
+
+    // [deep catch] A ball tracked over the shoulder costs the receiver his stride. Measured from
+    // the THROW, not from the line: a deep out is caught in front of the face and should not slow
+    // anybody, while a forty-yard post has to be run under and gathered.
+    const qb = [...state.offensePlayers.values()].find(o => o.label === 'QB')
+    const airYards = qb ? Math.hypot(catcher.x - qb.x, catcher.y - qb.y) : 0
+    if (airYards >= DEEP_CATCH_YARDS) catcher.catchSlow = CATCH_SLOW_TIME
   }
 
   // [294] Mark that this play featured a completed pass — onTouchdown reads this to credit a

@@ -694,6 +694,22 @@ const RUN_COMMIT_LOOK = 8      // yards ahead the committed runner aims while bu
 // heading (same as before), so only the breaking routes visibly change.
 export const CATCH_MOMENTUM_TIME = 0.35   // seconds to hold the catch heading before reading the field
 
+// [deep catch] Tracking a deep ball costs you speed. A receiver running under a forty-yard throw
+// turns his head, adjusts, and gathers it in — he does not catch it at a dead sprint and keep the
+// same stride. Without this a deep completion became a footrace the receiver had already won, when
+// in life it is the moment the pursuit closes.
+//
+// Only DEEP catches: a five-yard hitch is caught in front of the face at full speed, and slowing
+// those would be wrong as well as annoying.
+// ⚠️ MEASURED, NOT GUESSED, AND THE FIRST GUESS BROKE THE GAME. At 18 air yards this fires on
+// INTERMEDIATE routes — a ball caught in front of the face, which nobody has to track — and
+// explosive plays fell from 1.9% of snaps to 0.1%. Not reduced: gone. Thirty air yards is about
+// twenty-four past the line, which is a ball you genuinely run under and look back for, and it
+// costs 1.9% -> 1.7%. Measured over 1,000 downs at 18 / 24 / 30: 0.1% / 1.0% / 1.7%.
+export const DEEP_CATCH_YARDS  = 30     // air yards past which the ball has to be tracked
+export const CATCH_SLOW_TIME   = 0.75   // seconds of gathering
+export const CATCH_SLOW_FACTOR = 0.5    // …at half speed
+
 // Seed the lane heading for an improvised carrier's FIRST vision read ([183]/[186]). A receiver
 // who catches in stride is already running downfield — keep that heading so the transition to
 // ball carrier is seamless (no snap-to-straight redirect). But a back-pedaling scramble QB (or a
@@ -716,7 +732,16 @@ function moveBallCarrier(p, state, dir, dt, accel, topSpd, biasAngle = 0, forceC
   // speed). A receiver who just CAUGHT the ball does NOT — it's capped at its true top speed, so it
   // isn't suddenly faster the instant it turns into a ball carrier (the transition otherwise carries
   // its exact velocity, accel and fatigue over unchanged). Investigation [73].
-  const maxCarrySpeed = topSpd * (p.caughtPass ? 1.0 : 1.1)
+  let maxCarrySpeed = topSpd * (p.caughtPass ? 1.0 : 1.1)
+
+  // [deep catch] …and for the first moments after a DEEP catch he is gathering the ball in, not
+  // running. Applied to the cap rather than to the velocity directly so he decelerates into it and
+  // accelerates back out, instead of stopping dead and jumping back to full speed.
+  if ((p.catchSlow ?? 0) > 0) {
+    p.catchSlow -= dt
+    maxCarrySpeed *= CATCH_SLOW_FACTOR
+    p.runSpeedCap = Math.min(p.runSpeedCap ?? maxCarrySpeed, maxCarrySpeed)
+  }
 
   // Seed the achievable-speed cap from the carrier's current speed the first tick it has
   // the ball: an RB taking a handoff at half speed ([159]) ramps up from there; a receiver
@@ -1643,6 +1668,19 @@ export function computeZoneCoordination(state, losY, dir) {
 // physically impossible.
 
 const MAN_LEAD_TIME     = 0.2    // seconds of receiver velocity to mirror (reaction, not precognition)
+
+// [rb man] The shallowest a defender manned on a BACK will stand while that back is still behind the
+// line. Deep enough to see the release and break on it either way; shallow enough to make a flat
+// route a contested throw rather than a free one.
+const RB_MAN_HOLD_DEPTH = 3.5
+// How far behind the line a back counts as "still in the backfield" — past this he has released and
+// is covered like anybody else.
+const BACKFIELD_MARGIN = 0.5
+
+function isBackfieldBack(receiver, losY, dir) {
+  if (receiver.label !== 'RB') return false
+  return (losY - receiver.y) * dir > BACKFIELD_MARGIN
+}
 const MAN_INSIDE_OFFSET = 0.75   // yards of leverage cushion on the defender's aligned side
 const MAN_TRAIL_DEPTH   = 0.5    // yards underneath the receiver (toward the LOS)
 const MAN_AWARENESS_TURN = 1.5   // extra rad/s of recovery quickness at 99 awareness in man coverage
@@ -1896,7 +1934,7 @@ function classifyRunDefender(p, losY, dir, center) {
 
 // ── Defense movement ──────────────────────────────────────────────────────────
 
-function moveDefense(state, dt) {
+export function moveDefense(state, dt) {
   const dir  = state.direction
   const losY = getLosY(state)
 
@@ -2136,6 +2174,23 @@ function moveDefense(state, dt) {
           if (autoOnTop && cushion > MAN_TRAIL_DEPTH && recVertical > 1) {
             const onTopY = receiver.y + (receiver.vy ?? 0) * MAN_RUN_LEAD + dir * MAN_ONTOP_CUSHION
             t.y = dir === 1 ? Math.max(p.y, onTopY) : Math.min(p.y, onTopY)
+          }
+
+          // ⚠️ YOU DO NOT CHASE A BACK INTO THE BACKFIELD. A back standing behind the line is not
+          // running a route yet, and mirroring his spot drags the defender down past the line of
+          // scrimmage with him. The moment the back releases — a flat, a quick out, a wheel — the
+          // defender is BEHIND him and trailing, and those routes came open every time. Reported as
+          // exactly that: "defenders manned on RB are crashing too soon... this leaves a lot of RB
+          // routes completely open."
+          //
+          // So while the back is still behind the line the defender mirrors him LATERALLY and holds
+          // his depth: he keeps his leverage and picks the route up as it comes out. This is also
+          // simply what a linebacker does — he reads from his depth, he does not run to meet a back
+          // in the backfield.
+          if (isBackfieldBack(receiver, losY, dir)) {
+            const held = (p.y - losY) * dir
+            const floor = Math.max(held, RB_MAN_HOLD_DEPTH)
+            t.y = losY + dir * floor
           }
 
           steerCoverage(p, t.x, t.y, topSpd, dt, accel, manTurnRate(p, awareness))

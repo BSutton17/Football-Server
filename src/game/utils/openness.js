@@ -24,11 +24,40 @@ const CLOSING_REF_SPEED  = 7.0   // yd/s of closing speed that yields the full c
 const SAFETY_HELP_RADIUS = 9.0   // yd within which a safety provides help over the top ([173])
 const SAFETY_HELP_FALLOFF = 0.7  // each helping safety keeps this fraction of openness
 
+// ⚠️ A SAFETY IS JUDGED ON WHERE HE WILL BE, NOT WHERE HE IS.
+//
+// There is no ball flight in this engine — a throw resolves the instant it is made — so every
+// coverage read was taken at the moment of release. A deep safety closing hard on a post, who would
+// arrive at the catch point comfortably before the ball, counted for nothing at all because at
+// release he was still fifteen yards away. The window read wide open, the deep ball was easy, and
+// the defense looked beaten by a man who was not beaten.
+//
+// So for a DEEP throw both the receiver and the helping safety are projected forward by the time the
+// ball would be in the air, and the help test uses whichever separation is smaller — now or then.
+// This is what makes Cover 2 and quarters mean something: two-high only works if the high men are
+// allowed to arrive.
+const PASS_SPEED_YPS   = 18    // yd/s of nominal ball flight — a 40-yard throw hangs about 2.2s
+const DEEP_THROW_YARDS = 16    // shorter than this the flight is too brief for anyone to close
+const MAX_FLIGHT       = 3.0   // seconds — nobody gets to run for longer than the ball hangs
+
 // "Beat your man" ([coverage feedback]): a moving receiver whose nearest defender is TRAILING his
 // path has the ball led into open grass in front of him — so the window opens up even when the
 // trail is step-for-step tight. Only a defender in the path AHEAD of the receiver truly contests.
 const BEATEN_MIN_SPEED = 2.0   // yd/s — the receiver must be running a route for this read
 const BEATEN_BOOST     = 0.9   // how strongly a fully-trailing (beaten) defender opens the window
+
+// ⚠️ TRAILING IS NOT THE SAME AS BEATEN, AND SEPARATION IS WHAT TELLS THEM APART.
+//
+// The boost above used to apply at full strength "even when the trail is step-for-step tight",
+// which is the case it should apply LEAST to. A corner running stride for stride on a receiver's hip
+// is in coverage; he is half a yard from a deflection and the throw has to be perfect. Treating him
+// as beaten made every trailing route — which is most routes — read wide open.
+//
+// The boost now ramps with how much room the trailer has actually given up: nothing at all inside
+// TRAIL_TIGHT, full value beyond TRAIL_CLEAR. A defender who is genuinely five yards behind is still
+// beaten, and the ball is still led into grass in front of the receiver.
+const TRAIL_TIGHT = 1.5   // yd — inside this a trailing defender is in coverage, not beaten
+const TRAIL_CLEAR = 4.0   // yd — beyond this he really has been run past
 
 // A defender sitting in the throwing lane AHEAD of the receiver contests the catch even when the
 // receiver has beaten his trailing man — so the window is capped by separation to that front
@@ -205,10 +234,28 @@ export function opennessBreakdown(receiver, defenders, qb = null, opts = {}) {
   if (closing > 0) openness *= 1 - CLOSING_PENALTY * Math.min(1, closing / CLOSING_REF_SPEED) * aware
 
   // [173] Safety help: safeties/overlapping deep defenders over the top shrink dangerous windows.
+  //
+  // On a deep throw the help is judged at BALL ARRIVAL as well as at release, and the tighter of the
+  // two counts — see the note on PASS_SPEED_YPS. A safety who would be there when the ball is is
+  // helping, whatever the picture looks like at the moment of the throw.
+  const throwDist = qb ? Math.hypot(qb.x - receiver.x, qb.y - receiver.y) : 0
+  const flight = throwDist >= DEEP_THROW_YARDS
+    ? Math.min(MAX_FLIGHT, throwDist / PASS_SPEED_YPS)
+    : 0
+  const helpDistance = (d) => {
+    const now = Math.hypot(d.x - receiver.x, d.y - receiver.y)
+    if (!flight) return now
+    const rx = receiver.x + (receiver.vx ?? 0) * flight
+    const ry = receiver.y + (receiver.vy ?? 0) * flight
+    const dx = d.x + (d.vx ?? 0) * flight
+    const dy = d.y + (d.vy ?? 0) * flight
+    return Math.min(now, Math.hypot(dx - rx, dy - ry))
+  }
+
   let safeties = 0
   for (const d of defenders) {
     if (d === nearest || d.label !== 'S') continue
-    if (Math.hypot(d.x - receiver.x, d.y - receiver.y) <= SAFETY_HELP_RADIUS) safeties++
+    if (helpDistance(d) <= SAFETY_HELP_RADIUS) safeties++
   }
   if (safeties > 0) openness *= Math.pow(SAFETY_HELP_FALLOFF, safeties)
 
@@ -244,7 +291,10 @@ export function opennessBreakdown(receiver, defenders, qb = null, opts = {}) {
   }
 
   const beaten = Math.max(0, -ahead)   // 0 (defender even/ahead) … 1 (defender directly behind)
-  if (beaten > 0) openness = clamp01(openness + beaten * BEATEN_BOOST * (1 - openness))
+  // …scaled by how much room he has actually conceded. Step-for-step is coverage; five yards behind
+  // is beaten. See TRAIL_TIGHT / TRAIL_CLEAR.
+  const trailRoom = clamp01((nearestDist - TRAIL_TIGHT) / (TRAIL_CLEAR - TRAIL_TIGHT))
+  if (beaten > 0) openness = clamp01(openness + beaten * trailRoom * BEATEN_BOOST * (1 - openness))
 
   // A defender in the lane ahead — read by route. On a comeback/curl the receiver breaks BACK
   // underneath them (the window opens); on a go/deep route the receiver runs INTO them and the deep
