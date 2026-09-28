@@ -115,8 +115,8 @@ export function rankTargets(k, { noise = 0, rng = Math.random } = {}) {
       const trueScore = p.openness ?? estimateOpenness(p, defenders, qb)
       const noisy = noise ? clamp01(trueScore + (rng() * 2 - 1) * noise) : trueScore
       // A yard of slack, so somebody standing on the marker counts as past it.
-      const shortOfSticks = mustConvert && (p.y ?? 0) < sticks - 1
-      const score = shortOfSticks ? noisy * shortReach(p, k) : noisy
+      const shortOfSticks = (p.y ?? 0) < sticks - 1
+      const score = shortOfSticks ? noisy * shortReach(p, k, mustConvert) : noisy
       return { ...p, score, trueScore, estimated: p.openness == null, shortOfSticks }
     })
     .sort((a, b) => b.score - a.score)
@@ -131,11 +131,40 @@ export function rankTargets(k, { noise = 0, rng = Math.random } = {}) {
 // there keeps nearly all its value; a checkdown at the line of scrimmage keeps the floor.
 const SHORT_FLOOR = 0.40
 
-function shortReach(p, k) {
+// ⚠️ AND IT APPLIES ON EVERY DOWN, NOT ONLY THE ONES THAT MUST CONVERT.
+//
+// Gated to third and fourth, first and second had no notion that a completion at the line of
+// scrimmage is worth less than one past the sticks — so the first receiver to read open, two yards
+// downfield a second after the snap, cleared the bar and got the ball. Measured across every passing
+// play and coverage, binned by how long he held it:
+//
+//     held        n     net yds
+//     < 1.5s     678      1.72
+//     1.5-2.5s   343      4.88
+//     2.5-3.5s    45      8.17
+//
+// ⚠️ AND THAT TABLE IS CONFOUNDED — IT IS NOT A REASON TO WAIT. Throws at two and a half seconds are
+// worth more because they are throws on plays where somebody came open late, not because holding the
+// ball caused it. Making him hold longer moved 10% of his throws out of the worst bin and changed
+// the yardage not at all: -0.007 +/- 0.258 over 1,320 holdout dropbacks (confirmShortDiscount.mjs).
+// The release knobs are the same story — searched across the book with a held-out split, and the
+// winner reversed sign at four times the sample (trainQB.mjs, confirmQB.mjs).
+//
+// So this is kept for the BEHAVIOUR that was asked for — a quarterback who does not throw at the
+// first body to come open two yards downfield — and not because it gains yards. It does not.
+//
+// The discount is gentler on an early down, because a checkdown on 1st and 10 is a perfectly good
+// football play and a checkdown on 3rd and 12 is a punt. It also fades with the bar: once time and
+// pressure have brought the bar down, the short throw is available again, which is exactly when a
+// quarterback should take it.
+const SHORT_FLOOR_EARLY = Number(process.env.QB_EARLY_FLOOR ?? 0.70)
+
+function shortReach(p, k, mustConvert = true) {
   const need = Math.max(1, k.distance ?? 10)
   const gained = (p.y ?? 0) - (k.yardLine ?? 0)
   const fraction = Math.max(0, Math.min(1, gained / need))
-  return SHORT_FLOOR + (1 - SHORT_FLOOR) * fraction
+  const floor = mustConvert ? SHORT_FLOOR : SHORT_FLOOR_EARLY
+  return floor + (1 - floor) * fraction
 }
 
 function clamp01(v) { return Math.max(0, Math.min(1, v)) }

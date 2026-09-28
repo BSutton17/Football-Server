@@ -282,11 +282,25 @@ describe('⚠️ ON THIRD DOWN, OPEN IS NOT THE SAME AS USEFUL', () => {
     expect(deep.score).toBeCloseTo(deep.trueScore, 5)
   })
 
-  it('does nothing on a down that does not end the drive', () => {
-    for (const t of rankTargets(field(1, 15))) {
-      expect(t.shortOfSticks).toBe(false)
-      expect(t.score).toBeCloseTo(t.trueScore, 5)
+  it('⚠️ BITES ON AN EARLY DOWN TOO, BUT GENTLY', () => {
+    // It used to be gated to 3rd and 4th, so on 1st and 10 a completion at the line of scrimmage
+    // was worth exactly as much as one past the marker — and the first body to come open two yards
+    // downfield got the ball. A checkdown on 1st and 10 is still a perfectly good football play,
+    // which is why the floor is higher here than on a down that ends the drive.
+    const early = rankTargets(field(1, 15)).filter(t => t.shortOfSticks)
+    expect(early.length).toBeGreaterThan(0)
+    for (const t of early) {
+      expect(t.score).toBeLessThan(t.trueScore)
+      expect(t.score).toBeGreaterThan(t.trueScore * 0.65)   // gentler than the 0.40 of 3rd down
     }
+  })
+
+  it('…and harder on a down that must convert', () => {
+    const atLos = (down) => {
+      const t = rankTargets(field(down, 15)).filter(x => x.shortOfSticks)
+      return t.length ? Math.min(...t.map(x => x.score / x.trueScore)) : 1
+    }
+    expect(atLos(3)).toBeLessThan(atLos(1))
   })
 
   it('does nothing on 3rd and 1, where everyone is past the sticks', () => {

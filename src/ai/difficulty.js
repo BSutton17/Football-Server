@@ -80,6 +80,11 @@ export const AI_SKILL = {
     readNoise: 0,
     // [pressure] How much of the closing rush this tier actually registers. Feels the rush the moment it is real, and bails out rather than taking a sack.
     pressureAware: 1.0,
+    // ⚠️ THE QUARTERBACK'S THREE NUMBERS, AND THEY ARE TRAINED RATHER THAN CHOSEN. They decide
+    // when he lets it go: the bar he wants, the bar he will settle for, and how long he waits
+    // between the two. `scripts/trainQB.mjs` searches them against every passing play in the book
+    // crossed with every coverage, on a TRAINING split, and reports the result on plays and shells
+    // it never saw. The env overrides exist for that search and are absent in a real game.
     throwThreshold: 0.62,
     throwFloor: 0.32,
     patience: 2.6,
@@ -90,7 +95,25 @@ export const AI_SKILL = {
 // room manager applies, so an old client that sends nothing gets the gentlest opponent rather than
 // the hardest one.
 export function skillFor(difficulty) {
-  return AI_SKILL[difficulty] ?? AI_SKILL[DIFFICULTY.EASY]
+  const tier = AI_SKILL[difficulty] ?? AI_SKILL[DIFFICULTY.EASY]
+  return qbOverrides(tier)
+}
+
+// ⚠️ READ PER CALL, NOT AT MODULE LOAD. `scripts/trainQB.mjs` sweeps these by setting the
+// environment between evaluations; baked into the tier object at import time they never changed and
+// every trial scored identically, which reads as "the knobs do not matter" rather than "the search
+// is broken". Absent in a real game, where this returns the tier untouched.
+function qbOverrides(tier) {
+  const t = process.env.QB_THRESHOLD
+  const f = process.env.QB_FLOOR
+  const p = process.env.QB_PATIENCE
+  if (t === undefined && f === undefined && p === undefined) return tier
+  return {
+    ...tier,
+    throwThreshold: t === undefined ? tier.throwThreshold : Number(t),
+    throwFloor: f === undefined ? tier.throwFloor : Number(f),
+    patience: p === undefined ? tier.patience : Number(p),
+  }
 }
 
 // Narrows a list of shell ids to the ones this tier is allowed to call. Falls back to the whole
