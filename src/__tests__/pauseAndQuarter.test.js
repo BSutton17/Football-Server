@@ -7,7 +7,7 @@ import {
 import { tick } from '../game/simulation.js'
 import { serializeGameState } from '../game/serialization.js'
 import { beginTeamSelect, setQuarterLength, getTeamSelect, clearTeamSelect } from '../game/teamSelect.js'
-import { enqueue, processQueue, EVENT } from '../game/eventQueue.js'
+import { enqueue, processQueue, EVENT, startNextPlay } from '../game/eventQueue.js'
 import { PHASE } from '../game/stateMachine.js'
 import { RULES, QUARTER_MINUTES_MIN, QUARTER_MINUTES_MAX, clampQuarterMinutes } from '../constants.js'
 
@@ -169,5 +169,60 @@ describe('the paused flag reaches the clients', () => {
     beginPlayerPause(state, 0)
     resumePlayerPause(state)
     expect(serializeGameState(state, 0).paused).toBe(false)
+  })
+})
+
+// ── A down in progress is always completed ([216]) ────────────────────────
+//
+// ⚠️ "THE GAME ENDS THE QUARTER OR GOES TO HALFTIME IN THE MIDDLE OF A PLAY, AFTER THE BALL HAS
+// BEEN SNAPPED, WHEN IT SHOULDN'T MOVE UNTIL AFTER THE PLAY IS OVER."
+//
+// CLOCK_EXPIRED used to transition a LIVE play straight to DEAD. The ball could be in the air. No
+// code of football works that way, and the period-resolving path in `startNextPlay` — written for
+// the case where a play-ending event beat CLOCK_EXPIRED in the queue — was already the correct
+// place for it to happen.
+describe('⚠️ THE CLOCK RUNNING OUT DOES NOT STOP A LIVE PLAY', () => {
+  it('leaves the play running and does not advance the quarter yet', () => {
+    const state = initGame(ROOM, 0, { quarterSeconds: 300 })
+    state.phase = PHASE.LIVE
+    state.clock = 0
+    const quarter = state.quarter
+
+    enqueue(ROOM, EVENT.CLOCK_EXPIRED, {})
+    processQueue(ROOM, state, noIo)
+
+    expect(state.phase).toBe(PHASE.LIVE)      // the down is still being played
+    expect(state.quarter).toBe(quarter)       // …and the period has not turned over
+    expect(state.periodEndPending).toBe(true) // it is remembered, not acted on
+  })
+
+  it('still ends the period immediately when the ball is already dead', () => {
+    // Between plays there is nothing to finish, so the old behaviour is right and is kept.
+    for (const phase of [PHASE.PRE_SNAP, PHASE.COUNTDOWN]) {
+      deleteGame(ROOM)
+      const state = initGame(ROOM, 0, { quarterSeconds: 300 })
+      state.phase = phase
+      state.clock = 0
+      enqueue(ROOM, EVENT.CLOCK_EXPIRED, {})
+      processQueue(ROOM, state, noIo)
+      expect(state.quarter).toBe(2)
+      expect(state.clock).toBe(300)
+    }
+  })
+
+  it('⚠️ AND THE PERIOD STILL TURNS OVER ONCE THE WHISTLE BLOWS', () => {
+    // The whole point of deferring is that it is deferred, not dropped.
+    const state = initGame(ROOM, 0, { quarterSeconds: 300 })
+    state.phase = PHASE.LIVE
+    state.clock = 0
+    enqueue(ROOM, EVENT.CLOCK_EXPIRED, {})
+    processQueue(ROOM, state, noIo)
+    expect(state.quarter).toBe(1)
+
+    // The play ends the way any play ends, and the next-play path resolves the period.
+    state.phase = PHASE.DEAD
+    startNextPlay(ROOM, noIo, { quiet: true })
+    expect(state.quarter).toBe(2)
+    expect(state.clock).toBe(300)
   })
 })

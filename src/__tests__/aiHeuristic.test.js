@@ -328,19 +328,25 @@ describe('the information boundary', () => {
 
 describe('special teams', () => {
   it('matches the specified field-goal curve', () => {
-    // ⚠️ THE BANDS THAT WERE ASKED FOR, checked at each edge so the spec is the test:
-    //   inside 35 100%, inside 45 90%, inside 50 80%, inside 55 75%.
-    // The argument is the KICK distance (goal line + 17).
+    // ⚠️ THE BANDS THAT WERE ASKED FOR, checked at each edge so the spec is the test. The rates
+    // are stated by YARD LINE and the argument is the KICK distance, which is the yard line plus
+    // seventeen — reading "inside 35" as a 35-yard KICK is what made the computer miss from the 35:
+    //   the 35 and in 100%, the 40 90%, the 45 80%, the 50 75%.
     expect(fieldGoalChance(20)).toBeCloseTo(1.00, 2)
-    expect(fieldGoalChance(35)).toBeCloseTo(1.00, 2)
-    expect(fieldGoalChance(45)).toBeCloseTo(0.90, 2)
-    expect(fieldGoalChance(50)).toBeCloseTo(0.80, 2)
-    expect(fieldGoalChance(55)).toBeCloseTo(0.75, 2)
-    // Interpolated inside a band rather than stepped — no cliff between 34 and 36 yards.
-    expect(fieldGoalChance(40)).toBeGreaterThan(0.90)
-    expect(fieldGoalChance(40)).toBeLessThan(1.00)
-    // And it keeps falling past the last band: seventy yards is not a 75% proposition.
-    expect(fieldGoalChance(70)).toBeLessThan(0.5)
+    expect(fieldGoalChance(52)).toBeCloseTo(1.00, 2)   // the 35 yard line
+    expect(fieldGoalChance(57)).toBeCloseTo(0.90, 2)   // the 40
+    expect(fieldGoalChance(62)).toBeCloseTo(0.80, 2)   // the 45
+    expect(fieldGoalChance(67)).toBeCloseTo(0.75, 2)   // the 50
+    // ⚠️ AND THE WHOLE POINT: past the 35 is automatic.
+    expect(fieldGoalChance(37)).toBeCloseTo(1.00, 2)   // the 20 yard line
+    expect(fieldGoalChance(47)).toBeCloseTo(1.00, 2)   // the 30
+    // Interpolated inside a band rather than stepped — no cliff between one yard and the next.
+    expect(fieldGoalChance(54)).toBeGreaterThan(0.90)
+    expect(fieldGoalChance(54)).toBeLessThan(1.00)
+    // And it keeps falling past the last band. The band edge moved out by seventeen yards with the
+    // rest of the curve, so the check moves with it: an eighty-yard attempt is not a coin flip.
+    expect(fieldGoalChance(67)).toBeCloseTo(0.75, 2)
+    expect(fieldGoalChance(80)).toBeLessThan(0.5)
     expect(fieldGoalChance(90)).toBeGreaterThan(0)
 
     // …and it only ever gets harder with distance.

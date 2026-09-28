@@ -27,6 +27,7 @@ import { callOffense, buildFormation, chooseRunAngle } from './offense.js'
 import { expandShell, alignmentFor } from './assignments.js'
 import { legalSpot } from './playbook/formations.js'
 import { specialTeamsAction, fourthDownChoice } from './specialTeams.js'
+import { shouldCallTimeout } from './clockManagement.js'
 import { makeRng } from '../game/utils/rng.js'
 import { chooseSetTime, shouldSetNow } from './timing.js'
 import { rankTargets } from './reads.js'
@@ -116,7 +117,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // What the AI decided this play, kept for logs, tests and (later) training telemetry.
     lastCall: null,
     // Guards so a decision is made once per play rather than on every event that arrives.
-    done: { personnel: false, formation: false, coverage: false, set: false, snapped: false },
+    done: { personnel: false, formation: false, coverage: false, set: false, snapped: false, timeout: false },
 
     onEvent(event, payload) {
       applyEvent(k, event, payload)
@@ -129,6 +130,12 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
         case 'hike_countdown': return onCountdown(payload)
         case 'play_result': return undefined   // the whistle; knowledge.js records the phase
         case 'play_clock_update': return onSituation()
+        // [kick] The meter is draining. This is the AI's ONLY heartbeat during a kick — without it
+        // it taps once and the ball is kicked at whatever power is left, which was none.
+        case 'special_teams_update': return onSpecialTeams()
+        // [kick] The meter is draining. This is the AI's ONLY heartbeat during a kick — without it
+        // it taps once and the ball is kicked at whatever power is left, which was none.
+        case 'special_teams_update': return onSpecialTeams()
         // [manual] The board froze / started moving again. In a manual room a throw is legal ONLY
         // while frozen, so these two are the AI's entire passing window.
         // ⚠️ A REFUSED ACTION IS ALWAYS A BUG, and always a silent one. A rejected
@@ -166,7 +173,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   }
 
   function resetPlay() {
-    self.done = { personnel: false, formation: false, coverage: false, set: false, snapped: false }
+    self.done = { personnel: false, formation: false, coverage: false, set: false, snapped: false, timeout: false }
     self.lastCall = null
     // ⚠️ The authored shell is per PLAY. Left set, the defense would keep calling last down's
     // coverage for the rest of the drive — and because alignDefense re-runs on every opponent
@@ -195,6 +202,16 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // Special teams owns the whole play when it is running — a kick is not a formation.
     if (k.specialTeams || k.decision) return onSpecialTeams()
     if (k.phase !== 'pre_snap' && k.phase !== 'countdown') return
+
+    // [clock] Spend a timeout before lining up, not after — the seconds being saved are the ones
+    // about to bleed away while the formation is placed. Once per play: `done.timeout` is cleared
+    // by resetPlay like every other one-shot decision.
+    if (!self.done.timeout && shouldCallTimeout(k)) {
+      self.done.timeout = true
+      say(`timeout — Q${k.quarter} ${Math.ceil(k.clock)}s left, ${k.timeouts?.own} in hand`)
+      socket.fire('call_timeout')
+      return
+    }
 
     if (isOffense(k)) return playOffense()
     if (isDefense(k)) return playDefense()
@@ -792,7 +809,18 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   }
 
   // ── Special teams ─────────────────────────────────────────────────────────
+  // ⚠️ RE-ENTRANT. A tap is echoed back as a `special_teams_update`, which wakes this, which taps
+  // again — "Maximum call stack size exceeded" on the first kick after the meter started being
+  // broadcast. One action per update is also simply correct: the meter drains on a clock, so there
+  // is nothing to gain from answering the echo of your own input.
+  let kicking = false
   function onSpecialTeams() {
+    if (kicking) return
+    kicking = true
+    try { doSpecialTeams() } finally { kicking = false }
+  }
+
+  function doSpecialTeams() {
     const action = k.decision
       ? fourthDownChoice(k, rng)
       : specialTeamsAction(k, rng)

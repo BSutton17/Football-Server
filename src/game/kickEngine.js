@@ -19,14 +19,29 @@ const CEIL_MIN  = 45, CEIL_MAX  = 75   // distance at power 1, for rating 0 → 
 
 // [max range] Full-meter distance cap by kick type, scaling with the Power rating:
 //   punt  — 99 Power → 70 yds; −1 yd per point of Power below 99.
-//   FG/XP — 99 Power → 60 yds; −1.5 yds per point of Power below 99.
+//   FG/XP — 99 Power → 65 yds; −0.35 yds per point of Power below 99.
 // Kickoffs (automatic) return null → the default CEIL model above. Floored so even a weak leg gets a
 // short chip rather than a zero/negative distance.
+//
+// ⚠️ THE FIELD-GOAL FALLOFF WAS −1.5 A POINT, WHICH MEANT NOBODY COULD KICK ONE. A 75-rated kicker
+// — the DEFAULT, used whenever a roster has no specialist — came out at 60 − 24×1.5 = TWENTY-FOUR
+// YARDS of range at a full meter. Not 24 yards of field position: 24 yards of kick, which is the
+// seven yard line. Every attempt from anywhere else was short, for the computer and for a human
+// alike. Measured before the fix: forty attempts each from the 20, 25, 30, 35, 40, 45 and 50 yard
+// lines, zero good, every one of them short, including a 37-yarder.
+//
+// At −0.35 a point the default kicker reaches 56 yards and a 90 reaches 62, which is roughly what a
+// professional does. The rating still matters — seventeen yards of range separates a 50 from a 99 —
+// it just no longer decides that field goals are not part of the game.
 const MIN_MAX_DISTANCE = 15
+export const FG_RANGE_AT_99 = 65
+export const FG_RANGE_PER_POINT = 0.35
 export function maxKickDistance(kickType, kickerPower = DEFAULT_KICK_POWER) {
   const below = Math.max(0, 99 - (kickerPower ?? DEFAULT_KICK_POWER))
   if (kickType === 'punt')                                          return Math.max(MIN_MAX_DISTANCE, 70 - below)
-  if (kickType === 'field_goal' || kickType === 'extra_point')      return Math.max(MIN_MAX_DISTANCE, 60 - below * 1.5)
+  if (kickType === 'field_goal' || kickType === 'extra_point') {
+    return Math.max(MIN_MAX_DISTANCE, FG_RANGE_AT_99 - below * FG_RANGE_PER_POINT)
+  }
   return null
 }
 

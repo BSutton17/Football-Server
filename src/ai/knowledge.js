@@ -50,6 +50,7 @@ export function createKnowledge(slot) {
     // on the hash found itself nowhere near the offense it was supposed to be facing.
     ballX: FIELD.WIDTH / 2,
     clock: 0,
+    clockStopped: true,
     playClock: 30,
     quarter: 1,
     score: { own: 0, opp: 0 },
@@ -144,6 +145,16 @@ export function applyEvent(k, event, payload) {
       k.phase = 'dead'
       return k
 
+    // [kick] The draining power meter. ⚠️ WITHOUT THIS THE AI CANNOT KICK AT ALL: `specialTeams`
+    // only ever arrived on `game_state`, which is sent once when the play is set up and never again
+    // while the kick is on screen. The controller was being woken by the meter update and finding
+    // nothing on its knowledge to act on, so it tapped zero times, and every field goal the computer
+    // has ever attempted was struck at whatever power was left after a full drain — 0.46, which is
+    // short from anywhere. Forty attempts from each of seven distances: none good, all short.
+    case 'special_teams_update':
+      k.specialTeams = payload ?? null
+      return k
+
     case 'positions_update': {
       k.live.clear()
       for (const p of payload ?? []) {
@@ -178,6 +189,7 @@ function onGameState(k, gs) {
   k.yardLine = gs.yardLine
   k.ballX = gs.ballX ?? k.ballX
   k.clock = gs.clock
+  k.clockStopped = !!gs.clockStopped
   k.playClock = gs.playClock ?? k.playClock
   k.quarter = gs.quarter
   k.score = gs.score ?? k.score

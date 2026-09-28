@@ -84,6 +84,10 @@ export function serializeGameState(state, viewerSlot) {
     phase:    state.phase,
     quarter:  state.quarter,
     clock:    state.clock,
+    // [clock] Whether the game clock is actually running. Both sides can see the clock itself, so
+    // this leaks nothing — and without it the computer cannot tell a timeout that saves forty
+    // seconds from one that saves nothing, because the clock is already stopped.
+    clockStopped: !!state.clockStopped,
     down:     state.down,
     distance: state.distance,
     yardLine: state.yardLine,

@@ -37,18 +37,26 @@ export const ONE_MORE_PLAY_SECONDS = 8
 // ⚠️ THESE ARE THE RATES THAT WERE ASKED FOR, NOT A CURVE I FITTED. Written as bands so they can
 // be checked against the request rather than reverse-engineered out of an equation:
 //
-//   inside 35  100%      inside 45  90%      inside 50  80%      inside 55  75%
+//   the 35 and in  100%      the 40  90%      the 45  80%      the 50  75%
 //
 // Interpolated WITHIN each band rather than stepped, because a cliff between 34 and 36 yards would
 // be visible and strange. Past the last band it keeps falling at the same kind of slope to a floor:
 // a seventy-yard attempt is not a 75% proposition.
 //
 // The argument is the KICK distance — goal line plus seventeen — which is what the caller passes.
+//
+// ⚠️ AND THE BANDS ARE KICK DISTANCE, WHICH IS THE YARD LINE PLUS SEVENTEEN. That is the thing the
+// first pass got wrong. "100% inside 35" was read as a 35-yard KICK — the eighteen yard line — when
+// what was meant was the 35 YARD LINE, which is a 52-yard kick. Restated: "the AI is still missing
+// field goals, especially past the 35, when those should be 100%."
+//
+// So the automatic band now runs to 52 and the rest of the curve follows it out. The numbers below
+// are kick distances; the yard line each corresponds to is in the comment beside it.
 const FG_BANDS = [
-  { to: 35, rate: 1.00 },
-  { to: 45, rate: 0.90 },
-  { to: 50, rate: 0.80 },
-  { to: 55, rate: 0.75 },
+  { to: 52, rate: 1.00 },   // the 35 yard line and in
+  { to: 57, rate: 0.90 },   // the 40
+  { to: 62, rate: 0.80 },   // the 45
+  { to: 67, rate: 0.75 },   // the 50
 ]
 const FG_BEYOND_FALLOFF = 0.03   // per yard past the last band
 const FG_FLOOR = 0.05

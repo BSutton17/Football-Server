@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@jest/globals'
 import {
-  computeKick, calculateKickResult, isKickGood, UPRIGHT_HALF_WIDTH, maxKickDistance,
+  computeKick, calculateKickResult, isKickGood, UPRIGHT_HALF_WIDTH, maxKickDistance, DEFAULT_KICK_POWER,
   computePuntReturn, computePuntBounce, resolvePuntBounce,
   PUNT_RETURN_MAX_YARDS, PUNT_RETURN_MIN_YARDS, PUNT_BOUNCE_MIN_YARDS, PUNT_BOUNCE_MAX_YARDS,
   PUNT_BOUNCE_TOUCHBACK_LINE,
@@ -37,15 +37,25 @@ describe('[max range] full-meter distance caps by kick type + Power', () => {
     expect(maxKickDistance('punt', 95)).toBeCloseTo(66)
   })
 
-  it('field goal / XP: 99 Power → 60 yds, −1.5 yds per point below 99', () => {
-    expect(maxKickDistance('field_goal',  99)).toBeCloseTo(60)
-    expect(maxKickDistance('field_goal',  89)).toBeCloseTo(45)   // 60 − 10·1.5
-    expect(maxKickDistance('extra_point', 99)).toBeCloseTo(60)
+  it('field goal / XP: 99 Power → 65 yds, −0.35 yds per point below 99', () => {
+    expect(maxKickDistance('field_goal',  99)).toBeCloseTo(65)
+    expect(maxKickDistance('field_goal',  89)).toBeCloseTo(61.5)   // 65 − 10·0.35
+    expect(maxKickDistance('extra_point', 99)).toBeCloseTo(65)
+  })
+
+  it('⚠️ AN ORDINARY KICKER CAN REACH AN ORDINARY FIELD GOAL', () => {
+    // The falloff was −1.5 yards a point, which put the DEFAULT 75-rated kicker — the one used
+    // whenever a roster has no specialist — at 24 yards of range. Not 24 yards of field position:
+    // 24 yards of kick, the seven yard line. Every attempt from anywhere else was short, for the
+    // computer and for a human alike, and the computer went 0 for 280 across seven distances.
+    expect(maxKickDistance('field_goal', DEFAULT_KICK_POWER)).toBeGreaterThan(52)   // the 35 and in
+    // …and the rating still means something: seventeen yards separates a 50 from a 99.
+    expect(maxKickDistance('field_goal', 99) - maxKickDistance('field_goal', 50)).toBeCloseTo(17.15)
   })
 
   it('a full-meter kick actually reaches the cap', () => {
     expect(calculateKickResult({ kickType: 'punt', power: 1, kickerPower: 99, yardLine: 20 }, noNoise).distance).toBeCloseTo(70)
-    expect(calculateKickResult({ kickType: 'field_goal', power: 1, kickerPower: 90, requiredDistance: 10 }, noNoise).distance).toBeCloseTo(46.5)
+    expect(calculateKickResult({ kickType: 'field_goal', power: 1, kickerPower: 90, requiredDistance: 10 }, noNoise).distance).toBeCloseTo(61.85)
   })
 
   it('kickoffs keep the default ceiling (no per-type cap)', () => {
@@ -80,7 +90,7 @@ describe('isKickGood', () => {
 describe('[17] calculateKickResult — full outcome', () => {
   it('reports distance, trajectory, and hang time for every kick', () => {
     const r = calculateKickResult({ kickType: 'field_goal', power: 1, angle: 0, kickerPower: 99, requiredDistance: 30 }, noNoise)
-    expect(r.distance).toBeCloseTo(60)   // [max range] a 99-Power kicker tops out at 60 yds
+    expect(r.distance).toBeCloseTo(65)   // [max range] a 99-Power kicker tops out at 65 yds
     expect(r.pushYards).toBeCloseTo(0)
     expect(r.hangTime).toBeGreaterThan(0)
     expect(r.good).toBe(true)

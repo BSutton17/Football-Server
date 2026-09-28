@@ -1274,7 +1274,24 @@ function onSack({ qbY, losY, dir, qbX }, state, io) {
 // COUNTDOWN, [204]). Funnel whichever phase we're in through DEAD so the period transition is
 // uniform, then either advance the quarter or end the game.
 function onClockExpired(_payload, state, io) {
-  if (state.phase === PHASE.LIVE || state.phase === PHASE.PRE_SNAP || state.phase === PHASE.COUNTDOWN) {
+  // ⚠️ A PERIOD ENDS WHEN THE PLAY ENDS, NOT WHEN THE CLOCK DOES.
+  //
+  // This used to kill a LIVE play the instant the clock struck zero: the ball was in the air, or a
+  // back was running, and the quarter simply cut it off mid-snap. That is not the rule anywhere —
+  // a down in progress is always completed — and it is jarring to watch. Reported as "the game ends
+  // the quarter or goes to halftime in the middle of a play, after the ball has been snapped".
+  //
+  // Nothing needs to be scheduled here: the play runs to its own whistle, books the ordinary
+  // two-second dead-ball gap like any other, and `startNextPlay` finds `clock <= 0` and resolves
+  // the period from there. That path already existed — it was written for the case where a
+  // play-ending event beat CLOCK_EXPIRED in the queue — and it is now simply the only path.
+  if (state.phase === PHASE.LIVE) {
+    state.periodEndPending = true
+    console.log(`[game] ${state.roomId} clock hit zero during a live play — finishing the down first`)
+    return
+  }
+
+  if (state.phase === PHASE.PRE_SNAP || state.phase === PHASE.COUNTDOWN) {
     transition(state, PHASE.DEAD)
   }
 

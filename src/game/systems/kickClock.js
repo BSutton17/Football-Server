@@ -36,5 +36,27 @@ export function runKickClock(state, io, dt) {
   // [9][10] Drain power continuously; taps refill it. Fire the kick when the timer expires.
   st.power     = Math.max(0, st.power - POWER_DRAIN_PER_SEC * dt)
   st.kickTimer = Math.max(0, st.kickTimer - dt)
-  if (st.kickTimer <= 0) executeKick(state, io)
+  if (st.kickTimer <= 0) { executeKick(state, io); return }
+
+  // ⚠️ THE DRAINING METER IS BROADCAST, AND NOTHING USED TO SAY A WORD WHILE IT DRAINED.
+  //
+  // `special_teams_update` was sent once, when the kick began, and never again until it resolved.
+  // For a human that is survivable — the client animates its own bar. For the COMPUTER it was fatal:
+  // the AI works the meter by reacting to events, and during a kick it received none at all. It
+  // tapped once, the meter drained for three and a half seconds, and the ball was kicked at 0.46
+  // power. Measured across every distance from the 20 to the 50 yard line: forty attempts each,
+  // ZERO made, every single one short — including a thirty-seven yarder.
+  //
+  // Sending it on the tick the displayed value changes gives the AI its heartbeat and makes the
+  // human's bar server-truth rather than a local guess. Ten a second, a tiny payload, and only
+  // while a kick is actually on the screen.
+  const shown = Math.round(st.power * METER_STEPS)
+  if (shown !== st.__shownPower) {
+    st.__shownPower = shown
+    broadcastSpecialTeams(state, io)
+  }
 }
+
+// How finely the power meter is reported. Ten steps is smoother than the eye needs and still only a
+// handful of messages per kick.
+const METER_STEPS = 20
