@@ -59,6 +59,17 @@ export function hasAuthoredDefense(book) {
   return Object.keys(book?.shells ?? {}).length > 0 && Object.keys(book?.defFormations ?? {}).length > 0
 }
 
+// ⚠️ ONCE PER MESSAGE, NOT ONCE PER PLAY. This fires whenever a shell wants a fifth linebacker
+// and the roster carries four — which is an ordinary, expected substitution, not an incident. Left
+// unthrottled it printed on every snap: a solve is over a million downs across six processes, and
+// the logs were growing faster than the work was.
+const warned = new Set()
+function warnOnce(message) {
+  if (warned.has(message)) return
+  warned.add(message)
+  console.warn(`[defense] ${message} (further identical notices suppressed)`)
+}
+
 // Who may stand on the defensive side of the ball at all. A roster carries both teams, so the
 // last-resort fill has to be told where the line is.
 const DEFENSIVE_POSITIONS = new Set(['CB', 'S', 'LB', 'DL', 'DE', 'DT', 'EDGE', 'NT'])
@@ -228,10 +239,8 @@ export function buildAuthoredDefense(call, { losY, ballX, receivers, roster, adj
       // sampling a game nobody plays. A bad matchup means a linebacker covering a slot, not a
       // wideout playing defense.
       pick = roster.find(p => !used.has(p.id) && DEFENSIVE_POSITIONS.has(p.label ?? p.position))
-      if (pick) {
-        console.warn(`[defense] ${row.slot} wanted ${coverOrder(row.job, target?.label, row.label).join('/')}` +
-          `, took a ${pick.label ?? pick.position} — the preferred positions are all out there already`)
-      }
+      if (pick) warnOnce(`${row.slot} wanted ${coverOrder(row.job, target?.label, row.label).join('/')}` +
+        `, took a ${pick.label ?? pick.position} — the preferred positions are all out there already`)
     }
     if (!pick) continue      // genuinely no defenders left: the roster is short, not the matcher
     used.add(pick.id)
