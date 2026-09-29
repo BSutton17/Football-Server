@@ -226,3 +226,42 @@ describe('⚠️ THE CLOCK RUNNING OUT DOES NOT STOP A LIVE PLAY', () => {
     expect(state.clock).toBe(300)
   })
 })
+
+// ── What a new play does NOT carry over ([sweep]) ─────────────────────────
+//
+// ⚠️ `startNextPlay` WIPED THE PLAYER MAPS AND LEFT THE COVERAGE MAP STANDING.
+//
+// So every play after the first began holding the previous play's assignments: man coverage
+// pointing at receivers who had left the field, zones belonging to defenders who were not out
+// there. Roster ids recur between plays, so this was not merely untidy — a defender the new shell
+// did not re-assign kept LAST play's job and played it.
+//
+// No test caught it because the training harness resets the situation between measurements
+// (`resetPlay`, which does clear it) and the real game does not. It was found by playing
+// consecutive downs and asking whether the state was legal — scripts/invariantSweep.mjs, which
+// reported it 5,376 times in sixty downs.
+describe('⚠️ A NEW PLAY STARTS WITH NO COVERAGE FROM THE LAST ONE', () => {
+  it('clears the coverage map along with the players', () => {
+    const state = initGame(ROOM, 0)
+    state.phase = PHASE.DEAD
+    state.defensePlayers.set('cb1', { id: 'cb1', x: 10, y: 50, label: 'CB' })
+    state.offensePlayers.set('wr1', { id: 'wr1', x: 10, y: 52, label: 'WR' })
+    state.defenseCoverage.set('cb1', { type: 'man', targetId: 'wr1' })
+
+    startNextPlay(ROOM, noIo, { quiet: true })
+
+    expect(state.defensePlayers.size).toBe(0)
+    expect(state.offensePlayers.size).toBe(0)
+    expect(state.defenseCoverage.size).toBe(0)   // …this is the one that was missing
+  })
+
+  it('⚠️ SO NOTHING IS EVER ASSIGNED TO SOMEBODY WHO IS NOT ON THE FIELD', () => {
+    // The invariant the sweep checks, stated directly: every id in the coverage map is a defender
+    // who is actually out there.
+    const state = initGame(ROOM, 0)
+    state.phase = PHASE.DEAD
+    for (const id of ['a', 'b', 'c']) state.defenseCoverage.set(id, { type: 'zone', zoneType: 'hook' })
+    startNextPlay(ROOM, noIo, { quiet: true })
+    for (const id of state.defenseCoverage.keys()) expect(state.defensePlayers.has(id)).toBe(true)
+  })
+})

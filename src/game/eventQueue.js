@@ -1507,6 +1507,15 @@ export function startNextPlay(roomId, io, { quiet = false } = {}) {
   // Wipe everything that was specific to the play that just ended
   state.offensePlayers        = new Map()
   state.defensePlayers        = new Map()
+  // ⚠️ INCLUDING WHO WAS COVERING WHOM. This wiped the two player maps and left the coverage map
+  // standing, so every play after the first began holding the PREVIOUS play's assignments — man
+  // coverage pointing at receivers who had left the field, zones belonging to defenders who were
+  // not out there. `resetPlay` clears it, which is why no test caught this: the training harness
+  // resets the situation between measurements and the real game does not.
+  //
+  // Roster ids recur, so this was not only untidy. A defender the new shell did not re-assign kept
+  // LAST play's job and played it.
+  state.defenseCoverage       = new Map()
   state.ballCarrierId         = null
   state.targetReceiverId      = null
   state.deadBallSpot          = null
