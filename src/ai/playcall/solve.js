@@ -127,12 +127,12 @@ export function fillGaps(estimates, counts) {
 
 // Solve one (situation, formation) subgame into an offensive mix, a defensive mix, and what the
 // subgame is worth to the offense.
-export function solveSubgame({ estimates, counts, iterations = 8000 }) {
+export function solveSubgame({ estimates, counts, iterations = 8000, constrainRow = null }) {
   if (!estimates?.length || !estimates[0]?.length) {
     return { offense: [], defense: [], value: 0, confident: false }
   }
   const payoff = fillGaps(estimates, counts)
-  const { row, col, value } = solveZeroSum(payoff, { iterations })
+  const { row, col, value } = solveZeroSum(payoff, { iterations, constrainRow })
 
   // How much of this answer rests on cells nobody actually played.
   let visited = 0, total = 0
@@ -211,6 +211,30 @@ export function withCeiling(mix, ceiling) {
 // So the two questions are separated. The situational share sets how often the ball is run, and the
 // solved distribution decides which run and which pass — keeping everything the sampling actually
 // learned and discarding only the part it kept getting wrong.
+// The same reshaping as withRunShare, over an indexed mix rather than a map of ids — this is what
+// gets handed to the solve so the defense answers the corrected offense, not the raw one.
+export function runShareConstraint(playIds, situationKey, playType) {
+  const target = runShare(situationFromKey(situationKey))
+  const isRun = playIds.map(id => playType(id) === 'run')
+  const anyRun = isRun.some(Boolean), anyPass = isRun.some(x => !x)
+  if (!anyRun || !anyPass) return null          // nothing to split
+  const runN = isRun.filter(Boolean).length
+  const passN = isRun.length - runN
+  // ⚠️ REDISTRIBUTES, IT DOES NOT SCALE. Scaling needs mass on both sides to scale, and regret
+  // matching drives the row to a PURE strategy within a few iterations — at which point one side is
+  // zero, a scaling constraint silently bails out, and the defense spends almost every iteration
+  // answering an unconstrained offense. It looked like it was working: the final averaged mix came
+  // back at the target because the constraint was re-applied at the end, while the defense it was
+  // supposed to steer had never once seen it.
+  return (mix) => {
+    let runTotal = 0, passTotal = 0
+    for (let i = 0; i < mix.length; i++) (isRun[i] ? (runTotal += mix[i]) : (passTotal += mix[i]))
+    return mix.map((p, i) => isRun[i]
+      ? (runTotal > 0 ? p * target / runTotal : target / runN)
+      : (passTotal > 0 ? p * (1 - target) / passTotal : (1 - target) / passN))
+  }
+}
+
 function withRunShare(playProbs, situationKey, playType) {
   const target = runShare(situationFromKey(situationKey))
   let runTotal = 0, passTotal = 0

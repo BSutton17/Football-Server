@@ -43,7 +43,15 @@ function normalize(v) {
 
 // `payoff[i][j]` is what ROW (the offense) scores when it calls i against the defense's j.
 // Zero sum, so the defense's payoff is the negative and one matrix describes the whole matchup.
-export function solveZeroSum(payoff, { iterations = DEFAULT_ITERATIONS } = {}) {
+// `constrainRow` reshapes the offense's mix every iteration — see the note on withRunShare in
+// solve.js. It is how the DEFENSE gets solved against the offense it will actually meet.
+//
+// ⚠️ WITHOUT IT THE CORRECTION WAS APPLIED TO ONE SIDE ONLY. buildTable rewrote the offense's
+// run/pass split to the situational share and shipped the defense's mix untouched — so on third
+// and one the game played a 73% run offense against a defense that was the best response to an 11%
+// run offense. The defense was not wrong, it was answering a different question: measured, it
+// allowed 73% conversion where a constant loaded box allowed 65%.
+export function solveZeroSum(payoff, { iterations = DEFAULT_ITERATIONS, constrainRow = null } = {}) {
   const rows = payoff.length
   const cols = payoff[0]?.length ?? 0
   if (!rows || !cols) return { row: [], col: [], value: 0, iterations: 0 }
@@ -54,7 +62,7 @@ export function solveZeroSum(payoff, { iterations = DEFAULT_ITERATIONS } = {}) {
   const sumCol = new Array(cols).fill(0)
 
   for (let t = 0; t < iterations; t++) {
-    const sRow = fromRegrets(regretRow)
+    const sRow = constrainRow ? constrainRow(fromRegrets(regretRow)) : fromRegrets(regretRow)
     const sCol = fromRegrets(regretCol)
     for (let i = 0; i < rows; i++) sumRow[i] += sRow[i]
     for (let j = 0; j < cols; j++) sumCol[j] += sCol[j]
@@ -82,7 +90,7 @@ export function solveZeroSum(payoff, { iterations = DEFAULT_ITERATIONS } = {}) {
     for (let j = 0; j < cols; j++) regretCol[j] += utilCol[j] - evCol
   }
 
-  const row = normalize(sumRow)
+  const row = constrainRow ? constrainRow(normalize(sumRow)) : normalize(sumRow)
   const col = normalize(sumCol)
   let value = 0
   for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) value += row[i] * payoff[i][j] * col[j]

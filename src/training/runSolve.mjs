@@ -30,7 +30,7 @@ import { lookFromSpots } from '../ai/playcall/offenseLook.js'
 import { createTrainingGame, destroyTrainingGame, playDown } from './game.js'
 import { startNextPlay, resolveDecision } from '../game/eventQueue.js'
 import { PHASE } from '../game/stateMachine.js'
-import { playValue, solveSubgame, buildTable } from '../ai/playcall/solve.js'
+import { playValue, solveSubgame, buildTable, runShareConstraint } from '../ai/playcall/solve.js'
 import { situationKey, describeSituation } from '../ai/playcall/situation.js'
 
 const SAMPLES = Number(process.argv[2] ?? 8)
@@ -320,7 +320,12 @@ for (const sit of situations) {
       }
     }
 
-    const solved = solveSubgame({ estimates, counts })
+    // ⚠️ THE DEFENSE IS SOLVED AGAINST THE OFFENSE THE GAME ACTUALLY PLAYS. buildTable rewrites
+    // the offense's run/pass split to the situational share; without the same reshaping here, the
+    // defense was the best response to the RAW equilibrium instead, which on third and one meant
+    // answering an 11% run offense while the game played 73% run.
+    const constrainRow = runShareConstraint(formationPlays.map(p => p.id), sit.key, playType)
+    const solved = solveSubgame({ estimates, counts, constrainRow })
     done.push({
       situation: sit.key,
       formation: formationId,
