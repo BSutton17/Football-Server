@@ -15,6 +15,7 @@
 // from wherever that slot lines up. The payload has always supported it — it is how a human's
 // hand-drawn route reaches the server — so authored plays ride a path that already works.
 
+import { lookFromReceivers } from '../playcall/offenseLook.js'
 import { layoutAuthored, routeFor, slotLabel, shellsWithPersonnel } from './authored.js'
 import { alignAuthored, clampFieldY } from './alignAuthored.js'
 import { adjustOffense } from './adjustOffense.js'
@@ -156,7 +157,7 @@ export function callAuthoredDefense(book, k, { ballX, receivers, rng = Math.rand
 
   // What the offense is showing, derived from who is actually on the field rather than from any
   // authored formation — the defense sees players, not a playbook entry.
-  const look = { id: formationLookId(receivers), ...personnelOf(receivers) }
+  const look = { id: formationLookId(receivers, { ballX, losY: k?.yardLine ?? 0 }), ...personnelOf(receivers) }
 
   const situation = { down: k.down, distance: k.distance, yardLine: k.yardLine }
   const shell = chooseDefensiveShell(shells, situation, look, { solved: solved?.defense, adjust, rng })
@@ -167,12 +168,14 @@ export function callAuthoredDefense(book, k, { ballX, receivers, rng = Math.rand
   return { shell, formation, look }
 }
 
-// A stable name for the shape the offense is showing. Personnel plus how many are split to each
-// side — enough to key a solved table on, without pretending to know which authored formation it
-// came from.
-export function formationLookId(receivers) {
-  const p = personnelOf(receivers)
-  return `${p.wr}wr${p.te}te${p.rb}rb`
+// A stable name for the shape the offense is showing — personnel, the receiver split, and how many
+// backs are in the backfield — without pretending to know which authored formation it came from.
+//
+// ⚠️ ballX AND losY ARE NOT OPTIONAL IN PRACTICE. Without them every receiver reads as being on
+// the right of a ball at x=0 and at a negative depth, so the split and the backfield count collapse
+// to constants and the key degenerates to personnel — which is the coarse key this replaced.
+export function formationLookId(receivers, { ballX = 0, losY = 0 } = {}) {
+  return lookFromReceivers(receivers, { ballX, losY })
 }
 
 function personnelOf(receivers) {

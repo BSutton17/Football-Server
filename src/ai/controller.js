@@ -499,7 +499,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // every twitch would let a human shuffle a receiver back and forth until they liked the
     // coverage, and would also put the twitching back that `placedAt` exists to stop. Personnel
     // changing is a real event; a man moving two yards is not.
-    const look = formationLookId(receivers)
+    const look = formationLookId(receivers, { ballX, losY })
     if (runningAuthored && self.authoredCall && self.authoredLook !== look) {
       self.authoredCall = null
       say(`offense changed to ${look} — re-calling the defense`)

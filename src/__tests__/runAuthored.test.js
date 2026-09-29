@@ -3,6 +3,7 @@ import {
   hasAuthoredOffense, hasAuthoredDefense, callAuthoredOffense, buildAuthoredOffense,
   callAuthoredDefense, buildAuthoredDefense, formationLookId,
 } from '../ai/playbook/runAuthored.js'
+import { lookFromSpots } from '../ai/playcall/offenseLook.js'
 
 // [authored] The bridge that finally lets the engine snap an authored play.
 
@@ -194,8 +195,30 @@ describe('calling and building an authored offense', () => {
 
 describe('calling and building an authored defense', () => {
   it('describes the look from who is on the field, not from a playbook entry', () => {
-    // The defense sees players, not an authored formation.
-    expect(formationLookId(receivers)).toBe('3wr1te1rb')
+    // The defense sees players, not an authored formation: 3 WR 1 TE 1 RB, three to the right of
+    // the ball and one to the left, with the back in the backfield.
+    expect(formationLookId(receivers, { ballX: BALL_X, losY: LOS })).toBe('311|3x1|1b')
+  })
+
+  // ⚠️ THE SOLVER AND THE LIVE GAME MUST AGREE ON THIS STRING, which is the whole reason the
+  // look lives in one module. They disagreed for the entire life of the solved table — it was
+  // written under formation ids and read under personnel ids, so every lookup missed in silence and
+  // the defense never once used a solved bucket.
+  it('gives a formation the same name whether read from its spots or from bodies on the field', () => {
+    const spots = [
+      { slot: 'WR1', dx: -14, depth: 0 },
+      { slot: 'WR2', dx: 8, depth: 1 },
+      { slot: 'WR3', dx: 14, depth: 0 },
+      { slot: 'TE1', dx: 5, depth: 0 },
+      { slot: 'RB1', dx: -3, depth: 6 },
+    ]
+    expect(lookFromSpots(spots)).toBe(formationLookId(receivers, { ballX: BALL_X, losY: LOS }))
+  })
+
+  it('separates an empty set from a set with a back, which personnel alone cannot', () => {
+    const backfield = lookFromSpots([{ slot: 'WR1', dx: -14, depth: 0 }, { slot: 'RB1', dx: -3, depth: 6 }])
+    const flexed = lookFromSpots([{ slot: 'WR1', dx: -14, depth: 0 }, { slot: 'RB1', dx: 20, depth: 0 }])
+    expect(backfield).not.toBe(flexed)
   })
 
   it('picks a shell and the formation it belongs to', () => {

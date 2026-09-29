@@ -26,6 +26,7 @@ import { writeFileSync, readFileSync, existsSync, mkdirSync, renameSync, appendF
 import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { loadPlaybook } from '../playbook/store.js'
+import { lookFromSpots } from '../ai/playcall/offenseLook.js'
 import { createTrainingGame, destroyTrainingGame, playDown } from './game.js'
 import { startNextPlay, resolveDecision } from '../game/eventQueue.js'
 import { PHASE } from '../game/stateMachine.js'
@@ -161,16 +162,31 @@ function samplePlay({ situation, playId, shellId, seed, possessionValue }) {
 const book = loadPlaybook()
 const plays = Object.entries(book.plays).map(([id, p]) => ({ ...p, id }))
 const shells = Object.entries(book.shells).map(([id, s]) => ({ ...s, id }))
+// ⚠️ GROUPED BY THE LOOK THE DEFENSE CAN SEE, NOT BY THE AUTHORED FORMATION.
+//
+// This solved (situation, FORMATION) subgames and wrote `late|short|normal|gun_deuce`, while the
+// live game looked up `late|short|normal|<look>`. The two key spaces never intersected, so every
+// lookup missed and the defense used its prior on every snap. The solve reached nothing.
+//
+// The formation id could not have been the answer even spelled correctly: a human offense has no
+// authored formation, so that key can never match a real opponent. The look is derived from where
+// the bodies are, by the same `offenseLook.js` the live game uses, and works for both.
+//
+// Formations sharing a look become ONE subgame with the offense choosing across all their plays,
+// which is what the defense's information set actually implies: it cannot tell them apart, so it
+// does not get to answer them separately.
 const byFormation = new Map()
 for (const p of plays) {
-  if (!byFormation.has(p.formationId)) byFormation.set(p.formationId, [])
-  byFormation.get(p.formationId).push(p)
+  const spots = book.formations?.[p.formationId]?.spots
+  const key = lookFromSpots(spots)
+  if (!byFormation.has(key)) byFormation.set(key, [])
+  byFormation.get(key).push(p)
 }
 
 // The run/pass split is set from the situation rather than left to the solve — see withRunShare.
 const playType = (id) => (book.plays[id]?.playType === 'run' ? 'run' : 'pass')
 
-console.log(`[solve] ${plays.length} plays across ${byFormation.size} formations, ${shells.length} shells`)
+console.log(`[solve] ${plays.length} plays across ${byFormation.size} LOOKS, ${shells.length} shells`)
 
 let done = []
 let savedFingerprint = null
@@ -236,6 +252,10 @@ if (SHARD) {
 const fingerprint = createHash('sha1')
   .update(JSON.stringify(allSituations.map(x => x.key)))
   .update(`|${SHARD ?? 'all'}|${plays.length}|${shells.length}`)
+  // The SUBGAME GROUPING, not just its size: switching from formation keys to look keys changes
+  // what every subgame means while leaving the counts alone, and a checkpoint from the old shape
+  // would resume straight into the new one.
+  .update(JSON.stringify([...byFormation.keys()].sort()))
   .digest('hex')
   .slice(0, 12)
 
