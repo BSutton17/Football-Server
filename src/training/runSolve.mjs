@@ -23,6 +23,7 @@
 // written once at the end, and `mergeSolve` rebuilds it from the saved state anyway.
 
 import { writeFileSync, readFileSync, existsSync, mkdirSync, renameSync, appendFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import { join } from 'node:path'
 import { loadPlaybook } from '../playbook/store.js'
 import { createTrainingGame, destroyTrainingGame, playDown } from './game.js'
@@ -172,16 +173,19 @@ const playType = (id) => (book.plays[id]?.playType === 'run' ? 'run' : 'pass')
 console.log(`[solve] ${plays.length} plays across ${byFormation.size} formations, ${shells.length} shells`)
 
 let done = []
+let savedFingerprint = null
+let resuming = false
 if (!process.env.FRESH && existsSync(statePath)) {
   try {
     const saved = JSON.parse(readFileSync(statePath, 'utf8'))
     done = saved.subgames ?? []
-    console.log(`[solve] RESUMING with ${done.length} subgame(s) already solved`)
+    savedFingerprint = saved.fingerprint ?? null
+    resuming = true
+    console.log(`[solve] found ${done.length} subgame(s) in the checkpoint; verifying it still applies...`)
   } catch (err) {
     console.log(`[solve] saved state unreadable (${err.message}); starting over`)
   }
 }
-const alreadyDone = new Set(done.map(d => `${d.situation}|${d.formation}`))
 
 console.log('[solve] measuring what a possession is worth...')
 const possessionValue = measurePossessionValue()
@@ -218,6 +222,48 @@ if (SHARD) {
     process.exit(0)
   }
 }
+// ── Is this checkpoint still about the same solve? ──────────────────────
+//
+// ⚠️ THE SHARD SLICING IS RE-MEASURED EVERY RUN, so a checkpoint is only resumable by a run
+// that derived the identical ordered bucket list. `realSituations` plays real games to count where
+// snaps land; change anything about how the engine plays and the counts move, the sort order moves
+// with them, and bucket k belongs to a different shard than it did yesterday.
+//
+// This is not hypothetical. A solve was once resumed across a mid-run engine fix and two shards
+// came back holding the same bucket, each solved against a different version of the defense. The
+// merge caught the collision two hours later; nothing caught the fact that half the table had been
+// solved against a bug. Hence a fingerprint, checked before any work happens rather than after.
+const fingerprint = createHash('sha1')
+  .update(JSON.stringify(allSituations.map(x => x.key)))
+  .update(`|${SHARD ?? 'all'}|${plays.length}|${shells.length}`)
+  .digest('hex')
+  .slice(0, 12)
+
+if (resuming) {
+  if (savedFingerprint !== fingerprint) {
+    console.error(
+      `
+[solve] REFUSING TO RESUME.
+` +
+      `  the checkpoint in ${dir} was written by a different solve
+` +
+      `    checkpoint: ${savedFingerprint ?? '(no fingerprint — written before this check existed)'}
+` +
+      `    this run:   ${fingerprint}
+` +
+      `  The bucket list or the playbook has changed since, so the shard slices no longer line up
+` +
+      `  and the finished subgames were solved against different code. Re-run with FRESH=1 to start
+` +
+      `  over, which is the only correct option — a merged mixture of the two is not a solve.
+`
+    )
+    process.exit(1)
+  }
+  console.log(`[solve] RESUMING with ${done.length} subgame(s) already solved (fingerprint ${fingerprint})`)
+}
+const alreadyDone = new Set(done.map(d => `${d.situation}|${d.formation}`))
+
 const totalCells = situations.length * plays.length * shells.length * SAMPLES
 console.log(`[solve] ${situations.length} buckets x ${plays.length} plays x ${shells.length} shells x ${SAMPLES} = ${totalCells.toLocaleString()} plays to simulate`)
 
@@ -281,7 +327,7 @@ for (const sit of situations) {
     // the table is derived from it and is written once at the end.
     if (simulated - savedAt >= CHECKPOINT_EVERY_DOWNS) {
       try {
-        saveJson(statePath, { subgames: done, possessionValue })
+        saveJson(statePath, { subgames: done, possessionValue, fingerprint })
         savedAt = simulated
         console.log(`      checkpoint: ${done.length} subgames, ${simulated.toLocaleString()} downs`)
       } catch (err) {
@@ -293,7 +339,7 @@ for (const sit of situations) {
 
 // The run is over: save the state one last time (the budget may not have come round again) and
 // build the table from it.
-saveJson(statePath, { subgames: done, possessionValue })
+saveJson(statePath, { subgames: done, possessionValue, fingerprint })
 const table = buildTable(done, { playType })
 saveJson(tablePath, table)
 const mins = (Date.now() - started) / 60000
