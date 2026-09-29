@@ -117,10 +117,39 @@ export function rankTargets(k, { noise = 0, rng = Math.random } = {}) {
       // A yard of slack, so somebody standing on the marker counts as past it.
       const shortOfSticks = (p.y ?? 0) < sticks - 1
       const score = shortOfSticks ? noisy * shortReach(p, k, mustConvert) : noisy
-      return { ...p, score, trueScore, estimated: p.openness == null, shortOfSticks }
+      return { ...p, score, rankScore: score * depthPreference(p, k), trueScore, estimated: p.openness == null, shortOfSticks }
     })
-    .sort((a, b) => b.score - a.score)
+    // ⚠️ ORDERED BY `rankScore`, JUDGED BY `score` — see depthPreference.
+    .sort((a, b) => b.rankScore - a.rankScore)
 }
+
+// ── Preferring the throw that is worth more ([qb]) ──────────────────────────
+//
+// The ranking above is openness and nothing else: how much SPACE a man has, never what catching it
+// would be worth. Wide open at three yards outranks moderately open at eighteen, on every down, and
+// the only thing pulling the other way is the short-of-the-sticks discount — which does nothing at
+// all on first and ten, because three yards and eighteen yards are both short of the marker.
+//
+// ⚠️ THIS MULTIPLIES THE ORDER, NOT THE BAR, AND THE DISTINCTION IS THE WHOLE POINT.
+// `controller.js` does two separate things with this list: it throws to `targets[0]`, and it decides
+// whether to throw AT ALL by testing `targets[0].score` against a patience/pressure bar. A depth
+// bonus folded into `score` would do both — it would reorder the reads AND make him release
+// earlier, because every receiver would clear the bar sooner. Two changes, one number, and no way
+// to tell afterwards which one moved the yards. So the preference lands on `rankScore`, which only
+// sorts, and `score` reaches the bar untouched.
+//
+// Weight 0 is exactly today's behaviour and is the default: this is inert until measured.
+function depthPreference(p, k) {
+  const weight = Number(process.env.QB_DEPTH_WEIGHT ?? 0)   // per call: a module-load read makes every trial identical
+  if (!weight) return 1
+  const air = (p.y ?? 0) - (k.yardLine ?? 0)
+  if (!(air > 0)) return 1
+  return 1 + weight * clamp01(air / DEPTH_FULL_YARDS)
+}
+
+// Air yards at which the depth preference is at full strength; beyond this it stops growing, so a
+// forty-yard heave is not preferred over a twenty-yard in-cut by another factor of two.
+const DEPTH_FULL_YARDS = 20
 
 // ⚠️ HOW FAR SHORT, NOT MERELY SHORT. A flat discount for being inside the sticks treated a
 // ten-yard catch on 3rd and 12 the same as a two-yard one, and the quarterback stopped throwing it
