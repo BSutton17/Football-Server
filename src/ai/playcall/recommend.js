@@ -15,7 +15,8 @@
 // That is exactly the information each side is allowed, and it is the same information the AI runs
 // on — so this cannot leak anything a player could not already read for themselves.
 
-import { situationKey, distanceBand, fieldZone } from './situation.js'
+import { situationKey } from './situation.js'
+import { BLITZ_RUSHERS, countJobs, classifyShell, situationalShellFit } from './shellShape.js'
 import { playDepth } from './select.js'
 import { shellFit } from './tendencies.js'
 import { layoutAuthored, routeFor, shellsWithPersonnel } from '../playbook/authored.js'
@@ -25,26 +26,6 @@ import { coverOrder } from '../playbook/runAuthored.js'
 // At or above this many rushers a shell is a blitz rather than a coverage that happens to send
 // somebody. Four is the ordinary front.
 //
-// ⚠️ NOT "a non-lineman is rushing". In a 3-4 the fourth rusher IS a linebacker, and defining a
-// blitz that way flagged twenty ordinary coverages as pressure.
-const BLITZ_RUSHERS = 5
-
-const countJobs = (shell) => {
-  const out = { rush: 0, man: 0, zone: 0 }
-  for (const a of Object.values(shell?.assignments ?? {})) {
-    if (a?.job && out[a.job] !== undefined) out[a.job]++
-  }
-  return out
-}
-
-// Which of the three buckets a shell belongs in. Blitz wins over both: a five-man pressure out of
-// man coverage is a blitz first, and offering it as the "man" option would waste one of three slots
-// on something the player is already being shown.
-export function classifyShell(shell) {
-  const jobs = countJobs(shell)
-  if (jobs.rush >= BLITZ_RUSHERS) return 'blitz'
-  return jobs.man > jobs.zone ? 'man' : 'zone'
-}
 
 const normalize = (w) => {
   const total = w.reduce((a, b) => a + b, 0)
@@ -231,38 +212,6 @@ export function recommendDefense(book, situation, look,
   return out
 }
 
-// ⚠️ WITHOUT THIS THE DEFENSIVE SHORTLIST IGNORED THE SITUATION ENTIRELY. `personnelFit` reads
-// only the receiver count, so until a bucket is solved the same three shells came back on 3rd and
-// 1 as on 3rd and 18 — the down and the distance changed nothing at all.
-function situationalShellFit(shell, situation) {
-  const band = distanceBand(situation?.distance ?? 10).id
-  const zone = fieldZone(situation?.yardLine ?? 50).id
-  const jobs = countJobs(shell)
-  const kind = classifyShell(shell)
-
-  // How deep this shell is actually playing, which is what distance argues about.
-  let deep = 0
-  for (const a of Object.values(shell?.assignments ?? {})) {
-    if (a?.job === 'zone' && (a.zone === 'deep' || (a.center?.depth ?? 0) >= 12)) deep++
-  }
-
-  let w = 1
-  if (band === 'short') {
-    w *= 1 + 0.30 * Math.max(jobs.rush - 4, 0)    // crowd the line
-    w *= deep >= 3 ? 0.55 : 1                     // three deep on 3rd and 1 is a giveaway
-    if (kind === 'blitz') w *= 1.35
-  } else if (band === 'verylong') {
-    w *= deep >= 2 ? 1.45 : 0.75                  // keep it in front of the sticks
-    if (kind === 'blitz') w *= 0.8
-  } else if (band === 'long') {
-    w *= deep >= 2 ? 1.15 : 0.95
-  }
-
-  // The deep ball stops existing near the goal line, so depth stops being worth paying for.
-  if (zone === 'goalline' || zone === 'redzone') w *= deep >= 3 ? 0.6 : 1.15
-
-  return Math.max(w, 0.05)
-}
 
 // ⚠️ A CORNER FOR EACH RECEIVER. Answering four receivers with a base defense is not an
 // interesting gamble, it is simply wrong — "if they have 3 WR out there I should probably have
@@ -298,7 +247,7 @@ function whyDefense(kind, jobs, look) {
   return 'Keep it in front, make the catch contested'
 }
 
-export { BLITZ_RUSHERS }
+export { BLITZ_RUSHERS, classifyShell }
 
 
 // ── Putting a chosen play on the field ──────────────────────────────────────

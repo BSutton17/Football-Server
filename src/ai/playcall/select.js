@@ -18,6 +18,7 @@
 import { situationKey, runLean, runShare, depthLean } from './situation.js'
 import { withMixingFloor } from './nash.js'
 import { shellFit } from './tendencies.js'
+import { situationalShellFit } from './shellShape.js'
 
 // How sharply the prior converts weights into a distribution. Low enough that the second and third
 // choices are called often — a "distribution" that always picks its favourite is a pure strategy
@@ -178,12 +179,17 @@ export function chooseDefensiveShell(shells, situation, offenseLook,
   // ⚠️ THE PRIOR MATCHES PERSONNEL, WHICH IS THE ONE THING A DEFENSE MUST GET RIGHT WITHOUT
   // EVIDENCE. Answering four receivers with a base defense is not an interesting gamble, it is
   // simply wrong, and a coin-flip prior would do it a quarter of the time.
+  //
+  // ⚠️ AND IT MATCHES THE SITUATION TOO, which this did not do for as long as it existed.
+  // Personnel was the ONLY term, so the computer answered 3rd and 1 exactly as it answered 3rd and
+  // 15 — three or more deep on roughly a third of both, measured over real snaps. The player's
+  // shortlist had `situationalShellFit` from the start; the computer's own call never called it.
   const wr = offenseLook?.wr ?? 3
   const weights = shells.map((s, i) => {
     const backs = s.personnel ? (s.personnel.CB ?? 0) + (s.personnel.S ?? 0) : 4
     // The closer the defensive back count is to what the formation asks for, the better the fit.
     const want = wr >= 4 ? 6 : wr === 3 ? 5 : 4
-    return fit[i] / (1 + Math.abs(backs - want))
+    return fit[i] * situationalShellFit(s, situation) / (1 + Math.abs(backs - want))
   })
   return sample(shells, withMixingFloor(normalize(weights), { floor: FLOOR }), rng)
 }
