@@ -51,6 +51,7 @@ export function createKnowledge(slot) {
     ballX: FIELD.WIDTH / 2,
     clock: 0,
     clockStopped: true,
+    quarterSeconds: 300,   // [tempo] the host's choice; replaced by the first game_state
     playClock: 30,
     quarter: 1,
     score: { own: 0, opp: 0 },
@@ -84,6 +85,25 @@ export function createKnowledge(slot) {
 // Folds one received event into the picture. Returns the knowledge for chaining.
 // Unknown events are ignored rather than throwing — the server grows events all the time and an AI
 // that falls over when it hears an unfamiliar one is worse than an AI that ignores it.
+// ⚠️ THE SCORE IS `{ offense, defense }` AND NEITHER WORD MEANS WHAT IT SAYS.
+//
+// `getScoreFor` builds it as { offense: state.score[viewerSlot], defense: state.score[1 - viewer] }
+// — so "offense" is THIS SEAT'S score whether it has the ball or not, and "defense" is the other
+// team's. The names describe the usual case, not the contents.
+//
+// Reading `k.score.own` off it is therefore `undefined`, which is not an error, it is ZERO. Two
+// separate features were written against those names — the timeout logic and the tempo model — and
+// both silently believed every game was tied, in every situation, forever. Neither threw, neither
+// logged, and the unit tests passed because the fixtures were hand-built with the names the code
+// expected rather than the ones the engine sends.
+//
+// So the read lives here, once, with a name that says what it is.
+export function scoreMargin(k) {
+  const s = k?.score
+  if (!s) return 0
+  return (s.offense ?? 0) - (s.defense ?? 0)
+}
+
 export function applyEvent(k, event, payload) {
   switch (event) {
     case 'game_state': return onGameState(k, payload)
@@ -190,6 +210,7 @@ function onGameState(k, gs) {
   k.ballX = gs.ballX ?? k.ballX
   k.clock = gs.clock
   k.clockStopped = !!gs.clockStopped
+  k.quarterSeconds = gs.quarterSeconds ?? k.quarterSeconds
   k.playClock = gs.playClock ?? k.playClock
   k.quarter = gs.quarter
   k.score = gs.score ?? k.score

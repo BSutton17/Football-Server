@@ -97,6 +97,22 @@ export function priorWeights(plays, situation) {
     : within[i] / passSum * passTarget)
 }
 
+// [tempo] Re-weight a finished distribution so the RUN share moves by `mult`, in odds, leaving the
+// relative ranking inside each type untouched. Odds rather than probability so it composes and can
+// never leave 0..1 — the same reason `runShare` works in odds.
+export function leanRun(plays, probs, mult) {
+  const runMass = plays.reduce((a, p, i) => a + (p.playType === 'run' ? probs[i] : 0), 0)
+  const passMass = 1 - runMass
+  // Nothing to trade between: a formation with only one kind of play keeps all of the mass.
+  if (runMass <= 1e-9 || passMass <= 1e-9) return probs
+
+  const odds = (runMass / passMass) * mult
+  const wantRun = odds / (1 + odds)
+  const runScale = wantRun / runMass
+  const passScale = (1 - wantRun) / passMass
+  return probs.map((v, i) => v * (plays[i].playType === 'run' ? runScale : passScale))
+}
+
 // ── The offense ─────────────────────────────────────────────────────────────
 //
 // `solved` is optional: a map of situation key -> { playId -> probability }. Where a bucket has
@@ -107,7 +123,7 @@ export function priorWeights(plays, situation) {
 export const REPEAT_DELAY = 5
 
 export function chooseOffensivePlay(plays, situation,
-  { solved = null, rng = Math.random, recent = null } = {}) {
+  { solved = null, rng = Math.random, recent = null, runLeanMult = 1 } = {}) {
   if (!plays?.length) return null
   const key = situationKey(situation)
   const table = solved?.[key]
@@ -120,6 +136,12 @@ export function chooseOffensivePlay(plays, situation,
     : normalize(priorWeights(plays, situation))
 
   let usable = probs.some(p => p > 0) ? probs : normalize(priorWeights(plays, situation))
+
+  // [tempo] The clock's lean, applied ON TOP of whatever the solve decided. A team milking a lead
+  // wants the ball on the ground and in bounds; a team out of time wants it in the air. This is a
+  // multiplier on the run share rather than a different play list, so the equilibrium the solve
+  // found is bent, not replaced — a defense that knows you MUST run is not one you can run on.
+  if (runLeanMult !== 1) usable = leanRun(plays, usable, runLeanMult)
 
   // ⚠️ THE LAST FEW CALLS ARE OFF THE TABLE, and the guard below is the important half. With a
   // thin playbook — or a bucket the solve has concentrated — excluding the last five could leave

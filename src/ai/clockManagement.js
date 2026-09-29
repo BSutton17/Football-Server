@@ -1,3 +1,5 @@
+import { scoreMargin } from './knowledge.js'
+
 // ── Spending timeouts ([clock]) ─────────────────────────────────────────────
 //
 // The computer had three timeouts and never called one. It would take the ball with ninety seconds
@@ -17,9 +19,11 @@
 //     back. A team leading comfortably wants the clock to run, not to stop;
 //   • there is still enough time for the saved seconds to become a snap.
 
-// When a period's end starts to matter. The second half of a half is not urgent; the last two
-// minutes of one are, and the fourth quarter earns more room because a drive has to finish.
-const LATE_SECONDS = { 2: 120, 4: 300 }
+// ⚠️ A FRACTION OF THE QUARTER, NOT A NUMBER OF SECONDS — see the same note in tempo.js. A quarter
+// here is three to six minutes against the NFL's fifteen, so "the last five minutes" is a third of
+// a quarter wherever it is played, and an absolute threshold would have the computer spending
+// timeouts from the opening snap.
+const LATE_FRACTION = { 2: 0.17, 4: 0.40 }
 
 // Roughly what stopping the clock is worth: the play clock plus the walk-up.
 export const TIMEOUT_SECONDS_SAVED = 40
@@ -28,7 +32,8 @@ export const TIMEOUT_SECONDS_SAVED = 40
 const MIN_CLOCK_TO_BOTHER = 6
 
 function lateness(k) {
-  return LATE_SECONDS[k.quarter] ?? 0
+  const quarterSeconds = k.quarterSeconds ?? 300
+  return (LATE_FRACTION[k.quarter] ?? 0) * quarterSeconds
 }
 
 // Is this seat the one with the ball?
@@ -61,9 +66,7 @@ export function shouldCallTimeout(k) {
   if (clock > late) return false
   if (clock <= MIN_CLOCK_TO_BOTHER) return false
 
-  const own = k.score?.own ?? 0
-  const opp = k.score?.opp ?? 0
-  const margin = own - opp
+  const margin = scoreMargin(k)
 
   if (hasBall(k)) {
     // ⚠️ AN OFFENSE WITH A LEAD IN THE FOURTH WANTS THE CLOCK TO RUN, AT ANY MARGIN. Time is the

@@ -8,10 +8,13 @@ import { shouldCallTimeout, snapsLeft, TIMEOUT_SECONDS_SAVED } from '../ai/clock
 // left, run a play, let forty of those seconds bleed away standing at the line, and then run out of
 // time on the drive it was trying to score on.
 
+// ⚠️ A QUARTER HERE IS THREE TO SIX MINUTES, NOT FIFTEEN, so every threshold is a fraction of the
+// quarter and the fixture has to say how long one is. At 300s the scale against the NFL is 1:3.
+const QUARTER = 300
 const k = (over = {}) => ({
-  phase: 'pre_snap', role: 'offense', quarter: 4, clock: 90,
+  phase: 'pre_snap', role: 'offense', quarter: 4, clock: 60, quarterSeconds: QUARTER,
   clockStopped: false, timeouts: { own: 3, opp: 3 },
-  score: { own: 14, opp: 17 }, yardLine: 45,
+  score: { offense: 14, defense: 17 }, yardLine: 45,
   ...over,
 })
 
@@ -36,34 +39,34 @@ describe('spending a timeout', () => {
   })
 
   it('not early in the quarter', () => {
-    expect(shouldCallTimeout(k({ quarter: 4, clock: 600 }))).toBe(false)
-    expect(shouldCallTimeout(k({ quarter: 2, clock: 400 }))).toBe(false)
+    expect(shouldCallTimeout(k({ quarter: 4, clock: 280 }))).toBe(false)   // NFL 14:00
+    expect(shouldCallTimeout(k({ quarter: 2, clock: 200 }))).toBe(false)   // NFL 10:00
   })
 
   it('⚠️ NOT WITH ANY LEAD IN THE FOURTH — the clock is what is protecting it', () => {
-    expect(shouldCallTimeout(k({ score: { own: 30, opp: 17 } }))).toBe(false)
-    expect(shouldCallTimeout(k({ score: { own: 24, opp: 17 } }))).toBe(false)   // even one score
+    expect(shouldCallTimeout(k({ score: { offense: 30, defense: 17 } }))).toBe(false)
+    expect(shouldCallTimeout(k({ score: { offense: 24, defense: 17 } }))).toBe(false)   // even one score
     // Level or behind, the points have to be scored and the time is needed to score them.
-    expect(shouldCallTimeout(k({ score: { own: 17, opp: 17 } }))).toBe(true)
-    expect(shouldCallTimeout(k({ score: { own: 10, opp: 17 } }))).toBe(true)
+    expect(shouldCallTimeout(k({ score: { offense: 17, defense: 17 } }))).toBe(true)
+    expect(shouldCallTimeout(k({ score: { offense: 10, defense: 17 } }))).toBe(true)
   })
 
   it('in the second quarter a lead is irrelevant — the half ends either way', () => {
-    expect(shouldCallTimeout(k({ quarter: 2, clock: 90, score: { own: 30, opp: 0 } }))).toBe(true)
+    expect(shouldCallTimeout(k({ quarter: 2, clock: 40, score: { offense: 30, defense: 0 } }))).toBe(true)
   })
 
   it('…but there has to be something to drive for', () => {
     // Backed up on the second-quarter two-minute warning, the half is simply over.
-    expect(shouldCallTimeout(k({ quarter: 2, clock: 90, yardLine: 12 }))).toBe(false)
-    expect(shouldCallTimeout(k({ quarter: 2, clock: 90, yardLine: 55 }))).toBe(true)
+    expect(shouldCallTimeout(k({ quarter: 2, clock: 40, yardLine: 12 }))).toBe(false)
+    expect(shouldCallTimeout(k({ quarter: 2, clock: 40, yardLine: 55 }))).toBe(true)
   })
 
   it('⚠️ ON DEFENCE ONLY WHEN THE BALL IS WANTED BACK', () => {
     // Level or behind: stop the clock. Ahead: every second that disappears is a second nearer the
     // final whistle, and a timeout would be helping the other team.
-    expect(shouldCallTimeout(k({ role: 'defense', score: { own: 14, opp: 17 } }))).toBe(true)
-    expect(shouldCallTimeout(k({ role: 'defense', score: { own: 17, opp: 17 } }))).toBe(true)
-    expect(shouldCallTimeout(k({ role: 'defense', score: { own: 21, opp: 17 } }))).toBe(false)
+    expect(shouldCallTimeout(k({ role: 'defense', score: { offense: 14, defense: 17 } }))).toBe(true)
+    expect(shouldCallTimeout(k({ role: 'defense', score: { offense: 17, defense: 17 } }))).toBe(true)
+    expect(shouldCallTimeout(k({ role: 'defense', score: { offense: 21, defense: 17 } }))).toBe(false)
   })
 
   it('not with too little time for the saved seconds to become a snap', () => {

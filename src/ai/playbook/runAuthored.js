@@ -87,12 +87,12 @@ const DEFAULT_ZONE_DEPTH = { flat: 2, curl: 5, hook: 4, deep: 8 }
 //
 // Pick a play for the situation, then decide how to line it up.
 export function callAuthoredOffense(book, k,
-  { ballX, rng = Math.random, solved = null, adjust = null, recent = null }) {
+  { ballX, rng = Math.random, solved = null, adjust = null, recent = null, runLeanMult = 1 }) {
   const plays = withIds(book.plays)
   if (!plays.length) return null
 
   const situation = { down: k.down, distance: k.distance, yardLine: k.yardLine }
-  const play = chooseOffensivePlay(plays, situation, { solved: solved?.offense, rng, recent })
+  const play = chooseOffensivePlay(plays, situation, { solved: solved?.offense, rng, recent, runLeanMult })
   if (!play) return null
 
   const formation = { ...book.formations[play.formationId], id: play.formationId }

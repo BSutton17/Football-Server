@@ -3,7 +3,7 @@ import { getScoreFor, getLosY } from './gameState.js'
 import { isPlayerPaused } from './pause.js'
 import { serializeDevReveal } from './devReveal.js'
 import { chewRefusal, CHEW_MIN_PLAY_CLOCK } from './chewClock.js'
-import { FIELD, HIDES_OPENNESS } from '../constants.js'
+import { FIELD, HIDES_OPENNESS, RULES } from '../constants.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { ratingOf } from '../data/ratings.js'
 import { findBallCarrier } from './systems/movement.js'
@@ -88,6 +88,10 @@ export function serializeGameState(state, viewerSlot) {
     // this leaks nothing — and without it the computer cannot tell a timeout that saves forty
     // seconds from one that saves nothing, because the clock is already stopped.
     clockStopped: !!state.clockStopped,
+    // [tempo] How long a quarter runs here — the host picks 3 to 6 minutes. Every clock decision is
+    // a FRACTION of this rather than a number of seconds, because five minutes of this game is
+    // fifteen minutes of football and "the last two minutes" means something different in each.
+    quarterSeconds: state.quarterSeconds ?? RULES.QUARTER_SECONDS,
     down:     state.down,
     distance: state.distance,
     yardLine: state.yardLine,

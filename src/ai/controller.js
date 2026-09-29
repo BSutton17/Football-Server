@@ -29,7 +29,8 @@ import { legalSpot } from './playbook/formations.js'
 import { specialTeamsAction, fourthDownChoice } from './specialTeams.js'
 import { shouldCallTimeout } from './clockManagement.js'
 import { makeRng } from '../game/utils/rng.js'
-import { chooseSetTime, shouldSetNow } from './timing.js'
+import { shouldSetNow } from './timing.js'
+import { chooseTempo, setTimeFor, tempoRunLean, TEMPO } from './tempo.js'
 
 // [run adjust] How late the offense takes its one look at the front, in seconds of hike countdown.
 // One beat before the snap: late enough that the defense has finished moving, early enough to be a
@@ -128,6 +129,15 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
       applyEvent(k, event, payload)
       if (k.newPlay) { resetPlay(); k.newPlay = false }
 
+      // ⚠️ NOTHING MAY BE DONE DURING A STOPPAGE, AND THE AI COULD NOT TELL. It called a timeout and
+      // then kept acting inside its own freeze — setting the offense, placing defenders, assigning
+      // coverage — every one refused ("Play is paused for a timeout"), over and over for as long as
+      // it lasted. Guarded at the event boundary rather than in one handler, because it was every
+      // handler: placement comes in on `player_placed` and has nothing to do with `onSituation`.
+      //
+      // Found by scripts/tempoCheck.mjs the first time it ran after timeouts were added.
+      if (self.stopped && event !== 'timeout_ended' && event !== 'game_state') return undefined
+
       switch (event) {
         case 'game_state': return onSituation()
         case 'player_placed': return onOpponentMoved(payload)
@@ -171,6 +181,13 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
         // [offline] The human defense declared itself ready. There is nothing left to wait for, so
         // the computer stops sitting on the play clock and sets now.
         case 'defense_set': return onDefenseSet()
+        // ⚠️ NOTHING MAY BE DONE DURING A STOPPAGE, AND THE AI COULD NOT TELL. It called a timeout
+        // and then tried to set the offense inside its own stoppage — refused, over and over
+        // ("Play is paused for a timeout"), for as long as the freeze lasted. A real game recovers
+        // when the timeout expires; a harness driving downs directly just spins. Found by
+        // scripts/tempoCheck.mjs on the first run after timeouts were added.
+        case 'timeout_started': self.stopped = true; return undefined
+        case 'timeout_ended': self.stopped = false; return onSituation()
         case 'positions_update': return onLive()
         default: return undefined
       }
@@ -188,7 +205,9 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     self.coverageOnField = []  // …and who the last shell had out there
     self.players = []
     self.setAt = null
+    self.tempo = null
     self.hurriedSeconds = 0
+    self.stopped = false
     self.manualFrozen = false
     self.heldFor = 0
     self.looks = 0
@@ -256,7 +275,15 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     const authoredCall = authored && hasAuthoredOffense(authored)
       ? (self.forceAuthoredPlay
         ? forceOnePlay(authored, self.forceAuthoredPlay, k, ballX)
-        : callAuthoredOffense(authored, k, { ballX, rng, recent: self.recentPlays, ...brains() }))
+        : callAuthoredOffense(authored, k, {
+          ballX, rng, recent: self.recentPlays,
+          // [tempo] The clock's lean on the run/pass mix. Decided here rather than inside the
+          // play-caller because the SITUATION buckets the solve is keyed on carry no score and no
+          // clock — adding them would multiply the buckets and thin every one of them out. So the
+          // solved equilibrium stands and the clock bends it.
+          runLeanMult: tempoRunLean(chooseTempo(k)),
+          ...brains(),
+        }))
       : null
 
     // ⚠️ KEPT ACROSS PLAYS, DELIBERATELY. This is the one piece of offensive memory that must NOT
@@ -319,7 +346,13 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   // at random per play so a human cannot learn the rhythm and pre-empt the snap.
   function lockOffense() {
     if (self.done.set || !self.done.formation) return
-    if (self.setAt == null) self.setAt = chooseSetTime(rng)
+    // [tempo] When to snap is a clock decision, not a coin toss — see ai/tempo.js. Fixed once per
+    // play so the offense does not change its mind mid-walk-up.
+    if (self.setAt == null) {
+      self.tempo = chooseTempo(k)
+      self.setAt = setTimeFor(self.tempo, rng)
+      if (self.tempo !== TEMPO.NORMAL) say(`tempo: ${self.tempo} (set at :${self.setAt.toFixed(0)})`)
+    }
     if (!self.forceSet && !shouldSetNow(k.playClock ?? 0, self.setAt)) return
 
     // ⚠️ BEING HURRIED MUST NOT SAVE THE OFFENSE TIME ON THE GAME CLOCK.
