@@ -87,7 +87,10 @@ export function rankTargets(k, { noise = 0, rng = Math.random } = {}) {
 
   for (const p of k.live.values()) {
     if (p.team === 'd') { defenders.push(p); continue }
-    if (p.carrier) { qb = p; continue }        // whoever has the ball is the passer
+    // ⚠️ THE PASSER IS FLAGGED `qb`, NOT `carrier` — a quarterback in the pocket is not the ball
+    // carrier by the engine's definition, so this found nobody on every pass play and
+    // `estimateOpenness` was being handed a null passer on every read.
+    if (p.qb || p.carrier) { qb = p; continue }
     if (p.ready != null) own.push(p)           // only pass catchers carry `ready`
   }
 

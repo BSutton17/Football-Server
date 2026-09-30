@@ -225,6 +225,15 @@ export function serializePositions(state, viewerSlot = null) {
   for (const p of state.offensePlayers.values()) {
     const pos = { id: p.id, x: roundCoord(p.x), y: roundCoord(toRelY(p.y)), team: 'o' }
     if (p.id === carrierId) pos.state = 'ball'
+    // ⚠️ THE PASSER IS NOT THE "CARRIER". `findBallCarrier` returns the designed runner, a
+    // receiver after the catch, an intercepting defender, or null — a quarterback standing in the
+    // pocket holding the ball is NONE of those. So on every pass play, right up to the throw,
+    // nobody in either side's view was flagged, and anything that looked for the man with the ball
+    // found nobody. `pressureUrgency` returns 0 on its first line when it cannot find him, which
+    // meant the AI quarterback could not feel a pass rush AT ALL, on any difficulty, ever: the bar
+    // never decayed under pressure and the bail-out could never fire. He stood still and was sacked.
+    // Tagged separately rather than widening findBallCarrier, which tackling and run logic lean on.
+    if (qb && p.id === qb.id) pos.qb = true
     if (p.xFactorActive) pos.xfActive = true   // [294] both clients render an active X-Factor as a star
     // [pancake] Flattened by a block: the client fades him out and he is out of the play.
     if ((p.pancakedFor ?? 0) > 0) pos.pancaked = true

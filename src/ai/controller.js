@@ -823,8 +823,24 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   const PRESSURE_ON  = 2.5   // yd — he is about to be hit
   const PRESSURE_FAR = 6.0   // yd — the pocket is still clean
 
+  // ⚠️ `pressureAware` SHIFTS WHEN HE NOTICES, IT DOES NOT CAP WHAT HE CAN NOTICE.
+  //
+  // It used to multiply the result, which is a different and much worse thing: at 0.45 on easy and
+  // 0.8 on medium, urgency could never reach 1 on either tier no matter how close the rush got. Two
+  // consequences, both of which read as "the quarterback won't throw":
+  //
+  //   - the bail-out gate (0.99) was arithmetically unreachable off hard — dead code for most
+  //     players. Measured: zero throwaways across all three tiers over hundreds of pass plays.
+  //   - the throw bar decays with `max(elapsed/patience, urgency)`, so a capped urgency also capped
+  //     the decay. With a receiver between the floor and the bar he would neither throw to him nor
+  //     throw it away; he stood in the pocket until somebody arrived. On medium the sacks land at
+  //     2.3s against a patience of 3.2s, so running out of time never rescued him either.
+  //
+  // Now a less aware passer simply starts reacting later — 4.1 yards out on easy against 6.0 on
+  // hard — and still reaches full urgency when a defender is on top of him, which is the one thing
+  // every quarterback does.
   function pressureUrgency() {
-    const qb = [...k.live.values()].find(p => p.carrier)
+    const qb = [...k.live.values()].find(p => p.qb || p.carrier)
     if (!qb) return 0
     let nearest = Infinity
     for (const p of k.live.values()) {
@@ -833,9 +849,25 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
       if (d < nearest) nearest = d
     }
     if (!Number.isFinite(nearest)) return 0
-    const raw = (PRESSURE_FAR - nearest) / (PRESSURE_FAR - PRESSURE_ON)
-    return Math.max(0, Math.min(1, raw)) * skill().pressureAware
+    const aware = skill().pressureAware
+    const far = PRESSURE_FAR * aware + PRESSURE_ON * (1 - aware)
+    if (far <= PRESSURE_ON) return nearest <= PRESSURE_ON ? 1 : 0
+    return Math.max(0, Math.min(1, (far - nearest) / (far - PRESSURE_ON)))
   }
+
+  // ⚠️ HOW CLOSE IS CLOSE ENOUGH TO BAIL OUT. The gate used to be 0.99 against the HANDICAPPED
+  // urgency, which made the throwaway unreachable in two separate ways:
+  //
+  //   - `pressureAware` is 0.45 on easy and 0.8 on medium, so urgency could not arithmetically
+  //     reach 0.99 on either tier. The bail-out was dead code for every player not on hard.
+  //   - even on hard, 0.99 means a defender within 2.5 yards — the moment of the sack, not a beat
+  //     before it. Measured across all three tiers over hundreds of pass plays: zero throwaways.
+  //
+  // Reported as "the quarterback is constantly getting sacked and I'm only rushing 4 ... it might
+  // be because the qb won't throw", and the measurement agreed with the second half: sacks go UP as
+  // rushers go DOWN (0% against four in zone, 9% against four in man, 20% against three), which is
+  // backwards for a protection failure and exactly right for a passer with nowhere to go.
+  const BAIL_PRESSURE = 0.72
 
   function tryThrow() {
     const sk = skill()
@@ -850,7 +882,11 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // the incompletion. The AI never did this — the mechanic existed and nothing in ai/ referenced
     // it — which is a large part of why blitzing was free.
     const nothingThere = targets.length === 0 || targets[0].score < sk.throwFloor
-    if (k.throwawayReady && urgency >= 0.99 && nothingThere) {
+    // ⚠️ OR HE HAS SIMPLY RUN OUT OF PLAY. Past his patience the bar has already decayed to the
+    // floor, so if nothing is above the floor by then, nothing is coming — waiting longer only
+    // chooses between a throwaway and a sack, and the throwaway is free.
+    const outOfTime = elapsed >= sk.patience
+    if (k.throwawayReady && nothingThere && (urgency >= BAIL_PRESSURE || outOfTime)) {
       self.done.threw = true
       socket.fire('throwaway')
       say('threw it away under pressure')

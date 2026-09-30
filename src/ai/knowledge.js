@@ -68,7 +68,7 @@ export function createKnowledge(slot) {
     opp: new Map(),
 
     // Live play.
-    live: new Map(),        // id -> { id, x, y, team, openness?, ready?, carrier? }
+    live: new Map(),        // id -> { id, x, y, team, openness?, ready?, carrier?, qb? }
     manualPlay: false,      // this play is driven by the GO button (manual room, pass call)
     // [pressure] The server has offered the throwaway (2s of live play on a pass). Until this
     // arrives, bailing out is refused — so the AI has to know, exactly as a human sees the button.
@@ -182,6 +182,8 @@ export function applyEvent(k, event, payload) {
           id: p.id, x: p.x, y: p.y, team: p.team,
           openness: p.openness, ready: p.ready,
           carrier: p.state === 'ball',
+          // The passer, who is NOT the carrier while he is still holding it — see serialization.
+          qb: p.qb === true,
         })
       }
       return k
