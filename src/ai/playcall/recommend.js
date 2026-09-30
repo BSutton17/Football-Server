@@ -105,14 +105,31 @@ export function recommendOffense(book, situation, { solved = null, count = 3, rn
   // same formation look like a choice and are not — same personnel, same picture for the defense,
   // only the routes differ.
   //
-  // The formation is sampled by its BEST play's score, then that play comes with it.
-  const best = new Map()
+  // ⚠️ BUT "ONE PER FORMATION" USED TO MEAN "ONLY ITS BEST PLAY, EVER". The formation was sampled
+  // by its top-scoring play and that play came with it, so every other play in the formation was
+  // unreachable: with 17 formations, at most 17 plays out of 126 could EVER be offered. Measured
+  // over 400 situations, 36 PASS plays were never recommended once and 17 plays covered half of
+  // every slot — reported as "some plays are never or very rarely recommended while others like
+  // wheelies I see almost every drive". Wheelies is simply the best-scoring play in its formation,
+  // so it was that formation's only candidate.
+  //
+  // The formation is still chosen by its best play — that is the right way to rank formations —
+  // but the play is then SAMPLED from inside it, weighted by score. `sampleWeighted` applies the
+  // variety floor relative to the pool it is given, so a route that cannot be run here is still
+  // excluded within the formation, exactly as it is across them.
+  const byFormation = new Map()
   for (const r of ranked) {
-    if (!best.has(r.play.formationId)) best.set(r.play.formationId, r)
+    const arr = byFormation.get(r.play.formationId)
+    if (arr) arr.push(r)
+    else byFormation.set(r.play.formationId, [r])
   }
-  const formations = [...best.values()]
-  const chosen = sampleWeighted(formations, formations.map(r => r.score), count, rng)
-  const out = chosen.map(r => describeOffense(r, book, situation))
+  // `ranked` is sorted, so each group's first entry is that formation's best.
+  const formations = [...byFormation.values()]
+  const chosen = sampleWeighted(formations, formations.map(g => g[0].score), count, rng)
+  const out = chosen.map((group) => {
+    const [pick] = sampleWeighted(group, group.map(r => r.score), 1, rng)
+    return describeOffense(pick ?? group[0], book, situation)
+  })
 
   // ⚠️ A SHORT MENU BEATS A PADDED ONE. This used to top the list up to three from the full
   // ranking, which walked straight past the quality floor — a twenty-yard route reappeared on the
