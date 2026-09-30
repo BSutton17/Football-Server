@@ -28,7 +28,14 @@ const FILE = join(DIR, 'plays.jsonl')
 const META = join(DIR, 'meta.json')
 
 // Off entirely with ANALYTICS=0, for anyone who does not want the write.
-const ENABLED = process.env.ANALYTICS !== '0'
+//
+// ⚠️ AND OFF UNDER TEST UNLESS ASKED FOR. The suite builds solo games, so it recorded real
+// plays into the repo's analytics-output and left a phantom play sitting at the top of the next
+// real report, stamped with whatever commit the suite happened to run on. Tests should not write
+// files as a side effect. ANALYTICS=1 turns it back on for a test that is actually about this.
+const ENABLED = process.env.ANALYTICS === '1'
+  ? true
+  : (process.env.ANALYTICS !== '0' && process.env.NODE_ENV !== 'test')
 
 // ⚠️ SAMPLE STRIDE, NOT EVERY TICK. 22 players at 20 Hz for a 5-second play is 2,200 position
 // records a snap and about 130,000 a game; at a stride of 2 it is half that and nothing about the
