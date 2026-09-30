@@ -51,6 +51,31 @@ let ready = false
 let stopped = false
 let written = 0
 
+// ⚠️ THE BUILD HAS TO BE KNOWABLE BEFORE THE FIRST SNAP. meta.json is only written once recording
+// starts, so "is the tracker up, and is it the code I just pushed?" was unanswerable until after a
+// game had been played -- which is exactly the wrong way round for a pre-flight check.
+//
+// ⚠️ AND `git rev-parse` DOES NOT WORK ON A DYNO. The slug has no .git directory, so the SHA is
+// only available where the repo is. HEROKU_SLUG_COMMIT covers it when dyno metadata is enabled;
+// where neither works, the process START TIME still answers the real question — a server booted
+// after the push is running the push.
+const BOOT_AT = new Date().toISOString()
+let BUILD_SHA = null
+function buildSha() {
+  if (BUILD_SHA !== null) return BUILD_SHA
+  BUILD_SHA = process.env.HEROKU_SLUG_COMMIT?.slice(0, 7)
+    ?? process.env.SOURCE_VERSION?.slice(0, 7)
+    ?? (() => {
+      try { return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() }
+      catch { return 'unknown' }
+    })()
+  return BUILD_SHA
+}
+
+export function buildInfo() {
+  return { bootedAt: BOOT_AT, uptimeSeconds: Math.round(process.uptime()), commit: buildSha(), recording: ENABLED && !stopped }
+}
+
 const live = new Map()   // roomId -> the play being recorded
 
 function boot() {
@@ -58,8 +83,7 @@ function boot() {
   ready = true
   try {
     mkdirSync(DIR, { recursive: true })
-    let sha = 'unknown'
-    try { sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() } catch { /* not a checkout */ }
+    const sha = buildSha()
     const meta = { startedAt: new Date().toISOString(), commit: sha, tickStride: TICK_STRIDE, node: process.version }
     writeFileSync(META, JSON.stringify(meta, null, 2))
     writeFileSync(FILE, '')      // a new build gets a clean report

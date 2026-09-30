@@ -10,7 +10,7 @@
 
 import { Router } from 'express'
 import { createReadStream, existsSync } from 'node:fs'
-import { analyticsPaths, analyticsSummary } from './playLog.js'
+import { analyticsPaths, analyticsSummary, buildInfo } from './playLog.js'
 
 export function createAnalyticsRouter() {
   const router = Router()
@@ -20,6 +20,7 @@ export function createAnalyticsRouter() {
   router.get('/', (_req, res) => {
     const s = analyticsSummary()
     res.json({
+      build: buildInfo(),
       ...s,
       mb: s.bytes ? Math.round((s.bytes / 1048576) * 100) / 100 : 0,
       download: '/analytics/plays.jsonl',
