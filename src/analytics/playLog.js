@@ -1,0 +1,289 @@
+// ── Play-by-play analytics ([analytics]) ────────────────────────────────────
+//
+// A complete record of every play of every OFFLINE game, written as JSONL — one JSON object per
+// play — so a real game can be read back afterwards and argued with, instead of diagnosing from
+// memory of what it felt like.
+//
+// ⚠️ OFFLINE GAMES ONLY. A solo room is the one where both the question and the answer are ours:
+// the human's opponent is the AI, so every decision in the file is a decision worth auditing.
+// Recording a head-to-head would log a stranger's play calls to disk for no benefit.
+//
+// ⚠️ IT RESETS ON BOOT, WHICH IS ONCE PER DEPLOY. Heroku's filesystem is ephemeral, so the file
+// does not survive a restart anyway — this makes that explicit rather than surprising, and means
+// each push starts a clean report of the build it belongs to. The build's git SHA is stamped in
+// the header so a report can never be mistaken for one from different code.
+//
+// ⚠️ IT MUST NEVER BREAK A GAME. Every entry point is wrapped: analytics failing is a lost report,
+// not a lost play, and a thrown error inside the tick loop would take the room down.
+
+import { appendFileSync, writeFileSync, mkdirSync, existsSync, readFileSync, statSync } from 'node:fs'
+import { computeReceiverOpenness } from '../game/utils/openness.js'
+import { isReceiverReady } from '../game/serialization.js'
+import { RECEIVER_LABELS } from '../ai/knowledge.js'
+import { join } from 'node:path'
+import { execSync } from 'node:child_process'
+
+const DIR = process.env.ANALYTICS_DIR ?? join(process.cwd(), 'analytics-output')
+const FILE = join(DIR, 'plays.jsonl')
+const META = join(DIR, 'meta.json')
+
+// Off entirely with ANALYTICS=0, for anyone who does not want the write.
+const ENABLED = process.env.ANALYTICS !== '0'
+
+// ⚠️ SAMPLE STRIDE, NOT EVERY TICK. 22 players at 20 Hz for a 5-second play is 2,200 position
+// records a snap and about 130,000 a game; at a stride of 2 it is half that and nothing about the
+// play is lost, since nobody crosses a meaningful distance in 50ms. Raise it if a file gets
+// unwieldy; the ticks are stamped with real elapsed time so the stride never has to be guessed.
+const TICK_STRIDE = Number(process.env.ANALYTICS_TICK_STRIDE ?? 2)
+
+// A hard ceiling so a long session cannot fill the dyno's disk. Past it, plays stop being written
+// and the header says so — silently truncating a report is worse than a short one.
+const MAX_BYTES = Number(process.env.ANALYTICS_MAX_BYTES ?? 64 * 1024 * 1024)
+
+let ready = false
+let stopped = false
+let written = 0
+
+const live = new Map()   // roomId -> the play being recorded
+
+function boot() {
+  if (ready || !ENABLED) return
+  ready = true
+  try {
+    mkdirSync(DIR, { recursive: true })
+    let sha = 'unknown'
+    try { sha = execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] }).toString().trim() } catch { /* not a checkout */ }
+    const meta = { startedAt: new Date().toISOString(), commit: sha, tickStride: TICK_STRIDE, node: process.version }
+    writeFileSync(META, JSON.stringify(meta, null, 2))
+    writeFileSync(FILE, '')      // a new build gets a clean report
+    console.log(`[analytics] recording offline play-by-play to ${FILE} (build ${sha}, stride ${TICK_STRIDE})`)
+  } catch (err) {
+    stopped = true
+    console.warn(`[analytics] disabled: ${err.message}`)
+  }
+}
+
+// Only solo rooms, and only once the file is usable.
+export function isRecording(state) {
+  if (!ENABLED || stopped) return false
+  if (!state?.solo) return false
+  boot()
+  return !stopped
+}
+
+const r2 = (n) => (Number.isFinite(n) ? Math.round(n * 100) / 100 : null)
+
+// Everything about one player, pre-snap: where he is, and what he was told to do.
+function offenseSnapshot(state) {
+  const out = []
+  for (const p of state.offensePlayers?.values() ?? []) {
+    out.push({
+      id: p.id, label: p.label, x: r2(p.x), y: r2(p.y),
+      route: p.route ?? null,
+      // The drawn shape, which is the actual instruction — a route NAME does not say where it goes.
+      drawnRoute: (p.drawnRoute ?? p.routeDrawn ?? null)?.map(w => ({ dx: r2(w.dx), dd: r2(w.dd) })) ?? null,
+      routeTraits: p.routeTraits ?? null,
+      routeDepthScale: r2(p.routeDepthScale),
+      ovr: p.ratings?.ovr ?? null,
+      speed: p.ratings?.speed ?? null,
+    })
+  }
+  return out
+}
+
+// Every defender, plus the COVERAGE he was actually given — the job, the man, the zone's kind and
+// where its middle sits. This is the part that answers "why was nobody covering the flat".
+function defenseSnapshot(state) {
+  const out = []
+  const cov = state.defenseCoverage ?? new Map()
+  for (const p of state.defensePlayers?.values() ?? []) {
+    const c = cov.get(p.id) ?? {}
+    out.push({
+      id: p.id, label: p.label, x: r2(p.x), y: r2(p.y),
+      job: c.type ?? c.job ?? null,   // the live map calls it `type`; shells call it `job`
+      targetId: c.targetId ?? null,          // man coverage: who he has
+      zoneType: c.zoneType ?? null,          // deep / flat / hook / curl ...
+      zoneCenterX: r2(c.zoneCenterX),
+      zoneCenterY: r2(c.zoneCenterY),
+      zoneDepth: r2(c.zoneCenterY != null && state.yardLine != null ? Math.abs(c.zoneCenterY - state.yardLine) : null),
+      manCommit: c.manCommit ?? null,
+      shade: p.shade ?? p.leverageSide ?? null,   // which shoulder he is leaning to
+      ovr: p.ratings?.ovr ?? null,
+      speed: p.ratings?.speed ?? null,
+    })
+  }
+  return out
+}
+
+// Every eligible receiver's openness, as the offense reads it.
+function openness(state) {
+  const out = []
+  try {
+    const defenders = [...(state.defensePlayers?.values() ?? [])]
+    let qb = null
+    for (const p of state.offensePlayers?.values() ?? []) if (p.label === 'QB') { qb = p; break }
+    for (const p of state.offensePlayers?.values() ?? []) {
+      if (!RECEIVER_LABELS.has(p.label)) continue
+      const ready = isReceiverReady(p)
+      out.push([p.id, ready ? r2(computeReceiverOpenness(p, defenders, qb)) : null, ready ? 1 : 0])
+    }
+  } catch { /* a sample is not worth a crash */ }
+  return out
+}
+
+// Called at the snap. Opens a record; nothing is written until the whistle.
+// What was CALLED, as opposed to what is on the field.
+//
+// ⚠️ THE AI'S BRAINS ARE NOT ON THE STATE -- they live in the controller's closure, attached to
+// its socket. The controller stashes its call on the game as `aiCall`, beside the display string
+// it already set there, and that is the only structured record of it.
+function callOf(state) {
+  const c = state.aiCall ?? {}
+  return {
+    playId: c.offense?.playId ?? null,
+    playName: c.offense?.playName ?? state.aiCallName ?? null,
+    formationId: c.offense?.formationId ?? null,
+    shellId: c.defense?.shellId ?? null,
+    shellName: c.defense?.shellName ?? null,
+    defFormationId: c.defense?.defFormationId ?? null,
+    look: c.defense?.look ?? null,
+  }
+}
+
+export function beginPlay(state, extra = null) {
+  if (!isRecording(state)) return
+  try {
+    const call = state.playDesign ?? {}
+    extra = extra ?? callOf(state)
+    live.set(state.roomId, {
+      play: (state.analyticsPlayNo = (state.analyticsPlayNo ?? 0) + 1),
+      at: new Date().toISOString(),
+      situation: {
+        quarter: state.quarter, clock: r2(state.clock),
+        down: state.down, distance: r2(state.distance), yardLine: r2(state.yardLine),
+        score: Array.isArray(state.score) ? [...state.score] : state.score,
+        possession: state.possession,
+        mode: state.mode, difficulty: state.difficulty,
+        ballX: r2(state.ballX),
+      },
+      offense: {
+        playType: call.playType ?? null,
+        runAngle: call.runAngle ?? null,
+        playId: extra.playId ?? null,
+        playName: extra.playName ?? null,
+        formationId: extra.formationId ?? null,
+        players: offenseSnapshot(state),
+      },
+      defense: {
+        shellId: extra.shellId ?? null,
+        shellName: extra.shellName ?? null,
+        defFormationId: extra.defFormationId ?? null,
+        look: extra.look ?? null,
+        players: defenseSnapshot(state),
+      },
+      ticks: [],
+      decisions: [],
+      events: [],
+      _tick: 0,
+    })
+  } catch { /* never break a play */ }
+}
+
+// Called every LIVE tick. Positions, openness, and who has the ball.
+export function samplePlay(state) {
+  const rec = live.get(state?.roomId)
+  if (!rec) return
+  try {
+    if ((rec._tick++ % TICK_STRIDE) !== 0) return
+    const t = r2(state.livePlayElapsed ?? 0)
+    const pos = []
+    for (const p of state.offensePlayers?.values() ?? []) pos.push([p.id, r2(p.x), r2(p.y)])
+    for (const p of state.defensePlayers?.values() ?? []) pos.push([p.id, r2(p.x), r2(p.y)])
+    rec.ticks.push({
+      t,
+      pos,
+      // Per-receiver openness — the number the throw decision is made on. Computed here with the
+      // engine's own function rather than read off a debug system that is normally switched off.
+      open: openness(state),
+      carrier: state.ballCarrierId ?? null,
+      scrambling: !!state.qbScrambling,
+      pressure: state.qbPressureCount ?? null,
+    })
+  } catch { /* never break a tick */ }
+}
+
+// An AI decision: what he saw, what the bar was, and what he did about it.
+export function noteDecision(state, decision) {
+  const rec = live.get(state?.roomId)
+  if (!rec) return
+  try { rec.decisions.push({ t: r2(state.livePlayElapsed ?? 0), ...decision }) } catch { /* ignore */ }
+}
+
+// Anything discrete: a throw, a catch, a sack, a scramble, a penalty.
+export function noteEvent(state, type, data = {}) {
+  const rec = live.get(state?.roomId)
+  if (!rec) return
+  try { rec.events.push({ t: r2(state.livePlayElapsed ?? 0), type, ...data }) } catch { /* ignore */ }
+}
+
+// Called at the whistle. Writes the play and closes the record.
+export function endPlay(state, result = {}) {
+  const rec = live.get(state?.roomId)
+  if (!rec) return
+  live.delete(state.roomId)
+  if (stopped) return
+  try {
+    // The two numbers any analysis starts from. Derived here rather than left to the reader:
+    // `yards` is the field-position delta across the play, and `outcome` is the last terminal
+    // event the engine fired -- the events array has the whole sequence if the detail is wanted.
+    const TERMINAL = new Set(['TACKLE', 'PASS_INCOMPLETE', 'TOUCHDOWN', 'SACK', 'INTERCEPTION', 'OUT_OF_BOUNDS', 'SAFETY', 'TURNOVER_ON_DOWNS'])
+    const last = [...rec.events].reverse().find(e => TERMINAL.has(e.type))
+    rec.result = {
+      ...result,
+      outcome: last?.type ?? null,
+      // ⚠️ END MINUS START IS ONLY THE GAIN WHEN THE DRIVE SURVIVES THE PLAY. A touchdown resets
+      // the field for the kickoff and a turnover flips the frame, so the raw delta read 0 on a
+      // 19-yard scoring run and something meaningless on a pick. Scores are measured to the goal
+      // line; a change of possession gets null rather than a number that looks real and is not.
+      yards: (() => {
+        const start = rec.situation.yardLine ?? 0
+        if (last?.type === 'TOUCHDOWN') return r2(100 - start)
+        if (state.possession !== rec.situation.possession) return null
+        return r2((state.yardLine ?? 0) - start)
+      })(),
+      endDown: state.down, endDistance: r2(state.distance), endYardLine: r2(state.yardLine),
+      endScore: Array.isArray(state.score) ? [...state.score] : state.score,
+      endPossession: state.possession,
+      ticksRecorded: rec.ticks.length,
+    }
+    delete rec._tick
+    if (written > MAX_BYTES) {
+      if (!stopped) { stopped = true; console.warn(`[analytics] stopped: ${FILE} passed ${MAX_BYTES} bytes`) }
+      return
+    }
+    const line = JSON.stringify(rec) + '\n'
+    written += Buffer.byteLength(line)
+    appendFileSync(FILE, line)
+  } catch (err) {
+    console.warn(`[analytics] write failed: ${err.message}`)
+  }
+}
+
+// A room went away mid-play: drop it rather than leaking the record.
+export function dropPlay(roomId) { live.delete(roomId) }
+
+// ── Reading it back ─────────────────────────────────────────────────────────
+export function analyticsPaths() { return { dir: DIR, file: FILE, meta: META } }
+
+export function analyticsSummary() {
+  if (!existsSync(FILE)) return { exists: false, plays: 0, bytes: 0, meta: null }
+  const bytes = statSync(FILE).size
+  let plays = 0
+  try {
+    const raw = readFileSync(FILE, 'utf8')
+    plays = raw ? raw.split('\n').filter(Boolean).length : 0
+  } catch { /* size alone is still useful */ }
+  let meta = null
+  try { meta = JSON.parse(readFileSync(META, 'utf8')) } catch { /* fine */ }
+  return { exists: true, plays, bytes, meta, stopped }
+}

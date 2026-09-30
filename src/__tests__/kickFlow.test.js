@@ -153,11 +153,21 @@ describe('[6][8] kick execution', () => {
 })
 
 describe('[28][29] punt return decision', () => {
+  // ⚠️ THE KICK ITSELF IS RANDOM, AND TWO OF THESE GET COMPARED TO EACH OTHER. The kicker's
+  // accuracy puts an rng-driven angular error on every punt, so two calls to this landed in
+  // different places -- and the return test measures a return from ONE punt against a fair catch
+  // from ANOTHER. When the return punt happened to travel further, the return could finish behind
+  // the fair catch and the test failed, roughly one run in three.
+  //
+  // Stubbed to a fixed draw for the flight, so both punts are the same punt and the assertion is
+  // about the RETURN, which is what it claims to be about.
   function inFieldPunt(roomId) {
     const state = kickState(roomId, KICK.PUNT, { yardLine: 30 }); room(roomId)
     beginSpecialTeams(state, KICK.PUNT, { kickingSlot: 0 })
-    state.specialTeams.angle = 0; state.specialTeams.power = 0.5   // ~47 yd punt, lands in the field
-    fireKick(state)
+    state.specialTeams.angle = 0; state.specialTeams.power = 0.5   // ~40 yd punt, lands in the field
+    const realRandom = Math.random
+    Math.random = () => 0.5
+    try { fireKick(state) } finally { Math.random = realRandom }
     return state
   }
 

@@ -1,4 +1,5 @@
 import { PHASE, transition } from './stateMachine.js'
+import { noteEvent, endPlay } from '../analytics/playLog.js'
 import {
   recordAttempt, recordCompletion, recordPassYards, recordRush, recordTackle, recordSack,
   recordInterception, recordTouchdown, serializeStats,
@@ -115,6 +116,10 @@ export function clearQueue(roomId) {
 // ── Dispatcher ────────────────────────────────────────────────────────────────
 
 function dispatch({ type, payload }, state, io) {
+  // [analytics] Every engine event, from the one place they all pass through, rather than a call
+  // scattered into each handler. Payloads are small and already plain data.
+  noteEvent(state, type, payload && typeof payload === 'object' ? payload : {})
+
   switch (type) {
     case EVENT.SNAP:              return onSnap(payload, state, io)
     case EVENT.THROW:             return onThrow(payload, state, io)

@@ -1,3 +1,4 @@
+import { beginPlay, endPlay } from '../analytics/playLog.js'
 // ── Phase constants ───────────────────────────────────────────────────────────
 //
 // pre_snap  — Both teams placing players in formation.
@@ -49,6 +50,14 @@ export function transition(state, newPhase) {
   if (!canTransition(state.phase, newPhase)) {
     throw new Error(`[state] illegal transition: ${state.phase} → ${newPhase}`)
   }
+  const was = state.phase
   state.phase = newPhase
+  // [analytics] The snap and the whistle, wherever they came from. Hooked here rather than at the
+  // call sites: the snap hook lived in the socket handler at first and never fired for anything
+  // that reached LIVE another way, and there are a dozen separate `transition(state, PHASE.DEAD)`
+  // sites -- a play that ended down a path nobody remembered to instrument is exactly the play
+  // worth having in the report.
+  if (newPhase === PHASE.LIVE) beginPlay(state)
+  if (was === PHASE.LIVE && newPhase === PHASE.DEAD) endPlay(state)
   return state
 }

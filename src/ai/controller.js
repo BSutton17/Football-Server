@@ -19,6 +19,7 @@ import {
 import { adjustOffense } from './playbook/adjustOffense.js'
 import { REPEAT_DELAY } from './playcall/select.js'
 import { solvedTable } from './playcall/table.js'
+import { noteDecision } from '../analytics/playLog.js'
 import { getGame } from '../game/gameState.js'
 const forceDeps = { adjustOffense }
 import { createKnowledge, applyEvent, isOffense, isDefense, oppSkill } from './knowledge.js'
@@ -297,7 +298,20 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
 
     if (authoredCall?.play?.name) {
       const g = getGame(socket?.data?.roomId)
-      if (g) g.aiCallName = `${authoredCall.play.name} / ${authoredCall.formation?.name ?? ''}`
+      if (g) {
+        g.aiCallName = `${authoredCall.play.name} / ${authoredCall.formation?.name ?? ''}`
+        // [analytics] The same call as structured data. `aiCallName` is a label for a screenshot;
+        // a report needs the ids.
+        g.aiCall = {
+          ...(g.aiCall ?? {}),
+          offense: {
+            playId: authoredCall.play.id ?? null,
+            playName: authoredCall.play.name ?? null,
+            formationId: authoredCall.formation?.id ?? authoredCall.play.formationId ?? null,
+            playType: authoredCall.play.playType ?? null,
+          },
+        }
+      }
     }
 
     let call
@@ -516,7 +530,18 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
         // [dev reveal] Named on the state so a screenshot can say WHICH shell this is, not just
         // where eleven dots ended up. Harmless when the reveal is off: nothing reads it.
         const g = getGame(socket?.data?.roomId)
-        if (g) g.aiCallName = `${self.authoredCall.shell.name} / ${self.authoredCall.formation.name}`
+        if (g) {
+          g.aiCallName = `${self.authoredCall.shell.name} / ${self.authoredCall.formation.name}`
+          g.aiCall = {
+            ...(g.aiCall ?? {}),
+            defense: {
+              shellId: self.authoredCall.shell.id ?? null,
+              shellName: self.authoredCall.shell.name ?? null,
+              defFormationId: self.authoredCall.formation.id ?? null,
+              look: self.authoredCall.look?.id ?? null,
+            },
+          }
+        }
       }
     }
     const frontSize = self.authoredCall
@@ -947,6 +972,15 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   // is never gone on the snap.
   const MIN_TIME_BEFORE_THROW = 0.65
 
+  // [analytics] Forwards a decision to the report for this socket's room. A no-op off a solo game
+  // and wrapped besides: a missing report must never cost a throw.
+  function noteAiDecision(sock, decision) {
+    try {
+      const g = getGame(sock?.data?.roomId)
+      if (g) noteDecision(g, decision)
+    } catch { /* ignore */ }
+  }
+
   function tryThrow() {
     const sk = skill()
     const targets = rankTargets(k, { noise: sk.readNoise, rng })
@@ -966,6 +1000,10 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // chooses between a throwaway and a sack, and the throwaway is free.
     const outOfTime = elapsed >= sk.patience
     if (k.throwawayReady && nothingThere && (urgency >= BAIL_PRESSURE || outOfTime)) {
+      noteAiDecision(socket, {
+        kind: 'throwaway', urgency: +urgency.toFixed(3), elapsed: +elapsed.toFixed(2), outOfTime,
+        best: targets[0] ? +targets[0].score.toFixed(3) : null, floor: sk.throwFloor,
+      })
       self.done.threw = true
       socket.fire('throwaway')
       say('threw it away under pressure')
@@ -1001,8 +1039,25 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
         .sort((a, b) => b.score - a.score)
       best = projected[0]
     }
-    if (best.score < bar) return false
+    if (best.score < bar) {
+      // [analytics] Holding on is a decision as much as throwing is, and it is the one that ends
+      // in sacks. Sampled rather than logged every tick: 20 Hz of "still waiting" would drown it.
+      if ((self._heldLog = (self._heldLog ?? 0) + 1) % 10 === 0) {
+        noteAiDecision(socket, {
+          kind: 'held', elapsed: +elapsed.toFixed(2), urgency: +urgency.toFixed(3),
+          best: +best.score.toFixed(3), bar: +bar.toFixed(3),
+        })
+      }
+      return false
+    }
 
+    // [analytics] WHY he threw, not just that he did: the bar he had to clear, what everybody else
+    // was worth, and how much pressure was on him. The record that makes a bad decision arguable.
+    noteAiDecision(socket, {
+      kind: 'throw', target: best.id, score: +best.score.toFixed(3),
+      bar: +bar.toFixed(3), urgency: +urgency.toFixed(3), elapsed: +elapsed.toFixed(2),
+      ranked: targets.slice(0, 5).map(t => ({ id: t.id, score: +t.score.toFixed(3), estimated: !!t.estimated })),
+    })
     self.done.threw = true
     socket.fire('throw_to_receiver', best.id)
     say(`throw → ${best.id} (${best.estimated ? 'read' : 'openness'} ${best.score.toFixed(2)} vs bar ${bar.toFixed(2)})`)

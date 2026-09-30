@@ -13,6 +13,7 @@ import { runDecisionClock, runConversionClock } from './systems/decisionClock.js
 import { runKickClock }         from './systems/kickClock.js'
 import { runEventQueue }        from './systems/eventQueue.js'
 import { runBroadcast }         from './systems/broadcast.js'
+import { samplePlay } from '../analytics/playLog.js'
 import { drainStamina }         from './systems/stamina.js'
 import { runPassRush }          from './systems/passRush.js'
 import { runPancake }           from './systems/pancake.js'
@@ -68,6 +69,8 @@ const LIVE_SYSTEMS = [
   // [manual] LAST on purpose: when this freezes the play, runBroadcast has already sent this tick's
   // positions, so the frame the clients hold on screen is exactly the frame the freeze captured.
   runManualHold,
+  // [analytics] LAST, so the sample is the frame the clients were just sent.
+  runAnalyticsSample,
 ]
 
 // ── Per-room loop registry ────────────────────────────────────────────────────
@@ -77,6 +80,13 @@ const LIVE_SYSTEMS = [
 //
 // Most ticks during PRE_SNAP / COUNTDOWN / DEAD are near-free — the switch
 // falls through with no work.  Only LIVE ticks run the full pipeline.
+
+// [analytics] One system rather than a call scattered through the engine. It also closes the
+// record when the play ends, which is the one thing a per-tick sampler cannot see on its own --
+// by the next tick the phase is DEAD and the pipeline no longer runs.
+function runAnalyticsSample(state) {
+  samplePlay(state)
+}
 
 const loops = new Map()   // Map<roomId, intervalId>
 

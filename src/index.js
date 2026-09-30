@@ -5,6 +5,7 @@ import { Server } from 'socket.io';
 import { registerSocketHandlers } from './socket/index.js';
 import { SIM } from './constants.js';
 import { createPlaybookDevRouter, isDevPlaybookEnabled } from './playbook/devRoutes.js';
+import { createAnalyticsRouter } from './analytics/routes.js';
 
 const PORT = process.env.PORT || 3001;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
@@ -12,6 +13,10 @@ const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
 const app = express();
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+
+// [analytics] The play-by-play report of offline games. Read-only, and it resets on every deploy
+// because the dyno's disk does. See src/analytics/playLog.js.
+app.use('/analytics', createAnalyticsRouter());
 
 // [authored] The play sandbox's save button. Writes JSON files into the repo, so it is mounted
 // ONLY when explicitly enabled and never in production — see isDevPlaybookEnabled for the gate.

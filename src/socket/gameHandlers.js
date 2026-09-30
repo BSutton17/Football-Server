@@ -68,6 +68,7 @@ const playbook = () => {
 }
 export function reloadHandlerPlaybook() { cachedBook = null }
 
+
 export function registerGameHandlers(io, socket) {
 
   // ── Pre-snap: formation ───────────────────────────────────────────────────
