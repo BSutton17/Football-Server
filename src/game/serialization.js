@@ -55,7 +55,16 @@ export function isReceiverReady(p) {
   if (total <= 1) return elapsed >= OPENNESS_REVEAL_DELAY
 
   if (idx >= total - 1) return true                       // past the last break
-  if (idx >= total - 2 && (ratingOf(p, 'routeRunning') ?? 55) >= EARLY_DECLARE_RATING) return true
+
+  // ⚠️ A BEAT EARLY, NOT BEFORE HE HAS MOVED. `idx >= total - 2` is `0 >= 0` on a TWO-waypoint
+  // route, which is most of the playbook -- so every receiver rated 82+ was a declared, throwable
+  // target at the snap, before the ball had left the centre's hands. Measured in a real game: one
+  // to three receivers already lit at t=0.05s, openness reading 1.00 because no defender had moved
+  // yet, and the computer throwing at the first legal tick on four of six attempts.
+  //
+  // Requiring a cleared waypoint keeps the intent -- an elite route runner declares one break
+  // ahead of the rest -- and confines it to routes that HAVE an earlier break to be ahead of.
+  if (idx >= 1 && idx >= total - 2 && (ratingOf(p, 'routeRunning') ?? 55) >= EARLY_DECLARE_RATING) return true
 
   return elapsed >= STUCK_ROUTE_FALLBACK
 }

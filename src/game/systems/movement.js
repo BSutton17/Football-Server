@@ -1677,9 +1677,24 @@ const RB_MAN_HOLD_DEPTH = 3.5
 // is covered like anybody else.
 const BACKFIELD_MARGIN = 0.5
 
+// ⚠️ AND HE MUST NOT HAVE RELEASED. "Behind the line" is not the same as "might still block",
+// and treating them as the same left a back running a FLAT route uncovered for the whole play.
+//
+// The hold pins the defender at `losY + 3.5` on his side of the line while the back sits ~5 yards
+// behind it, so the vertical gap alone is about nine yards -- and a flat or flare route never
+// crosses the line, so the hold never ended. Measured in a real game: a back on a shallow out
+// reached 0.93 openness with his man 8 yards away, and on a flare the separation GREW from 9.0 to
+// 10.1 while he finished at 1.00 open. Both were logged as covered in man.
+//
+// A back who has run three yards sideways is running a route, whatever his depth.
+const BACKFIELD_RELEASE_X = 3.0
+
 function isBackfieldBack(receiver, losY, dir) {
   if (receiver.label !== 'RB') return false
-  return (losY - receiver.y) * dir > BACKFIELD_MARGIN
+  if ((losY - receiver.y) * dir <= BACKFIELD_MARGIN) return false   // out past the line: released
+  const sx = receiver.routeStart?.x
+  if (sx != null && Math.abs(receiver.x - sx) > BACKFIELD_RELEASE_X) return false
+  return true
 }
 const MAN_INSIDE_OFFSET = 0.75   // yards of leverage cushion on the defender's aligned side
 const MAN_TRAIL_DEPTH   = 0.5    // yards underneath the receiver (toward the LOS)
