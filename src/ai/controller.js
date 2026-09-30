@@ -1053,8 +1053,16 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
 
     // [analytics] WHY he threw, not just that he did: the bar he had to clear, what everybody else
     // was worth, and how much pressure was on him. The record that makes a bad decision arguable.
+    // ⚠️ `score` AND `ranked` WERE ON DIFFERENT SCALES IN MANUAL. In manual the chosen man is
+    // re-ranked on where he is HEADING, so the logged score was a projection while `ranked` held
+    // the raw reads -- one play showed a throw at score 0.639 to a receiver listed at 0.404, which
+    // looks like a contradiction and is not. Both are recorded now, and which one decided it.
+    const raw = targets.find(t => t.id === best.id)
     noteAiDecision(socket, {
-      kind: 'throw', target: best.id, score: +best.score.toFixed(3),
+      kind: 'throw', target: best.id,
+      score: +best.score.toFixed(3),
+      rawScore: raw ? +raw.score.toFixed(3) : null,
+      projected: isManualRoom(),
       bar: +bar.toFixed(3), urgency: +urgency.toFixed(3), elapsed: +elapsed.toFixed(2),
       ranked: targets.slice(0, 5).map(t => ({ id: t.id, score: +t.score.toFixed(3), estimated: !!t.estimated })),
     })

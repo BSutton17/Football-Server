@@ -98,6 +98,29 @@ function offenseSnapshot(state) {
   return out
 }
 
+// Which side of his man a defender is standing on, from the ball's point of view: 'inside' is
+// between the receiver and the ball, 'outside' is beyond him. Only meaningful in man coverage.
+function shadeOf(p, c, state) {
+  const targetId = c?.targetId
+  if (!targetId) return null
+  const man = state.offensePlayers?.get(targetId)
+  if (!man) return null
+  const ball = state.ballX ?? 26.67
+  const dFromBall = Math.abs(p.x - ball)
+  const mFromBall = Math.abs(man.x - ball)
+  if (Math.abs(dFromBall - mFromBall) < 0.35) return 'head-up'
+  return dFromBall < mFromBall ? 'inside' : 'outside'
+}
+
+// How far off that man he is, in yards, signed toward the ball. The number behind the word.
+function leverageOf(p, c, state) {
+  const man = c?.targetId ? state.offensePlayers?.get(c.targetId) : null
+  if (!man) return null
+  const ball = state.ballX ?? 26.67
+  const sign = man.x >= ball ? 1 : -1
+  return (man.x - p.x) * sign
+}
+
 // Every defender, plus the COVERAGE he was actually given — the job, the man, the zone's kind and
 // where its middle sits. This is the part that answers "why was nobody covering the flat".
 function defenseSnapshot(state) {
@@ -105,16 +128,25 @@ function defenseSnapshot(state) {
   const cov = state.defenseCoverage ?? new Map()
   for (const p of state.defensePlayers?.values() ?? []) {
     const c = cov.get(p.id) ?? {}
+    // ⚠️ A LINEMAN IS NOT "NO ASSIGNMENT". `defenseCoverage` only holds men in coverage, so the
+    // four down linemen came back with a null job -- a third of every row in the first real report
+    // looked like missing data when it was just the pass rush.
+    const rushing = !c.type && !c.job && (p.label === 'DL' || p.label === 'DE' || p.label === 'DT' || p.label === 'NT')
     out.push({
       id: p.id, label: p.label, x: r2(p.x), y: r2(p.y),
-      job: c.type ?? c.job ?? null,   // the live map calls it `type`; shells call it `job`
+      job: c.type ?? c.job ?? (rushing ? 'rush' : null),   // the live map calls it `type`; shells call it `job`
       targetId: c.targetId ?? null,          // man coverage: who he has
       zoneType: c.zoneType ?? null,          // deep / flat / hook / curl ...
       zoneCenterX: r2(c.zoneCenterX),
       zoneCenterY: r2(c.zoneCenterY),
       zoneDepth: r2(c.zoneCenterY != null && state.yardLine != null ? Math.abs(c.zoneCenterY - state.yardLine) : null),
       manCommit: c.manCommit ?? null,
-      shade: p.shade ?? p.leverageSide ?? null,   // which shoulder he is leaning to
+      // ⚠️ SHADE IS DERIVED, NOT STORED. There is no `shade` field on a pre-snap defender --
+      // reading one recorded null for all 374 defenders in the first real report. What exists is
+      // his position relative to the man he is covering, which is what a shade IS: inside or
+      // outside leverage, measured from the ball.
+      shade: shadeOf(p, c, state),
+      leverage: r2(leverageOf(p, c, state)),
       ovr: p.ratings?.ovr ?? null,
       speed: p.ratings?.speed ?? null,
     })
@@ -148,7 +180,12 @@ function callOf(state) {
   const c = state.aiCall ?? {}
   return {
     playId: c.offense?.playId ?? null,
-    playName: c.offense?.playName ?? state.aiCallName ?? null,
+    // ⚠️ NO FALLBACK TO `aiCallName`. That string is shared: the controller writes the OFFENSIVE
+    // call into it when the computer has the ball and the DEFENSIVE call when it does not. Falling
+    // back to it meant every human-offense play in the first real report was labelled with the
+    // computer's coverage -- "run COVER 1 / NICKEL WIDE" -- which reads like a play call and is not
+    // one. A human's offense has no authored play, and null says so honestly.
+    playName: c.offense?.playName ?? null,
     formationId: c.offense?.formationId ?? null,
     shellId: c.defense?.shellId ?? null,
     shellName: c.defense?.shellName ?? null,
