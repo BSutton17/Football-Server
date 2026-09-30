@@ -74,7 +74,10 @@ export const POWER_REFILL_PER_TAP   = 0.02  // [10] every valid directional inpu
 // [kick feel] The meter takes longer to drain than the raw timer implies, so there is more time to
 // fight it back up and a clean kick is less punishing to land. Eased 30% once, then a further 30%
 // after play-testing — the two compound, hence 1.3 x 1.3.
-export const POWER_DRAIN_SLOWDOWN   = 1.3 * 1.3
+// ⚠️ WAS 1.3 * 1.3, WHICH MADE A FULL METER THE DEFAULT OUTCOME rather than a good one — punts
+// came out at the ceiling every time. Faster drain means the meter has to be timed, which is the
+// point of having one.
+export const POWER_DRAIN_SLOWDOWN   = 1.3
 export const POWER_DRAIN_PER_SEC    = (FULL_POWER / KICK_TIMER_SECONDS) * 0.9 / POWER_DRAIN_SLOWDOWN
 // [13] The aiming arrow is capped at ±30° from straight ahead. Angle is normalized −1..1 (±1 = ±30°).
 export const AIM_MAX_DEGREES        = 30

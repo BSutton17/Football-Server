@@ -18,7 +18,7 @@ const FLOOR_MIN = 10, FLOOR_MAX = 40   // distance at power 0, for rating 0 → 
 const CEIL_MIN  = 45, CEIL_MAX  = 75   // distance at power 1, for rating 0 → 99
 
 // [max range] Full-meter distance cap by kick type, scaling with the Power rating:
-//   punt  — 99 Power → 70 yds; −1 yd per point of Power below 99.
+//   punt  — 99 Power → 55 yds; −0.35 yds per point of Power below 99.
 //   FG/XP — 99 Power → 65 yds; −0.35 yds per point of Power below 99.
 // Kickoffs (automatic) return null → the default CEIL model above. Floored so even a weak leg gets a
 // short chip rather than a zero/negative distance.
@@ -33,12 +33,22 @@ const CEIL_MIN  = 45, CEIL_MAX  = 75   // distance at power 1, for rating 0 → 
 // At −0.35 a point the default kicker reaches 56 yards and a 90 reaches 62, which is roughly what a
 // professional does. The rating still matters — seventeen yards of range separates a 50 from a 99 —
 // it just no longer decides that field goals are not part of the game.
+//
+// ⚠️ THE PUNT CEILING WAS 70 AND A FULL METER SIMPLY HIT IT. At −11 yds a point the ceiling for a
+// 95-Power punter is 70 − 4 = 66, and 66-yard punts were what the player got, every time — because
+// the meter drains slowly enough that a full one is the normal outcome rather than a good one. A
+// punt is not supposed to be a ceiling test; the NFL gross average is high 40s.
+//
+// Now the same shape as the field goal: a 99 reaches 55 at a PERFECT meter, a 75 reaches 46.6, and
+// with the faster drain below the ordinary punt lands in the 40s where it belongs.
 const MIN_MAX_DISTANCE = 15
+export const PUNT_RANGE_AT_99 = 55
+export const PUNT_RANGE_PER_POINT = 0.35
 export const FG_RANGE_AT_99 = 65
 export const FG_RANGE_PER_POINT = 0.35
 export function maxKickDistance(kickType, kickerPower = DEFAULT_KICK_POWER) {
   const below = Math.max(0, 99 - (kickerPower ?? DEFAULT_KICK_POWER))
-  if (kickType === 'punt')                                          return Math.max(MIN_MAX_DISTANCE, 70 - below)
+  if (kickType === 'punt')  return Math.max(MIN_MAX_DISTANCE, PUNT_RANGE_AT_99 - below * PUNT_RANGE_PER_POINT)
   if (kickType === 'field_goal' || kickType === 'extra_point') {
     return Math.max(MIN_MAX_DISTANCE, FG_RANGE_AT_99 - below * FG_RANGE_PER_POINT)
   }

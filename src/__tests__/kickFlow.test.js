@@ -68,16 +68,20 @@ describe('[9][10] power meter drains continuously once started, refilled by taps
     const half = KICK_TIMER_SECONDS / 2
     let elapsed = 0
     while (elapsed < half) { runKickClock(state, mockIo(), 0.05); elapsed += 0.05 }
-    // Drain is eased 10%, then slowed 30% twice over ([kick feel]): 0.9 / 1.69 ≈ 0.53 of the meter
-    // over the full timer, so only about a quarter is gone by the halfway point.
-    expect(st.power).toBeCloseTo(0.73, 1)
+    // Drain is eased 10%, then slowed 30% ONCE ([kick feel]): 0.9 / 1.3 ≈ 0.69 of the meter over
+    // the full timer, so about a third is gone by the halfway point.
+    expect(st.power).toBeCloseTo(0.65, 1)
     expect(st.phase).toBe(ST_PHASE.SETUP)   // not executed yet
   })
 
-  it('the meter drains far slower than the un-slowed rate ([kick feel])', () => {
-    // Pinned explicitly so the easing can't be tuned away by accident. Two successive 30% eases.
-    expect(POWER_DRAIN_SLOWDOWN).toBeCloseTo(1.69, 6)
-    expect(POWER_DRAIN_PER_SEC).toBeCloseTo((1 / KICK_TIMER_SECONDS) * 0.9 / 1.69, 6)
+  // ⚠️ THE SECOND 30% EASE IS GONE, DELIBERATELY. At 1.69 a full meter was the DEFAULT outcome
+  // rather than a good one, so every punt came out at its ceiling — 66 yards for a 95-Power
+  // punter, every time. A meter you cannot miss is not a meter. One ease, not two.
+  it('the meter still drains slower than the raw rate, but only by one ease', () => {
+    expect(POWER_DRAIN_SLOWDOWN).toBeCloseTo(1.3, 6)
+    expect(POWER_DRAIN_PER_SEC).toBeCloseTo((1 / KICK_TIMER_SECONDS) * 0.9 / 1.3, 6)
+    // …and it is still eased: an untouched meter does not empty over the timer.
+    expect(POWER_DRAIN_PER_SEC * KICK_TIMER_SECONDS).toBeLessThan(1)
   })
 
   it('a directional tap fights the drain back up (+2%)', () => {

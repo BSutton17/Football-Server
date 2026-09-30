@@ -31,10 +31,14 @@ describe('[15] distance — power meter × kicker Power rating', () => {
 })
 
 describe('[max range] full-meter distance caps by kick type + Power', () => {
-  it('punt: 99 Power → 70 yds, −1 yd per point below 99', () => {
-    expect(maxKickDistance('punt', 99)).toBeCloseTo(70)
-    expect(maxKickDistance('punt', 90)).toBeCloseTo(61)   // 70 − 9
-    expect(maxKickDistance('punt', 95)).toBeCloseTo(66)
+  // ⚠️ WAS 70 AT −1 A POINT, AND A FULL METER SIMPLY HIT IT. A 95-Power punter capped at 66 and
+  // 66-yard punts were what players actually got, every time, because the meter drained slowly
+  // enough that a full one was the normal outcome rather than a good one. The NFL gross average is
+  // high 40s. Same shape as the field goal now.
+  it('punt: 99 Power → 55 yds, −0.35 yds per point below 99', () => {
+    expect(maxKickDistance('punt', 99)).toBeCloseTo(55)
+    expect(maxKickDistance('punt', 90)).toBeCloseTo(51.85)   // 55 − 9×0.35
+    expect(maxKickDistance('punt', 95)).toBeCloseTo(53.6)   // the 66 the player kept getting
   })
 
   it('field goal / XP: 99 Power → 65 yds, −0.35 yds per point below 99', () => {
@@ -54,7 +58,7 @@ describe('[max range] full-meter distance caps by kick type + Power', () => {
   })
 
   it('a full-meter kick actually reaches the cap', () => {
-    expect(calculateKickResult({ kickType: 'punt', power: 1, kickerPower: 99, yardLine: 20 }, noNoise).distance).toBeCloseTo(70)
+    expect(calculateKickResult({ kickType: 'punt', power: 1, kickerPower: 99, yardLine: 20 }, noNoise).distance).toBeCloseTo(55)
     expect(calculateKickResult({ kickType: 'field_goal', power: 1, kickerPower: 90, requiredDistance: 10 }, noNoise).distance).toBeCloseTo(61.85)
   })
 
@@ -473,11 +477,14 @@ describe('[19] hang time — from power and distance', () => {
   })
 
   it('at equal distance, more power means more hang time', () => {
-    // a mid leg at full meter vs a strong leg at a low meter — tuned to the same ~55-yd distance, so
-    // the only difference is how hard it was struck (power meter), which breaks the tie.
+    // a mid leg at full meter vs a strong leg at a low meter — tuned to the same distance, so the
+    // only difference is how hard it was struck (power meter), which breaks the tie.
+    // ⚠️ RE-TUNED WITH THE PUNT CEILING (70 -> 55): an 84 leg at a full meter now reaches 49.75,
+    // and a 99 leg needs 0.65 of its meter rather than 0.5 to match it. The pairing is the point of
+    // the test, so it has to be recomputed whenever the ceiling moves.
     const a = calculateKickResult({ kickType: 'punt', power: 1.0, kickerPower: 84, yardLine: 30 }, noNoise)
-    const b = calculateKickResult({ kickType: 'punt', power: 0.5, kickerPower: 99, yardLine: 30 }, noNoise)
-    expect(a.distance).toBeCloseTo(b.distance, 0)   // both ~55 yds
+    const b = calculateKickResult({ kickType: 'punt', power: 0.65, kickerPower: 99, yardLine: 30 }, noNoise)
+    expect(a.distance).toBeCloseTo(b.distance, 0)   // both ~49.75 yds
     expect(a.hangTime).toBeGreaterThan(b.hangTime)
   })
 
