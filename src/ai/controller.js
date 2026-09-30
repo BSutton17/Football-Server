@@ -942,6 +942,11 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     return sk.throwThreshold - (sk.throwThreshold - sk.throwFloor) * decay
   }
 
+  // The beat he has to hold the ball before a throw is legal at all, in seconds of live play
+  // (board time in manual). Short enough that a screen still goes early, long enough that the ball
+  // is never gone on the snap.
+  const MIN_TIME_BEFORE_THROW = 0.65
+
   function tryThrow() {
     const sk = skill()
     const targets = rankTargets(k, { noise: sk.readNoise, rng })
@@ -949,6 +954,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     self.liveFor = (self.liveFor ?? 0) + (isManualRoom() ? 0 : TICK_SECONDS)
     const elapsed = isManualRoom() ? (self.boardTime ?? 0) : self.liveFor
     const urgency = pressureUrgency()
+
 
     // ⚠️ Bail out rather than eat the sack. A throwaway costs nothing and a sack costs seven yards
     // plus the down, so a quarterback with nobody open and a defender in his lap should always take
@@ -967,6 +973,20 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     }
 
     if (targets.length === 0) return false
+
+    // ⚠️ HE CANNOT LET IT GO THE INSTANT THE BALL IS SNAPPED. Reported as a glitch: the ball
+    // occasionally left his hand immediately. The read gate alone does not prevent it, because a
+    // receiver can already score well at the snap -- a back in the flat with nobody within five
+    // yards reads as WIDE OPEN before he has gone anywhere -- so the throw was legal on tick one.
+    //
+    // A flat floor rather than a change to the read: nothing about the openness is wrong at that
+    // moment, it is simply too early for the ball to be gone. Applied in BOTH modes, since manual
+    // now decides every tick on the same code path and would show the same thing.
+    //
+    // ⚠️ BELOW THE BAIL-OUT ON PURPOSE. Throwing it away is not "letting it go early" -- it is
+    // already gated far harder, at 2s of live play by the server's throwaway window, and putting
+    // this above it stopped a quarterback with a defender in his lap from saving the down.
+    if (elapsed < MIN_TIME_BEFORE_THROW) return false
 
     // The bar falls with TIME (a receiver worth waiting for at two seconds is the best you will get
     // at four) or with PRESSURE, whichever is more urgent.
