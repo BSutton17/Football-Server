@@ -26,6 +26,11 @@ const SAMPLES = Number(process.argv[2] ?? 10)
 // lab that does not set it measures the one tier the player is least likely to be on. Easy asks for
 // 0.74 openness and waits 4.2s; hard asks 0.62 and waits 2.6s.
 const DIFFICULTY = process.argv[3] ?? 'hard'
+// ⚠️ MANUAL IS A DIFFERENT DECISION PATH, NOT A DISPLAY OPTION. `tryThrow` runs only while the
+// board is FROZEN there, so the quarterback gets a handful of discrete looks instead of a decision
+// every tick, and `elapsed` is counted in looks rather than seconds. Measuring automatic tells you
+// nothing about it.
+const MODE = process.argv[5] ?? 'automatic'
 const book = loadPlaybook()
 const passPlays = Object.entries(book.plays ?? {}).filter(([, p]) => p.playType !== 'run').map(([id]) => id)
 
@@ -54,7 +59,7 @@ for (const rush of [...byRush.keys()].sort()) {
   for (let i = 0; i < SAMPLES; i++) {
     for (const shellId of pool.slice(0, 10)) {
       seed++
-      const ctx = createTrainingGame({ seed, difficulty: DIFFICULTY })
+      const ctx = createTrainingGame({ seed, difficulty: DIFFICULTY, mode: MODE })
       try {
         const off = ctx.state.possession
         ctx.brains[off].forceAuthoredPlay = passPlays[seed % passPlays.length]

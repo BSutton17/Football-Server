@@ -58,9 +58,26 @@ describe('the window opens on simulated time', () => {
     expect(offered(io)).toBe(1)
   })
 
-  it('manual mode waits longer than automatic', () => {
-    expect(THROWAWAY_AFTER_SECONDS[GAME_MODE.MANUAL])
-      .toBeGreaterThan(THROWAWAY_AFTER_SECONDS[GAME_MODE.AUTOMATIC])
+  // ⚠️ THIS USED TO ASSERT MANUAL > AUTOMATIC, AND THAT INTENT IS DELIBERATELY REVERSED.
+  //
+  // The reasoning was that manual time is deliberate, held-down time, so the same wall-clock feel
+  // needs a bigger number. The measurement disagrees: sacks in manual land at about 1.8-2.0s of
+  // BOARD time, so a 3s window became legal strictly after the play it was meant to save. The AI
+  // quarterback was measured going down with `throwawayReady` still false on every look he had, and
+  // a human in manual has the same board clock, so the option was unreachable for both.
+  //
+  // A bail-out has to exist while the play is still alive. What matters is therefore not which mode
+  // waits longer, but that each window opens before its own mode's plays are over.
+  it('opens before the play it is meant to rescue is over', () => {
+    // Manual's plays end sooner in BOARD time than automatic's do in real time, so its window is
+    // the shorter of the two despite its time being deliberate.
+    expect(THROWAWAY_AFTER_SECONDS[GAME_MODE.MANUAL]).toBeLessThan(1.8)
+    expect(THROWAWAY_AFTER_SECONDS[GAME_MODE.AUTOMATIC]).toBeLessThan(2.3)
+  })
+
+  it('still makes the offense hold it a beat first, in both modes', () => {
+    expect(THROWAWAY_AFTER_SECONDS[GAME_MODE.MANUAL]).toBeGreaterThan(1)
+    expect(THROWAWAY_AFTER_SECONDS[GAME_MODE.AUTOMATIC]).toBeGreaterThan(1)
   })
 
   it('a run play never offers it', () => {

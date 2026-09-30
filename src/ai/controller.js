@@ -211,6 +211,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     self.manualFrozen = false
     self.heldFor = 0
     self.looks = 0
+    self.boardTime = 0
     self.liveFor = 0     // a fresh moment to set, chosen next time the offense thinks
     self.forceSet = false
     self.alignedAgainst = null   // [twitch] the opponent formation this defense last answered
@@ -770,16 +771,35 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
 
   // [manual] How long the AI holds GO before releasing to look. Long enough for routes to declare
   // (the engine needs 1.3s on a route with no cut) and short enough that the rush has not arrived.
-  const MANUAL_LOOK_AFTER = 1.1
+  // ⚠️ AFTER the routes declare, not before. The engine needs 1.3s on a route with no cut, so a
+  // first look at 1.1s is spent on a field where nobody has broken yet — measured, zero receivers
+  // were above the throw FLOOR at that look, so it could never produce a throw and he only ever got
+  // one more before the rush arrived.
+  const MANUAL_LOOK_AFTER = 1.45
   // …and how long it holds on a later press, once it has already had one look.
+  // How often he gets to decide at all: throws are legal only while frozen, so this is his entire
+  // decision rate in manual — two or three looks in a play, against roughly forty-seven chances to
+  // act in automatic. Shortening it to 0.3 was tried and measured WORSE (34% against 30%), so the
+  // cadence is not what is costing the sacks; leaving it where it was.
   const MANUAL_HOLD_AGAIN = 0.55
+
+  // ⚠️ HE LETS GO OF GO WHEN HE FEELS THE RUSH. Throws are only legal while the board is FROZEN,
+  // so in manual the quarterback does not decide every tick the way he does in automatic — he gets
+  // one look per press, 0.55s of board time apart. Measured, he was being sacked at ~2.3s having had
+  // TWO decision points in the whole play, because a rusher that arrives mid-press cannot be
+  // answered until the next release. A human holding the button would simply let go. So does he.
+  const MANUAL_PEEK_PRESSURE = 0.55
 
   function runManualClock() {
     // Time only advances while the board is moving, which is the same clock the engine uses.
     if (self.manualFrozen) return
     self.heldFor = (self.heldFor ?? 0) + TICK_SECONDS
+    // ⚠️ AND THE PLAY'S REAL AGE, which `looks * 0.9` only pretended to be: after two looks it
+    // claimed 1.8s when 2.35s of board time had actually gone by, so the throw bar decayed slower
+    // than the rush arrived. This is the same quantity `liveFor` is in automatic.
+    self.boardTime = (self.boardTime ?? 0) + TICK_SECONDS
     const limit = self.looks > 0 ? MANUAL_HOLD_AGAIN : MANUAL_LOOK_AFTER
-    if (self.heldFor < limit) return
+    if (self.heldFor < limit && pressureUrgency() < MANUAL_PEEK_PRESSURE) return
     self.heldFor = 0
     socket.fire('go_release')
   }
@@ -874,7 +894,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     const targets = rankTargets(k, { noise: sk.readNoise, rng })
 
     self.liveFor = (self.liveFor ?? 0) + (isManualRoom() ? 0 : TICK_SECONDS)
-    const elapsed = isManualRoom() ? self.looks * 0.9 : self.liveFor
+    const elapsed = isManualRoom() ? (self.boardTime ?? 0) : self.liveFor
     const urgency = pressureUrgency()
 
     // ⚠️ Bail out rather than eat the sack. A throwaway costs nothing and a sack costs seven yards

@@ -17,9 +17,19 @@ import { GAME_MODE } from '../../constants.js'
 
 // Seconds of live play before the option appears. Manual gets slightly longer: its time is
 // deliberate, held-down time, so the same wall-clock feel needs a bigger number.
+// ⚠️ MANUAL'S 3s WAS LONGER THAN THE PLAY LASTED. Sacks in manual land at about 1.8-2.0s of
+// BOARD time, so the bail-out became legal strictly after the point it was needed: the AI
+// quarterback was measured going down with `throwawayReady` still false on every look he had.
+//
+// It has to arrive before his FIRST look, which is at 1.45s, and swept values confirm that is the
+// binding point exactly — 1.6 and 1.3 give identical results, while 2.2 is measurably worse. Manual
+// time is deliberate, held-down time and still gets the longer number of the two; it just has to
+// exist while the play is still alive.
+//
+//   four-man rush, manual, medium:  man 30% -> 24% sacks,  zone 24% -> 16%,  six-man 60% -> 46%
 const THROWAWAY_AFTER_SECONDS = {
   [GAME_MODE.AUTOMATIC]: 2,
-  [GAME_MODE.MANUAL]:    3,
+  [GAME_MODE.MANUAL]:    1.6,
 }
 
 // Resets the window for a new play. Called from initLivePhase at the snap.
