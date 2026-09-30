@@ -2,7 +2,7 @@ import { describe, it, expect } from '@jest/globals'
 import {
   createStats, recordAttempt, recordCompletion, recordPassYards, recordRush, recordTackle,
   recordSack, recordInterception, recordTouchdown, topPerformers, teamTotals, impactScore,
-  statLine, serializeStats,
+  statLine, serializeStats, lineOf
 } from '../game/stats.js'
 
 // [stats] The box score behind the halftime and final screens.
@@ -22,12 +22,53 @@ function completion(stats, yards, tackler = CB) {
   if (tackler) recordTackle(stats, { tackler })
 }
 
+// ⚠️ NOT EVERY PLAYER ID IS NAMESPACED PER TEAM. The auto-generated line and quarterback come
+// out as `auto_qb`, `auto_ol_lt` and so on, identical on both sides. Keyed by id alone, BOTH
+// quarterbacks shared one line: it took the slot of whichever was seen first and then collected
+// the other team's passing yards as well.
+//
+// Measured over 24 real downs before the fix, one team's totals read 0 passing yards while the
+// other read 51. Reported as "the halftime screen shows players in the wrong teams" and "the team
+// stats are broken on the final screen".
+describe('two teams can field the same player id', () => {
+  it('keeps their lines apart', () => {
+    const stats = createStats()
+    recordPassYards(stats, { passer: { id: 'auto_qb', slot: 0, name: 'Home QB', label: 'QB' }, receiver: null, yards: 10 })
+    recordPassYards(stats, { passer: { id: 'auto_qb', slot: 1, name: 'Away QB', label: 'QB' }, receiver: null, yards: 40 })
+    expect(lineOf(stats, 'auto_qb', 0).passYards).toBe(10)
+    expect(lineOf(stats, 'auto_qb', 1).passYards).toBe(40)
+  })
+
+  it('so the team totals are each their own', () => {
+    const stats = createStats()
+    recordPassYards(stats, { passer: { id: 'auto_qb', slot: 0, name: 'Home QB', label: 'QB' }, receiver: null, yards: 10 })
+    recordPassYards(stats, { passer: { id: 'auto_qb', slot: 1, name: 'Away QB', label: 'QB' }, receiver: null, yards: 40 })
+    expect(teamTotals(stats, 0).passYards).toBe(10)
+    expect(teamTotals(stats, 1).passYards).toBe(40)
+  })
+
+  it('and each team sees its own man in its own leaders', () => {
+    const stats = createStats()
+    const home = { id: 'auto_qb', slot: 0, name: 'Home QB', label: 'QB' }
+    const away = { id: 'auto_qb', slot: 1, name: 'Away QB', label: 'QB' }
+    // A leader needs a real line: topPerformers drops anyone with no impact or an empty summary,
+    // so yards alone (no attempt, no completion) would never appear whatever the keying did.
+    recordAttempt(stats, { passer: home }); recordCompletion(stats, { passer: home, receiver: null })
+    recordAttempt(stats, { passer: away }); recordCompletion(stats, { passer: away, receiver: null })
+    recordPassYards(stats, { passer: home, receiver: null, yards: 10 })
+    recordPassYards(stats, { passer: away, receiver: null, yards: 40 })
+    expect(topPerformers(stats, 3, 0).map(p => p.name)).toContain('Home QB')
+    expect(topPerformers(stats, 3, 1).map(p => p.name)).toContain('Away QB')
+    expect(topPerformers(stats, 3, 0).map(p => p.name)).not.toContain('Away QB')
+  })
+})
+
 describe('what gets counted', () => {
   it('credits a completion to the passer AND the receiver', () => {
     const s = createStats()
     completion(s, 18)
-    expect(s.players.get('qb1')).toMatchObject({ attempts: 1, completions: 1, passYards: 18 })
-    expect(s.players.get('wr1')).toMatchObject({ targets: 1, receptions: 1, recYards: 18 })
+    expect(lineOf(s, 'qb1')).toMatchObject({ attempts: 1, completions: 1, passYards: 18 })
+    expect(lineOf(s, 'wr1')).toMatchObject({ targets: 1, receptions: 1, recYards: 18 })
   })
 
   it('⚠️ COUNTS YARDS AFTER THE CATCH as passing yards, which is how football counts them', () => {
@@ -35,50 +76,50 @@ describe('what gets counted', () => {
     // the passer and the receiver get all of it.
     const s = createStats()
     completion(s, 60)
-    expect(s.players.get('qb1').passYards).toBe(60)
-    expect(s.players.get('wr1').recYards).toBe(60)
+    expect(lineOf(s, 'qb1').passYards).toBe(60)
+    expect(lineOf(s, 'wr1').recYards).toBe(60)
   })
 
   it('counts an incompletion as an attempt and nothing else', () => {
     const s = createStats()
     recordAttempt(s, { passer: QB, target: WR })
-    expect(s.players.get('qb1')).toMatchObject({ attempts: 1, completions: 0, passYards: 0 })
-    expect(s.players.get('wr1')).toMatchObject({ targets: 1, receptions: 0 })
+    expect(lineOf(s, 'qb1')).toMatchObject({ attempts: 1, completions: 0, passYards: 0 })
+    expect(lineOf(s, 'wr1')).toMatchObject({ targets: 1, receptions: 0 })
   })
 
   it('⚠️ DOES NOT COUNT A SACK AS A PASS ATTEMPT, and charges the yards to the passer', () => {
     const s = createStats()
     recordSack(s, { defender: LB, passer: QB, yards: -7 })
-    expect(s.players.get('qb1')).toMatchObject({ attempts: 0, sacksTaken: 1, passYards: -7 })
-    expect(s.players.get('lb1').sacks).toBe(1)
+    expect(lineOf(s, 'qb1')).toMatchObject({ attempts: 0, sacksTaken: 1, passYards: -7 })
+    expect(lineOf(s, 'lb1').sacks).toBe(1)
   })
 
   it('credits a run to the carrier', () => {
     const s = createStats()
     recordRush(s, { runner: RB, yards: 12 })
     recordRush(s, { runner: RB, yards: -2 })
-    expect(s.players.get('rb1')).toMatchObject({ carries: 2, rushYards: 10 })
+    expect(lineOf(s, 'rb1')).toMatchObject({ carries: 2, rushYards: 10 })
   })
 
   it('credits a touchdown by HOW the ball was got, not by position', () => {
     // A receiver who took a handoff scored a rushing touchdown.
     const s = createStats()
     recordTouchdown(s, { scorer: WR, passer: QB, viaPass: false })
-    expect(s.players.get('wr1')).toMatchObject({ rushTD: 1, recTD: 0 })
+    expect(lineOf(s, 'wr1')).toMatchObject({ rushTD: 1, recTD: 0 })
     // And the quarterback gets no line at all — he was not involved in a handoff, so inventing a
     // row of zeroes for him would put a player who did nothing into the box score.
-    expect(s.players.get('qb1')).toBeUndefined()
+    expect(lineOf(s, 'qb1')).toBeUndefined()
 
     recordTouchdown(s, { scorer: WR, passer: QB, viaPass: true })
-    expect(s.players.get('wr1').recTD).toBe(1)
-    expect(s.players.get('qb1').passTD).toBe(1)
+    expect(lineOf(s, 'wr1').recTD).toBe(1)
+    expect(lineOf(s, 'qb1').passTD).toBe(1)
   })
 
   it('charges an interception to the passer and credits the defender', () => {
     const s = createStats()
     recordInterception(s, { defender: CB, passer: QB })
-    expect(s.players.get('cb1').interceptions).toBe(1)
-    expect(s.players.get('qb1').interceptionsThrown).toBe(1)
+    expect(lineOf(s, 'cb1').interceptions).toBe(1)
+    expect(lineOf(s, 'qb1').interceptionsThrown).toBe(1)
   })
 
   it('⚠️ NEVER CHANGES A PLAYER’S TEAM once it is recorded', () => {
@@ -87,7 +128,7 @@ describe('what gets counted', () => {
     const s = createStats()
     recordRush(s, { runner: RB, yards: 5 })
     recordTackle(s, { tackler: { ...RB, slot: 1 } })   // same id arriving with the wrong team
-    expect(s.players.get('rb1').slot).toBe(0)
+    expect(lineOf(s, 'rb1').slot).toBe(0)
   })
 })
 
@@ -138,7 +179,7 @@ describe('⚠️ A DEFENDER CAN BE ONE OF THE BEST PLAYERS', () => {
     const clean = createStats(); completion(clean, 40, null)
     const picked = createStats(); completion(picked, 40, null)
     recordInterception(picked, { defender: CB, passer: QB })
-    expect(impactScore(picked.players.get('qb1'))).toBeLessThan(impactScore(clean.players.get('qb1')))
+    expect(impactScore(lineOf(picked, 'qb1'))).toBeLessThan(impactScore(lineOf(clean, 'qb1')))
   })
 })
 
@@ -220,7 +261,7 @@ describe('⚠️ A BOX SCORE IS A NICETY AND MUST NEVER BREAK A PLAY', () => {
     expect(() => recordTackle(s, { tackler: null })).not.toThrow()
     expect(() => recordPassYards(s, { passer: null, receiver: WR, yards: 9 })).not.toThrow()
     expect(() => recordTouchdown(s, { scorer: RB, passer: null, viaPass: false })).not.toThrow()
-    expect(s.players.get('wr1').recYards).toBe(9)
+    expect(lineOf(s, 'wr1').recYards).toBe(9)
   })
 
   it('ignores a player with no id at all', () => {
@@ -235,14 +276,14 @@ describe('the summary line', () => {
     const s = createStats()
     for (let i = 0; i < 3; i++) completion(s, 10, null)
     recordAttempt(s, { passer: QB, target: WR })
-    expect(statLine(s.players.get('qb1'))).toBe('3/4, 30 yds')
+    expect(statLine(lineOf(s, 'qb1'))).toBe('3/4, 30 yds')
   })
 
   it('shows a defender what he actually did, with no empty yardage', () => {
     const s = createStats()
     recordTackle(s, { tackler: LB })
     recordSack(s, { defender: LB, passer: QB, yards: -6 })
-    expect(statLine(s.players.get('lb1'))).toBe('1 tkl · 1 sack')
+    expect(statLine(lineOf(s, 'lb1'))).toBe('1 tkl · 1 sack')
   })
 })
 

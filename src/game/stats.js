@@ -60,13 +60,45 @@ export function createStats() {
 // ⚠️ `info` IS DESTRUCTURED INSIDE, NOT IN THE SIGNATURE. A default parameter only fills in for
 // `undefined`, and callers legitimately pass NULL — there is no passer on a run, no tackler when
 // somebody runs out of bounds. Destructuring null in the signature throws.
+//
+// ⚠️ KEYED BY TEAM AND ID, NOT BY ID. Not every player id is namespaced per team: the
+// auto-generated line and quarterback come out as `auto_qb`, `auto_ol_lt` and so on, identical on
+// both sides of the ball. Keyed by id alone, BOTH teams' quarterbacks shared a single line, which
+// took the slot of whichever was seen first and then collected the other's passing yards too.
+//
+// Measured over 24 downs of a real game: one team's totals read 0 passing yards while the other
+// read 51, and the halftime board listed a quarterback under the wrong team. Reported as "the
+// halftime screen shows players in the wrong teams" and "the team stats are broken".
+//
+// `line.id` stays the RAW id, because that is what the client looks names up by.
+function statKey(stats, id, slot) {
+  if (slot != null) return `${slot}:${id}`
+  // No slot given (a tackler on a play with nobody credited, say). Reuse an existing line for this
+  // id whichever team it belongs to, rather than opening a second, teamless one.
+  for (const key of stats.players.keys()) {
+    if (key.endsWith(`:${id}`)) return key
+  }
+  return `?:${id}`
+}
+
+// A player's line by his raw id, for callers that do not know or care which team he is on.
+// With `slot`, exactly that team's. Exists so the key shape stays private to this module -- it
+// changed once already (id -> team:id) and everything that reached into the Map broke.
+export function lineOf(stats, id, slot = null) {
+  if (!stats || !id) return undefined
+  if (slot != null) return stats.players.get(`${slot}:${id}`)
+  for (const line of stats.players.values()) if (line.id === id) return line
+  return undefined
+}
+
 function lineFor(stats, id, info) {
   if (!stats || !id) return null
   const { slot, name, label } = info ?? {}
-  let line = stats.players.get(id)
+  const key = statKey(stats, id, slot)
+  let line = stats.players.get(key)
   if (!line) {
     line = { id, slot, name: name ?? id, label: label ?? '', ...BLANK }
-    stats.players.set(id, line)
+    stats.players.set(key, line)
   }
   // Fill in identity we did not have the first time without ever changing the team.
   if (name && line.name === line.id) line.name = name
