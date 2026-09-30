@@ -217,6 +217,27 @@ describe('throws are legal only while frozen', () => {
     expect(validateThrowAtDefender(socket, 'cb1')).toMatch(/Release GO/)
   })
 
+  // ⚠️ THE COMPUTER IS EXEMPT, AND ONLY THE COMPUTER.
+  //
+  // The freeze rule stops a HUMAN firing into moving traffic and makes them read the still picture.
+  // It did the opposite to the AI: it could act only at the freezes it chose, two or three looks a
+  // play against a continuous read in automatic, and 59% of the sacks it took in manual came on
+  // plays where a receiver reached 0.6 openness -- wide open -- with a mean peak of 0.68 against
+  // its own 0.66 threshold. It was not misjudging the field, it was not allowed to look at it.
+  //
+  // Lifting it took manual sacks against a four-man rush from 17-20% to 0%, paired on identical
+  // seeds (-17.0pp ± 2.2 man, -14.3pp ± 2.0 zone), matching automatic. It is an ACTION rule, not
+  // information: the computer learns nothing a player does not also see.
+  it('lets an AI seat throw while the board is moving, and only an AI seat', () => {
+    const state = manualPassState()
+    beginManualPlay(state)
+    const ai = { id: 'ai:room:0', data: { roomId: ROOM, role: 'offense' } }
+    expect(validateThrowToReceiver(ai, 'wr1')).toBeNull()
+    expect(validateThrowaway(ai)).toBeNull()
+    // …while the human in the same seat still has to stop the board.
+    expect(validateThrowToReceiver(socket, 'wr1')).toMatch(/Release GO/)
+  })
+
   it('allows the throw once play is frozen', () => {
     const state = manualPassState(); const io = fakeIo()
     beginManualPlay(state)

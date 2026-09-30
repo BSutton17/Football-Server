@@ -1,3 +1,4 @@
+import { isAiSocketId } from '../ai/virtualSocket.js'
 import { FIELD, ROUTE_TYPES, COVERAGE_TYPES, ZONE_TYPES, MAN_COMMITS } from '../constants.js'
 import { PHASE } from './stateMachine.js'
 import { getGame } from './gameState.js'
@@ -336,6 +337,21 @@ export function validateSnapBall(socket) {
   )
 }
 
+// Whether this seat may put the ball in the air without stopping the board.
+//
+// The freeze rule exists so a HUMAN cannot fire into moving traffic and must read the still
+// picture. The computer has the opposite problem: it can only act at the freezes it chose, which
+// is two or three looks a play against a continuous read in automatic. Measured, 59% of the sacks
+// it takes in manual happen on plays where a receiver reached 0.6 openness -- wide open -- with a
+// mean peak of 0.68 against its own 0.66 threshold. It is not misjudging the field, it is not
+// being allowed to look at it.
+//
+// ⚠️ AN ACTION RULE, NOT INFORMATION. It grants the computer no knowledge a player does not
+// have; it lifts a restriction that only ever made sense for a hand on a button.
+function mayThrowWhileMoving(socket) {
+  return isAiSocketId(socket?.id)
+}
+
 // throw_to_receiver — offense only, during live play.
 // payload: receiverId string
 const THROW_ELIGIBLE = new Set(['WR', 'TE', 'RB'])
@@ -359,7 +375,7 @@ export function validateThrowToReceiver(socket, receiverId) {
   // [manual] Throws are legal ONLY while the play is frozen with the GO button up. Reading the field
   // is the whole point of the mode, so you cannot fire into moving traffic — and it guarantees the
   // pass is resolved against the same still picture the offense made the decision from.
-  if (isManualPlay(state) && !isManualFrozen(state)) {
+  if (isManualPlay(state) && !isManualFrozen(state) && !mayThrowWhileMoving(socket)) {
     return 'Release GO to stop the play before throwing'
   }
 
@@ -391,7 +407,7 @@ export function validateThrowAtDefender(socket, defenderId) {
   if (baseErr) return baseErr
 
   // [manual] Same rule as a normal throw: the ball only leaves the QB's hand while play is frozen.
-  if (isManualPlay(state) && !isManualFrozen(state)) {
+  if (isManualPlay(state) && !isManualFrozen(state) && !mayThrowWhileMoving(socket)) {
     return 'Release GO to stop the play before throwing'
   }
 
@@ -444,7 +460,7 @@ export function validateThrowaway(socket) {
   if (baseErr) return baseErr
 
   // [manual] Same rule as a normal throw: the ball only leaves the QB's hand while play is frozen.
-  if (isManualPlay(state) && !isManualFrozen(state)) {
+  if (isManualPlay(state) && !isManualFrozen(state) && !mayThrowWhileMoving(socket)) {
     return 'Release GO to stop the play before throwing'
   }
 

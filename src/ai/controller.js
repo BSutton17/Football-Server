@@ -762,7 +762,13 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     if (self.lastCall?.playType === 'run') return
     if (self.done.threw) return
 
-    if (isManualRoom()) return runManualClock()
+    if (isManualRoom()) {
+      // ⚠️ HE DECIDES EVERY TICK IN MANUAL TOO, exactly as in automatic. The board still runs on
+      // the manual clock underneath, so the mode keeps its rhythm; this changes only WHEN he is
+      // allowed to pull the trigger. See mayThrowWhileMoving in validation.js for why.
+      if (tryThrow()) return
+      return runManualClock()
+    }
     tryThrow()
   }
 
@@ -826,34 +832,14 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     return Math.max(0, Math.min(1, current + slope * ANTICIPATE_AHEAD))
   }
 
-  // True when somebody is, or is about to be, open enough to be worth stopping the board for.
-  function seesSomethingNow() {
-    const sk = skill()
-    const bar = currentBar(sk, self.boardTime ?? 0, pressureUrgency())
-    const seen = rankTargets(k, { noise: sk.readNoise, rng })
-    for (const t of seen) {
-      if (anticipate(t.id, t.score) >= bar) return true
-    }
-    return false
-  }
-
   function runManualClock() {
     // Time only advances while the board is moving, which is the same clock the engine uses.
     if (self.manualFrozen) return
     self.heldFor = (self.heldFor ?? 0) + TICK_SECONDS
-    {
-      readField()
-      // ⚠️ HE STOPS THE BOARD WHEN HE SEES IT, rather than on a timer. This is the whole value of
-      // being allowed to READ continuously while only being allowed to THROW while frozen: the
-      // windows are intermittent, and a fixed cadence samples them two or three times and usually
-      // lands in the gaps. Watching every tick and freezing on what he sees turns the same rule
-      // from "two guesses" into "the first good look".
-      if (seesSomethingNow()) {
-        self.heldFor = 0
-        socket.fire('go_release')
-        return
-      }
-    }
+    // Still read every tick: the trend feeds `anticipate` below, which ranks on where a receiver is
+    // HEADING rather than where he is. The early release that used to sit here existed only to buy
+    // him a LOOK, and he no longer needs the board stopped in order to throw.
+    readField()
     // ⚠️ AND THE PLAY'S REAL AGE, which `looks * 0.9` only pretended to be: after two looks it
     // claimed 1.8s when 2.35s of board time had actually gone by, so the throw bar decayed slower
     // than the rush arrived. This is the same quantity `liveFor` is in automatic.

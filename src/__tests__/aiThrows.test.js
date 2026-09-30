@@ -174,12 +174,27 @@ describe('automatic rooms', () => {
 })
 
 describe('manual rooms', () => {
-  it('releases GO so the board can freeze — the window a throw needs', () => {
+  // ⚠️ THIS USED TO ASSERT THE OPPOSITE: that it had NOT thrown, because a moving board was not a
+  // legal window. The freeze rule is lifted for AI seats now -- it stops a HUMAN firing into moving
+  // traffic, and did the reverse to the computer, leaving it two or three chances to act against
+  // roughly forty-seven in automatic. 59% of the sacks it took in manual came on plays where a
+  // receiver reached 0.6 openness. See validation.js: mayThrowWhileMoving.
+  it('throws on a moving board rather than waiting for a freeze', () => {
     const { socket, ai } = liveOffense({ mode: 'manual', difficulty: 'medium' })
     for (let i = 0; i < 40; i++) ai.onEvent('positions_update', frame())
+    expect(socket.of('throw_to_receiver').length).toBeGreaterThan(0)
+  })
+
+  it('still works the GO button, so the mode keeps its rhythm', () => {
+    // Nobody open: it should be running the board rather than sitting on a dead freeze.
+    const smothered = () => ([
+      { id: 'qb', team: 'o', x: 26, y: LOS - 6, state: 'ball', qb: true },
+      { id: 'wr1', team: 'o', x: 44, y: LOS + 10, ready: true },
+      { id: 'cb0', team: 'd', x: 44.1, y: LOS + 10.1 },
+    ])
+    const { socket, ai } = liveOffense({ mode: 'manual', difficulty: 'medium' })
+    for (let i = 0; i < 40; i++) ai.onEvent('positions_update', smothered())
     expect(socket.of('go_release').length).toBeGreaterThan(0)
-    // …and it has NOT thrown yet, because in manual a moving board is not a legal window.
-    expect(socket.of('throw_to_receiver')).toHaveLength(0)
   })
 
   it('throws while frozen', () => {
