@@ -52,7 +52,7 @@ console.log(`sacks and hold times, ${passPlays.length} pass plays, 1st & 10\n`)
 
 for (const rush of [...byRush.keys()].sort()) {
   const pool = byRush.get(rush)
-  let n = 0, yards = 0
+  let n = 0, yards = 0, ints = 0
   let sacks = 0, sackTicks = 0
   let others = 0, otherTicks = 0
   let seed = 61000
@@ -68,6 +68,7 @@ for (const rush of [...byRush.keys()].sort()) {
         if (r.outcome === 'no_snap' || r.outcome === 'hung') continue
         n++
         yards += r.yards ?? 0
+        if (r.outcome === 'interception') ints++
         if (r.outcome === 'sack') { sacks++; sackTicks += r.ticks ?? 0 }
         else { others++; otherTicks += r.ticks ?? 0 }
       } finally { destroyTrainingGame(ctx) }
@@ -78,7 +79,7 @@ for (const rush of [...byRush.keys()].sort()) {
     `  rush ${String(rush).padEnd(7)} (${String(pool.length).padStart(2)} shells)  sack ${String(Math.round(100 * sacks / n)).padStart(3)}%` +
     `   held on sacks ${sacks ? secs(sackTicks / sacks) : ' -  '}s` +
     `   held otherwise ${others ? secs(otherTicks / others) : ' -  '}s` +
-    `   avg ${(yards / n).toFixed(2)} yds  (${n})`
+    `   int ${String(Math.round(100 * ints / n)).padStart(2)}%   avg ${(yards / n).toFixed(2)} yds  (${n})`
   )
 }
 

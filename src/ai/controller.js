@@ -212,6 +212,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     self.heldFor = 0
     self.looks = 0
     self.boardTime = 0
+    self.reads = new Map()
     self.liveFor = 0     // a fresh moment to set, chosen next time the offense thinks
     self.forceSet = false
     self.alignedAgainst = null   // [twitch] the opponent formation this defense last answered
@@ -790,10 +791,69 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   // answered until the next release. A human holding the button would simply let go. So does he.
   const MANUAL_PEEK_PRESSURE = 0.55
 
+  // [manual anticipation] How far ahead a trend is projected when he finally gets to look. Roughly
+  // the gap between looks: he is guessing where a receiver will be by the time the ball could get
+  // there, not where he was.
+  const ANTICIPATE_AHEAD = 0.4
+  // How much history the trend is measured over. Too short and it is noise; too long and it is
+  // still describing the receiver's release.
+  const READ_MEMORY = 10
+
+  // ⚠️ HE MAY ONLY THROW WHILE FROZEN. HE MAY ALWAYS LOOK. Reading is free and continuous; it
+  // is the THROW that the manual rule restricts. Without this he saw the field exactly twice in a
+  // play, and an intermittent window sampled twice is usually missed.
+  function readField() {
+    const seen = rankTargets(k, { noise: 0, rng })
+    const at = self.boardTime ?? 0
+    self.reads ??= new Map()
+    for (const t of seen) {
+      const arr = self.reads.get(t.id) ?? []
+      arr.push({ at, o: t.trueScore })
+      if (arr.length > READ_MEMORY) arr.shift()
+      self.reads.set(t.id, arr)
+    }
+  }
+
+  // Where a receiver's openness is HEADING, from the history above. Falls back to what he can see
+  // right now whenever there is not enough history to have an opinion.
+  function anticipate(id, current) {
+    const arr = self.reads?.get(id)
+    if (!arr || arr.length < 3) return current
+    const first = arr[0], last = arr[arr.length - 1]
+    const dt = last.at - first.at
+    if (dt <= 0.05) return current
+    const slope = (last.o - first.o) / dt
+    return Math.max(0, Math.min(1, current + slope * ANTICIPATE_AHEAD))
+  }
+
+  // True when somebody is, or is about to be, open enough to be worth stopping the board for.
+  function seesSomethingNow() {
+    const sk = skill()
+    const bar = currentBar(sk, self.boardTime ?? 0, pressureUrgency())
+    const seen = rankTargets(k, { noise: sk.readNoise, rng })
+    for (const t of seen) {
+      if (anticipate(t.id, t.score) >= bar) return true
+    }
+    return false
+  }
+
   function runManualClock() {
     // Time only advances while the board is moving, which is the same clock the engine uses.
     if (self.manualFrozen) return
     self.heldFor = (self.heldFor ?? 0) + TICK_SECONDS
+    {
+      readField()
+      // ⚠️ HE STOPS THE BOARD WHEN HE SEES IT, rather than on a timer. This is the whole value of
+      // being allowed to READ continuously while only being allowed to THROW while frozen: the
+      // windows are intermittent, and a fixed cadence samples them two or three times and usually
+      // lands in the gaps. Watching every tick and freezing on what he sees turns the same rule
+      // from "two guesses" into "the first good look".
+      if (seesSomethingNow()) {
+        self.heldFor = 0
+        socket.fire('go_release')
+        return
+      }
+    }
     // ⚠️ AND THE PLAY'S REAL AGE, which `looks * 0.9` only pretended to be: after two looks it
     // claimed 1.8s when 2.35s of board time had actually gone by, so the throw bar decayed slower
     // than the rush arrived. This is the same quantity `liveFor` is in automatic.
@@ -889,6 +949,13 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   // backwards for a protection failure and exactly right for a passer with nowhere to go.
   const BAIL_PRESSURE = 0.72
 
+  // The openness he currently requires, which falls with time and with pressure. Lifted out of
+  // tryThrow because in manual the decision to STOP THE BOARD is made against the same number.
+  function currentBar(sk, elapsed, urgency) {
+    const decay = Math.max(Math.min(1, elapsed / sk.patience), urgency)
+    return sk.throwThreshold - (sk.throwThreshold - sk.throwFloor) * decay
+  }
+
   function tryThrow() {
     const sk = skill()
     const targets = rankTargets(k, { noise: sk.readNoise, rng })
@@ -917,10 +984,17 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
 
     // The bar falls with TIME (a receiver worth waiting for at two seconds is the best you will get
     // at four) or with PRESSURE, whichever is more urgent.
-    const decay = Math.max(Math.min(1, elapsed / sk.patience), urgency)
-    const bar = sk.throwThreshold - (sk.throwThreshold - sk.throwFloor) * decay
+    const bar = currentBar(sk, elapsed, urgency)
 
-    const best = targets[0]
+    // [manual anticipation] Re-rank on where each receiver is HEADING rather than where he is, then
+    // judge that against the same bar. Only in manual, and only when he has had ticks to watch.
+    let best = targets[0]
+    if (isManualRoom() && targets.length) {
+      const projected = targets
+        .map(t => ({ ...t, score: anticipate(t.id, t.score) }))
+        .sort((a, b) => b.score - a.score)
+      best = projected[0]
+    }
     if (best.score < bar) return false
 
     self.done.threw = true
