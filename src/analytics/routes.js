@@ -31,7 +31,20 @@ export function createAnalyticsRouter() {
   // The report itself. `Content-Disposition` so a browser saves it instead of trying to render
   // tens of megabytes of JSON, and a stream so it is never held in memory twice.
   router.get('/plays.jsonl', (_req, res) => {
-    if (!existsSync(file)) return res.status(404).json({ error: 'no report yet — play an offline game first' })
+    // ⚠️ "NO REPORT" USUALLY MEANS "NO PLAY HAS FINISHED YET", NOT "YOU ARE NOT RECORDING". A
+    // play is written at the WHISTLE, so between kickoff and the end of the first snap there is
+    // genuinely nothing on disk. The old message said "play an offline game first" to somebody who
+    // was in the middle of one, which sent them looking for a bug that was not there.
+    if (!existsSync(file)) {
+      const s = analyticsSummary()
+      return res.status(404).json({
+        error: 'nothing written yet',
+        recording: buildInfo().recording,
+        plays: s.plays,
+        why: 'a play is saved when it ends — if you are mid-game, finish a snap and try again',
+        check: '/analytics',
+      })
+    }
     res.setHeader('Content-Type', 'application/x-ndjson')
     res.setHeader('Content-Disposition', 'attachment; filename="plays.jsonl"')
     createReadStream(file).pipe(res)
