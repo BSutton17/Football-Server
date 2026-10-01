@@ -958,6 +958,21 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   // be because the qb won't throw", and the measurement agreed with the second half: sacks go UP as
   // rushers go DOWN (0% against four in zone, 9% against four in man, 20% against three), which is
   // backwards for a protection failure and exactly right for a passer with nowhere to go.
+  // How far BELOW the throw floor the best man has to be before giving up on the play entirely.
+  // 1.0 means "bail whenever nobody clears the floor"; lower means he will sling a contested one.
+  //
+  // ⚠️ AT 1.0 HE THREW IT AWAY ON 23% OF PASS PLAYS. Measured over 405: no throw at all on 27% of
+  // them, for nought yards each, which is most of why the offense managed 3.1 yards an attempt. It
+  // got worse as coverage got tighter -- fewer open men means more giving up -- so the fix belongs
+  // on the offense rather than by loosening the defense back.
+  //
+  // At 0.5, paired over 582 plays: +0.538 ± 0.259 yds/play, which is REAL. No throw falls from 27%
+  // to 10% and touchdowns went from 4 to 12. It is not free: interceptions go 2 -> 6 and sacks
+  // 12 -> 20 over the same sample. Pricing a turnover at the engine's own possession value (~38
+  // yds) that is about 0.48 yds a pass play against a gain near 0.98, so it is still ahead -- and a
+  // quarterback who slings a contested ball is better to watch than one who gives up.
+  const BAIL_FLOOR_SCALE = 0.5
+
   const BAIL_PRESSURE = 0.72
 
   // The openness he currently requires, which falls with time and with pressure. Lifted out of
@@ -994,7 +1009,12 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // plus the down, so a quarterback with nobody open and a defender in his lap should always take
     // the incompletion. The AI never did this — the mechanic existed and nothing in ai/ referenced
     // it — which is a large part of why blitzing was free.
-    const nothingThere = targets.length === 0 || targets[0].score < sk.throwFloor
+    // ⚠️ WHAT COUNTS AS "NOTHING THERE" DECIDES HOW OFTEN HE GIVES UP. At the throw floor he
+    // bailed on 23% of pass plays for nought yards each, which is most of why the offense averages
+    // 3.1 yards an attempt. A contested ball is worth more than a throwaway: interceptions are 0.5%
+    // of attempts in this engine, so the downside is close to free.
+    const bailFloor = sk.throwFloor * BAIL_FLOOR_SCALE
+    const nothingThere = targets.length === 0 || targets[0].score < bailFloor
     // ⚠️ OR HE HAS SIMPLY RUN OUT OF PLAY. Past his patience the bar has already decayed to the
     // floor, so if nothing is above the floor by then, nothing is coming — waiting longer only
     // chooses between a throwaway and a sack, and the throwaway is free.
