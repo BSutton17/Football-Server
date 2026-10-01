@@ -104,6 +104,14 @@ export function isRecording(state) {
 
 const r2 = (n) => (Number.isFinite(n) ? Math.round(n * 100) / 100 : null)
 
+// ⚠️ PLAY NUMBERS RESTART EVERY GAME, because the counter lives on the game state. A report
+// containing three games therefore had three plays numbered 1 and no way to tell them apart. The
+// room id plus the moment the first record was written names a game uniquely.
+function gameTag(state) {
+  if (!state.analyticsGameTag) state.analyticsGameTag = `${state.roomId ?? 'room'}@${Date.now().toString(36)}`
+  return state.analyticsGameTag
+}
+
 // Everything about one player, pre-snap: where he is, and what he was told to do.
 function offenseSnapshot(state) {
   const out = []
@@ -226,6 +234,8 @@ export function beginPlay(state, extra = null) {
     live.set(state.roomId, {
       play: (state.analyticsPlayNo = (state.analyticsPlayNo ?? 0) + 1),
       at: new Date().toISOString(),
+      game: gameTag(state),
+      kind: 'play',
       situation: {
         quarter: state.quarter, clock: r2(state.clock),
         down: state.down, distance: r2(state.distance), yardLine: r2(state.yardLine),
@@ -334,6 +344,41 @@ export function endPlay(state, result = {}) {
     appendFileSync(FILE, line)
   } catch (err) {
     console.warn(`[analytics] write failed: ${err.message}`)
+  }
+}
+
+// ── Special teams ───────────────────────────────────────────────────────────
+//
+// ⚠️ A KICK IS NOT A PLAY, AND THE REPORT COULD NOT SEE ONE. Every record is opened at the snap
+// and written at the whistle, both hooked on the LIVE -> DEAD transition. Special teams never enters
+// LIVE: a punt or a field goal is resolved out of PRE_SNAP by the kick clock. So the first real
+// report contained no kick of any kind -- the event types in a whole quarter were THROW,
+// PASS_COMPLETE, PASS_INCOMPLETE, SACK, TACKLE and TOUCHDOWN, nothing else.
+//
+// That mattered the moment a punt misbehaved in a real game and there was nothing in the file to
+// look at. A kick gets its own record, written when it resolves.
+export function recordKick(state, kick) {
+  if (!isRecording(state)) return
+  if (stopped) return
+  try {
+    const rec = {
+      play: (state.analyticsPlayNo = (state.analyticsPlayNo ?? 0) + 1),
+      at: new Date().toISOString(),
+      game: gameTag(state),
+      kind: 'kick',
+      situation: {
+        quarter: state.quarter, clock: r2(state.clock),
+        down: state.down, distance: r2(state.distance), yardLine: r2(state.yardLine),
+        score: Array.isArray(state.score) ? [...state.score] : state.score,
+        possession: state.possession, mode: state.mode, difficulty: state.difficulty,
+      },
+      kick,
+    }
+    const line = JSON.stringify(rec) + '\n'
+    written += Buffer.byteLength(line)
+    appendFileSync(FILE, line)
+  } catch (err) {
+    console.warn(`[analytics] kick write failed: ${err.message}`)
   }
 }
 

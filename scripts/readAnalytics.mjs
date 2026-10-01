@@ -16,13 +16,23 @@ if (!file) {
   process.exit(1)
 }
 
-const plays = readFileSync(file, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l))
-if (!plays.length) { console.log('empty report'); process.exit(0) }
+const records = readFileSync(file, 'utf8').trim().split('\n').filter(Boolean).map(l => JSON.parse(l))
+
+// ⚠️ A KICK IS A RECORD BUT NOT A PLAY. Special teams never enters the LIVE phase, so kicks
+// are written separately and carry no ticks, decisions or receivers — treating them as plays
+// crashed this reader on the first kick, and every aggregate below would divide by them.
+const kicks = records.filter(r => r.kind === 'kick')
+const plays = records.filter(r => r.kind !== 'kick')
+
+// Several games can share one file: play numbers restart each game, so the tag separates them.
+const gameTags = [...new Set(records.map(r => r.game).filter(Boolean))]
+if (gameTags.length > 1) console.log(`${gameTags.length} games in this file (play numbers restart in each)`)
+if (!records.length) { console.log('empty report'); process.exit(0) }
 
 const n2 = (v) => (v == null ? '  -  ' : String(v).padStart(5))
 
 if (only != null) {
-  const p = plays.find(x => x.play === only)
+  const p = records.find(x => x.play === only)
   if (!p) { console.error(`no play ${only} (file has ${plays.length})`); process.exit(1) }
   console.log(JSON.stringify(p, null, 2))
   process.exit(0)
@@ -38,6 +48,19 @@ for (const p of plays) {
   const def = `${p.defense.shellName ?? p.defense.shellId ?? '?'}`.slice(0, 24).padEnd(25)
   const res = `${p.result?.outcome ?? '?'} ${n2(p.result?.yards)}`
   console.log(`  ${String(p.play).padStart(3)} ${sit} ${call} ${def} ${res}`)
+}
+
+if (kicks.length) {
+  console.log('')
+  console.log('  ── kicks ──')
+  for (const k of kicks) {
+    const r = k.kick.result, i = k.kick.input
+    const tag = k.kick.kickType === 'punt'
+      ? `${r.distance?.toFixed(1)} yds${r.touchback ? ' (touchback)' : ''}${r.outOfBounds ? ' (out of bounds)' : ''}`
+      : `${r.distance?.toFixed(1)} yds ${r.good ? 'GOOD' : 'MISSED'}`
+    console.log(`    ${String(k.kick.kickType).padEnd(11)} Q${k.situation.quarter} ${k.situation.down}&${Math.round(k.situation.distance)} @${Math.round(k.situation.yardLine)}` +
+      `  meter ${(i.power * 100).toFixed(0)}% aim ${i.angle?.toFixed(2)}  ->  ${tag}`)
+  }
 }
 
 // ── Aggregates worth having in front of you ────────────────────────────────

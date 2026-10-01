@@ -1,5 +1,5 @@
 import { PHASE, transition } from './stateMachine.js'
-import { noteEvent, endPlay } from '../analytics/playLog.js'
+import { noteEvent, endPlay, recordKick } from '../analytics/playLog.js'
 import {
   recordAttempt, recordCompletion, recordPassYards, recordRush, recordTackle, recordSack,
   recordInterception, recordTouchdown, serializeStats,
@@ -845,6 +845,8 @@ function onSafety({ safetySlot }, state, io) {
 export function executeKick(state, io) {
   const st = state.specialTeams
   if (!st) return
+  // [analytics] What the player actually did with the meter, captured BEFORE the kick consumes it.
+  const inputAtKick = { power: st.power, angle: st.angle, backspin: !!st.backspin, started: !!st.started, timer: st.kickTimer }
   advanceSTPhase(state, ST_PHASE.KICKING)
 
   // [15][16][17] Resolve the kick with the player's input AND the kicker's ratings (Kicker for
@@ -863,6 +865,23 @@ export function executeKick(state, io) {
     backspin:        st.backspin,          // [21] punt backspin toggle
     fieldWidth:      FIELD.WIDTH,          // [24] enables out-of-bounds detection
   }, rngOf(state))
+
+  // [analytics] A kick never enters the LIVE phase, so the play recorder cannot see it. This is the
+  // only place the input, the ratings and the outcome all exist together.
+  recordKick(state, {
+    kickType: st.kickType,
+    input: inputAtKick,
+    result: {
+      distance: result?.distance ?? null,
+      good: result?.good ?? null,
+      touchback: result?.touchback ?? null,
+      outOfBounds: result?.outOfBounds ?? null,
+      hangTime: result?.hangTime ?? null,
+      landingYardLine: result?.landingYardLine ?? result?.previewLandingYardLine ?? null,
+      pushYards: result?.pushYards ?? null,
+      finalAngle: result?.finalAngle ?? null,
+    },
+  })
   st.result = result
   // The kick is away — tell both clients so they freeze the meter and show "KICKED", and so the
   // receiving team sees the punt preview ([27]). Sent now (with the result) before it's applied.
