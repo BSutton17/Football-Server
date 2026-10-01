@@ -13,6 +13,8 @@
 // Authority: the server owns every decision here. The client only sends inputs (aim/power, "kick")
 // and renders what serializeSpecialTeams reports.
 
+import { isAiSocketId } from '../ai/virtualSocket.js'
+import { getRoom } from './roomManager.js'
 import { RULES, FIELD, FIELD_CENTER_X } from '../constants.js'
 import { PHASE } from './stateMachine.js'
 import { MAX_PUSH_YARDS } from './kickEngine.js'
@@ -179,10 +181,33 @@ export function advanceSTPhase(state, toPhase) {
 // fires when the timer expires. Power and timing are owned by the server — clients only send intent.
 // The first input starts the kick timer ([8]). Input outside SETUP, from a non-player kick, or from
 // the receiving team is rejected (returns false).
-export function applyKickInput(state, slot, { aim, backspin } = {}) {
+// Whether a seat is held by the computer. Resolved from the room rather than trusted from the
+// payload: a client could otherwise claim a power it has not earned.
+function isAiSlot(state, slot) {
+  const room = getRoom(state.roomId)
+  const id = room?.players?.[slot]
+  return !!id && isAiSocketId(id)
+}
+
+export function applyKickInput(state, slot, { aim, backspin, power } = {}) {
   const st = state.specialTeams
   if (!st || !st.playerControlled || st.phase !== ST_PHASE.SETUP) return false
   if (slot !== st.kickingSlot) return false
+
+  // ⚠️ A COMPUTER SEAT MAY STATE ITS POWER. It has no thumb: tapping a meter through an event bus
+  // made its kick depend on how often a message was broadcast, and it punted 22 yards where a human
+  // managed 40. It names the strike instead -- deliberately short of perfect, see kickPowerFor.
+  //
+  // A HUMAN SEAT CANNOT, and that is enforced here rather than trusted to the client: the meter is
+  // the whole of the kicking game for a player.
+  if (typeof power === 'number' && isAiSlot(state, slot)) {
+    st.started = true
+    st.power = Math.max(0, Math.min(FULL_POWER, power))
+    st.__aiPowerSet = true
+    // A power on its own is a complete input. Without this it fell through to the aim check below
+    // and reported failure for an input it had just applied.
+    if (aim == null) return true
+  }
 
   // [21] Punt-specific backspin toggle — a setup choice; it doesn't touch the power meter or timer.
   if (typeof backspin === 'boolean') {

@@ -199,6 +199,16 @@ export function specialTeamsAction(k, rng = Math.random) {
     return { event: 'special_teams_input', payload: { backspin: true } }
   }
 
+  // ⚠️ THE POWER IS STATED, NOT TAPPED OUT. Tapping is a hand-speed simulation, and the computer
+  // has no hand: it only acts when a `special_teams_update` arrives, so its meter was set by the
+  // broadcast cadence and it punted 22 yards. It names the power it is going for, once, and then
+  // goes on tapping for AIM exactly as before -- where the kick goes is unchanged.
+  if (st.kicking && st.phase === 'setup' && st.__aiPower === undefined) {
+    const want = kickPowerFor(st, k, rng)
+    st.__aiPower = want
+    return { event: 'special_teams_input', payload: { power: want, aim: nextTap(st, k, rng) } }
+  }
+
   // Kicking. The meter is tapped up with alternating aim so the angle lands where it was aimed:
   // each tap adds power AND rotates, so an odd number of taps leaves the aim off-centre unless the
   // rotations cancel.
@@ -207,6 +217,26 @@ export function specialTeamsAction(k, rng = Math.random) {
   }
 
   return null
+}
+
+// How well the computer strikes this one, as a fraction of the meter.
+//
+// ⚠️ NOT 100%. A perfect meter every time is as wrong as 9% and in the more annoying direction:
+// the human reached 75% in a real game, so a computer pinned at full would out-kick every player
+// every time. This is a good-but-human strike with real spread, so some punts are better than
+// others and the odd one is poor.
+//
+// A field goal is struck near its best regardless -- distance there is a pass/fail gate and the
+// make/miss decision is already taken by `nextTap`, so softening the power as well would punish it
+// twice for the same thing.
+const PUNT_POWER_MEAN = 0.82
+const PUNT_POWER_SPREAD = 0.12
+const PLACEKICK_POWER = 0.95
+
+function kickPowerFor(st, k, rng) {
+  if (st.kickType !== 'punt') return PLACEKICK_POWER
+  const jitter = (rng() * 2 - 1) * PUNT_POWER_SPREAD
+  return Math.max(0.35, Math.min(1, PUNT_POWER_MEAN + jitter))
 }
 
 // Which way to tap next. The AI decides ONCE per kick whether this one is going in (at the rate the

@@ -1104,6 +1104,23 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     try { doSpecialTeams() } finally { kicking = false }
   }
 
+  // ⚠️ THE COMPUTER TAPPED ONCE PER BROADCAST AND PUNTED 22 YARDS.
+  //
+  // A tap is worth +2% of the meter and the drain is 25.7% a second, so holding the bar takes about
+  // thirteen taps a second. The AI only acts when it hears `special_teams_update`, which is sent
+  // when the DISPLAYED power changes. Measured in a real game: the human reached 75% of the meter
+  // and punted 40 yards; the computer reached NINE PERCENT and punted 21.8 -- four times out of
+  // four, which is the floor of the distance curve.
+  //
+  // ⚠️ SO ITS KICK WAS DECIDED BY BROADCAST CADENCE, AND TAPPING HARDER DOES NOT FIX THAT. Firing
+  // a burst of taps per update was tried: in the headless harness the AI reaches 100% of the meter
+  // with ONE tap per update, which is not what prod does with the same code, so the harness cannot
+  // measure the thing being changed. A fix that can only be verified in production is not a fix.
+  //
+  // The computer does not have a thumb. Simulating one through an event bus is what produced the
+  // 22-yard punt, so it states the power it is going for instead -- the same kind of abstraction as
+  // the make/miss intent it already decides up front for a field goal (see nextTap). Deterministic,
+  // testable, and no longer coupled to how often a message happens to be sent.
   function doSpecialTeams() {
     const action = k.decision
       ? fourthDownChoice(k, rng)

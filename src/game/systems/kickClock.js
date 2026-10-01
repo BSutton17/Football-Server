@@ -34,7 +34,9 @@ export function runKickClock(state, io, dt) {
   }
 
   // [9][10] Drain power continuously; taps refill it. Fire the kick when the timer expires.
-  st.power     = Math.max(0, st.power - POWER_DRAIN_PER_SEC * dt)
+  // ⚠️ A COMMITTED STRIKE DOES NOT DRAIN. A computer seat states its power once (see
+  // applyKickInput); draining it away afterwards would put us straight back to the 22-yard punt.
+  if (!st.__aiPowerSet) st.power = Math.max(0, st.power - POWER_DRAIN_PER_SEC * dt)
   st.kickTimer = Math.max(0, st.kickTimer - dt)
   if (st.kickTimer <= 0) { executeKick(state, io); return }
 
