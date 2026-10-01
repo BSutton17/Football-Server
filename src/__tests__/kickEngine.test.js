@@ -345,7 +345,10 @@ describe('[35] bounce + backspin interaction', () => {
 describe('[36] coffin corner — emerges from aim + accuracy, not a separate mechanic', () => {
   const WIDTH = 53.33
   const HASH  = WIDTH * 0.65
-  const base  = { kickType: 'punt', power: 0.7, kickerPower: 80, yardLine: 58, ballX: HASH, fieldWidth: WIDTH }
+  // ⚠️ THE STRAIGHT KICK HAS TO REACH THE END ZONE for this comparison to mean anything, and the
+  // punt curve took 10 yards off a 0.7 meter: the floor used to supply 34 of the 44 yards whatever
+  // the player did. 0.95 is the "boomed it straight" punt the test has always assumed.
+  const base  = { kickType: 'punt', power: 0.95, kickerPower: 80, yardLine: 58, ballX: HASH, fieldWidth: WIDTH }
 
   it('angling toward the sideline turns a would-be touchback into a deep out-of-bounds pin', () => {
     const straight = calculateKickResult({ ...base, kickerAccuracy: 99, angle: 0 }, noNoise)
@@ -479,12 +482,15 @@ describe('[19] hang time — from power and distance', () => {
   it('at equal distance, more power means more hang time', () => {
     // a mid leg at full meter vs a strong leg at a low meter — tuned to the same distance, so the
     // only difference is how hard it was struck (power meter), which breaks the tie.
-    // ⚠️ RE-TUNED WITH THE PUNT CEILING (70 -> 55): an 84 leg at a full meter now reaches 49.75,
-    // and a 99 leg needs 0.65 of its meter rather than 0.5 to match it. The pairing is the point of
-    // the test, so it has to be recomputed whenever the ceiling moves.
+    // ⚠️ RE-TUNED TWICE NOW, and it has to be whenever the punt mapping moves: first for the
+    // ceiling (70 -> 55), now for the floor and the power curve. The PAIRING is the test -- two
+    // kicks at the same distance struck differently -- so the inputs are derived, not guessed.
     const a = calculateKickResult({ kickType: 'punt', power: 1.0, kickerPower: 84, yardLine: 30 }, noNoise)
-    const b = calculateKickResult({ kickType: 'punt', power: 0.65, kickerPower: 99, yardLine: 30 }, noNoise)
-    expect(a.distance).toBeCloseTo(b.distance, 0)   // both ~49.75 yds
+    // Solve for the meter a 99 leg needs to match that distance: d = floor + p^2 * (ceil - floor).
+    const ceil99 = 55, floor99 = 8 + (99 / 99) * (22 - 8)
+    const pB = Math.sqrt((a.distance - floor99) / (ceil99 - floor99))
+    const b = calculateKickResult({ kickType: 'punt', power: pB, kickerPower: 99, yardLine: 30 }, noNoise)
+    expect(a.distance).toBeCloseTo(b.distance, 0)
     expect(a.hangTime).toBeGreaterThan(b.hangTime)
   })
 

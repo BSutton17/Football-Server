@@ -15,6 +15,21 @@
 // ceiling here is the fallback for kickoffs (automatic); punts and field goals cap their full-meter
 // distance per kick type via maxKickDistance below.
 const FLOOR_MIN = 10, FLOOR_MAX = 40   // distance at power 0, for rating 0 → 99
+
+// WARNING: THE FLOOR WAS DOING MOST OF THE KICKING. At FLOOR_MAX 40 a 75-Power punter started from
+// 32.7 yards before touching the meter, so the whole meter was worth only 14 yards and a half-full
+// bar still produced a 40-yard punt. Reported as "even when the meter is half full in the green the
+// ball goes way too far".
+//
+// A punt gets its own, much lower floor: a badly-timed punt should be a bad punt. The leg still
+// matters -- it sets both ends -- it simply no longer does the work the player was supposed to do.
+const PUNT_FLOOR_MIN = 8, PUNT_FLOOR_MAX = 22
+
+// WARNING: AND THE METER IS NOT LINEAR ANY MORE. Linear meant half a meter bought half the range,
+// which is exactly the forgiving feel being complained about. Squaring it makes the top of the bar
+// where the distance lives: at half power a punt now travels about a quarter of the way up its
+// range rather than half.
+const PUNT_POWER_CURVE = 2.0
 const CEIL_MIN  = 45, CEIL_MAX  = 75   // distance at power 1, for rating 0 → 99
 
 // [max range] Full-meter distance cap by kick type, scaling with the Power rating:
@@ -75,7 +90,7 @@ export const DEFAULT_KICK_ACCURACY = 75
 // [15][16] Raw shot: distance from (meter power × Power rating), lateral push from (aim ± an
 // Accuracy-scaled error). Returns the realized trajectory too.
 export function computeKick(
-  { power = 0, angle = 0, kickerPower = DEFAULT_KICK_POWER, kickerAccuracy = DEFAULT_KICK_ACCURACY, maxDistance = null } = {},
+  { power = 0, angle = 0, kickerPower = DEFAULT_KICK_POWER, kickerAccuracy = DEFAULT_KICK_ACCURACY, maxDistance = null, kickType = null } = {},
   rng = Math.random,
 ) {
   const p   = clamp01(power)
@@ -86,8 +101,15 @@ export function computeKick(
   // travels. The full-meter ceiling is the per-type cap when provided (punt / FG), else the default
   // rating-scaled ceiling (kickoffs). The floor can't exceed the ceiling.
   const ceil     = maxDistance != null ? maxDistance : CEIL_MIN + r * (CEIL_MAX - CEIL_MIN)
-  const floor    = Math.min(FLOOR_MIN + r * (FLOOR_MAX - FLOOR_MIN), ceil)
-  const distance = floor + p * (ceil - floor)
+  // A punt is the kick the player actually has to time, so it gets the lower floor and the curve.
+  // Field goals keep the forgiving mapping: a 45-yarder that falls two yards short of the posts is
+  // already punished by missing, and the distance there is a pass/fail gate rather than a feel.
+  const isPunt   = kickType === 'punt'
+  const fMin     = isPunt ? PUNT_FLOOR_MIN : FLOOR_MIN
+  const fMax     = isPunt ? PUNT_FLOOR_MAX : FLOOR_MAX
+  const floor    = Math.min(fMin + r * (fMax - fMin), ceil)
+  const curved   = isPunt ? Math.pow(p, PUNT_POWER_CURVE) : p
+  const distance = floor + curved * (ceil - floor)
 
   // [16] The aim is nudged by an error that high Accuracy all but eliminates.
   const error      = (rng() * 2 - 1) * (1 - acc) * MAX_ANGULAR_ERROR
@@ -119,7 +141,7 @@ export function calculateKickResult(
   rng = Math.random,
 ) {
   const maxDistance = maxKickDistance(kickType, kickerPower)   // [max range] per-type full-meter cap
-  const { distance, pushYards, finalAngle } = computeKick({ power, angle, kickerPower, kickerAccuracy, maxDistance }, rng)
+  const { distance, pushYards, finalAngle } = computeKick({ power, angle, kickerPower, kickerAccuracy, maxDistance, kickType }, rng)
   const hangTime = computeHangTime(clamp01(power), distance)
 
   const result = { kickType, distance, pushYards, finalAngle, hangTime }

@@ -68,20 +68,19 @@ describe('[9][10] power meter drains continuously once started, refilled by taps
     const half = KICK_TIMER_SECONDS / 2
     let elapsed = 0
     while (elapsed < half) { runKickClock(state, mockIo(), 0.05); elapsed += 0.05 }
-    // Drain is eased 10%, then slowed 30% ONCE ([kick feel]): 0.9 / 1.3 ≈ 0.69 of the meter over
-    // the full timer, so about a third is gone by the halfway point.
-    expect(st.power).toBeCloseTo(0.65, 1)
+    // Drain is eased 10% and no longer slowed at all ([kick feel]): 0.9 of the meter over the full
+    // timer, so a little under half is gone by the halfway point.
+    expect(st.power).toBeCloseTo(0.55, 1)
     expect(st.phase).toBe(ST_PHASE.SETUP)   // not executed yet
   })
 
-  // ⚠️ THE SECOND 30% EASE IS GONE, DELIBERATELY. At 1.69 a full meter was the DEFAULT outcome
-  // rather than a good one, so every punt came out at its ceiling — 66 yards for a 95-Power
-  // punter, every time. A meter you cannot miss is not a meter. One ease, not two.
-  it('the meter still drains slower than the raw rate, but only by one ease', () => {
-    expect(POWER_DRAIN_SLOWDOWN).toBeCloseTo(1.3, 6)
-    expect(POWER_DRAIN_PER_SEC).toBeCloseTo((1 / KICK_TIMER_SECONDS) * 0.9 / 1.3, 6)
-    // …and it is still eased: an untouched meter does not empty over the timer.
-    expect(POWER_DRAIN_PER_SEC * KICK_TIMER_SECONDS).toBeLessThan(1)
+  // ⚠️ THE EASING IS GONE ENTIRELY, IN THREE STEPS. 1.3*1.3 made a full meter the DEFAULT outcome
+  // and every punt came out at its ceiling; 1.3 still let a half-full bar send the ball 40 yards.
+  // An untouched meter now empties over the timer, which is what a meter is for.
+  it('an untouched meter very nearly empties over the timer', () => {
+    expect(POWER_DRAIN_SLOWDOWN).toBeCloseTo(1.0, 6)
+    expect(POWER_DRAIN_PER_SEC).toBeCloseTo((1 / KICK_TIMER_SECONDS) * 0.9, 6)
+    expect(POWER_DRAIN_PER_SEC * KICK_TIMER_SECONDS).toBeCloseTo(0.9, 6)
   })
 
   it('a directional tap fights the drain back up (+2%)', () => {
@@ -145,7 +144,10 @@ describe('[6][8] kick execution', () => {
   it('a punt hands possession to the other team downfield', () => {
     const state = kickState('ex-punt', KICK.PUNT, { yardLine: 30 }); room('ex-punt')
     beginSpecialTeams(state, KICK.PUNT, { kickingSlot: 0 })
-    state.specialTeams.angle = 0; state.specialTeams.power = 0.5   // ~47 yd punt
+    // ⚠️ FULL METER, NOT HALF. A half meter used to travel ~47 yards because the FLOOR did most of
+    // the kicking; with the punt curve it travels ~26 and no longer reaches the end zone, which is
+    // what this test is about. The intent was always "a long punt".
+    state.specialTeams.angle = 0; state.specialTeams.power = 1.0   // ~47 yd punt
     firePunt(state)
     expect(state.possession).toBe(1)
     expect(state.yardLine).toBeGreaterThan(0)
@@ -164,7 +166,8 @@ describe('[28][29] punt return decision', () => {
   function inFieldPunt(roomId) {
     const state = kickState(roomId, KICK.PUNT, { yardLine: 30 }); room(roomId)
     beginSpecialTeams(state, KICK.PUNT, { kickingSlot: 0 })
-    state.specialTeams.angle = 0; state.specialTeams.power = 0.5   // ~40 yd punt, lands in the field
+    // A punt that lands in the field, short of the end zone: ~32 yards from the 30.
+    state.specialTeams.angle = 0; state.specialTeams.power = 0.7   // ~32 yd punt, lands in the field
     const realRandom = Math.random
     Math.random = () => 0.5
     try { fireKick(state) } finally { Math.random = realRandom }
@@ -211,7 +214,7 @@ describe('[28][29] punt return decision', () => {
     // same punt + rng, but the kicker put backspin on it → the bounce is checked back
     const spin = kickState('rd-i-spin', KICK.PUNT, { yardLine: 30 }); room('rd-i-spin')
     beginSpecialTeams(spin, KICK.PUNT, { kickingSlot: 0 })
-    spin.specialTeams.angle = 0; spin.specialTeams.power = 0.5; spin.specialTeams.backspin = true
+    spin.specialTeams.angle = 0; spin.specialTeams.power = 0.7; spin.specialTeams.backspin = true
     fireKick(spin)
     resolvePuntReturn(spin, mockIo(), PUNT_RETURN.LET_IT_BOUNCE, () => 0.5)   // 6.5 − 5.5 = 1.0 yd net
     // backspin pulls the ball back → the receiving team takes over with BETTER field position (higher YL)
@@ -231,7 +234,11 @@ describe('[28][29] punt return decision', () => {
     // first-and-10 on the 1, not a safety. The spot is clamped to the receiving team's own 1.
     const state = kickState('rd-neg', KICK.PUNT, { yardLine: 62 }); room('rd-neg')
     beginSpecialTeams(state, KICK.PUNT, { kickingSlot: 0 })
-    state.specialTeams.angle = 0; state.specialTeams.power = 0.1   // short punt, caught in the shadow
+    // ⚠️ THE METER IS NOT THE POINT, THE LANDING SPOT IS. This asked for 0.1 and got a 34-yard
+    // punt, because the FLOOR used to supply 33 of those yards whatever the meter said. With the
+    // punt curve, 0.1 travels 19 and the receiver is not backed up at all. 0.75 reproduces the kick
+    // this test has always been about: caught inside his own 4.
+    state.specialTeams.angle = 0; state.specialTeams.power = 0.75   // ~34 yds, caught in the shadow
     fireKick(state)
     const airLanding = Math.round(state.specialTeams.result.previewLandingYardLine)
     expect(airLanding).toBeLessThan(6)                             // genuinely backed up
@@ -284,7 +291,9 @@ describe('[38] punt touchback spotting + drive reset', () => {
   it('a bounced punt converted to a touchback ([37]) also spots at the own 20', () => {
     const state = kickState('tb-bounce', KICK.PUNT, { yardLine: 58 }); room('tb-bounce')
     beginSpecialTeams(state, KICK.PUNT, { kickingSlot: 0 })
-    state.specialTeams.angle = 0; state.specialTeams.power = 0.15  // lands in-field but near the goal
+    // Same correction as rd-neg: the landing spot is the fixture, not the meter value. 0.9 lands
+    // just inside the 1 from the 58, so a maximum roll trickles into the end zone.
+    state.specialTeams.angle = 0; state.specialTeams.power = 0.9   // lands in-field but near the goal
     fireKick(state)
     expect(state.specialTeams.returnPending).toBe(true)           // in-field → menu armed
     resolvePuntReturn(state, mockIo(), PUNT_RETURN.LET_IT_BOUNCE, () => 1)   // max roll → trickles in → TB
