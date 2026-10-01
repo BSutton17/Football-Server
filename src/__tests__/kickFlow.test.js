@@ -68,19 +68,20 @@ describe('[9][10] power meter drains continuously once started, refilled by taps
     const half = KICK_TIMER_SECONDS / 2
     let elapsed = 0
     while (elapsed < half) { runKickClock(state, mockIo(), 0.05); elapsed += 0.05 }
-    // Drain is eased 10% and no longer slowed at all ([kick feel]): 0.9 of the meter over the full
-    // timer, so a little under half is gone by the halfway point.
-    expect(st.power).toBeCloseTo(0.55, 1)
+    // Drain is eased 10% and slowed by a further quarter ([kick feel]): 0.675 of the meter over the
+    // full timer, so about a third is gone by the halfway point.
+    expect(st.power).toBeCloseTo(0.66, 1)
     expect(st.phase).toBe(ST_PHASE.SETUP)   // not executed yet
   })
 
-  // ⚠️ THE EASING IS GONE ENTIRELY, IN THREE STEPS. 1.3*1.3 made a full meter the DEFAULT outcome
-  // and every punt came out at its ceiling; 1.3 still let a half-full bar send the ball 40 yards.
-  // An untouched meter now empties over the timer, which is what a meter is for.
-  it('an untouched meter very nearly empties over the timer', () => {
-    expect(POWER_DRAIN_SLOWDOWN).toBeCloseTo(1.0, 6)
-    expect(POWER_DRAIN_PER_SEC).toBeCloseTo((1 / KICK_TIMER_SECONDS) * 0.9, 6)
-    expect(POWER_DRAIN_PER_SEC * KICK_TIMER_SECONDS).toBeCloseTo(0.9, 6)
+  // ⚠️ FOUR SETTINGS NOW, AND THE NUMBER IS THE POINT RATHER THAN THE SHAPE. 1.3*1.3 made a full
+  // meter the DEFAULT outcome and every punt came out at its ceiling; 1.3 still let a half-full bar
+  // send the ball 40 yards; 1.0 was right for distance but combined with the punt curve it left the
+  // meter feeling frantic. 4/3 is exactly three quarters of that drain, by request.
+  it('an untouched meter drains about two thirds over the timer', () => {
+    expect(POWER_DRAIN_SLOWDOWN).toBeCloseTo(4 / 3, 6)
+    expect(POWER_DRAIN_PER_SEC).toBeCloseTo((1 / KICK_TIMER_SECONDS) * 0.9 / (4 / 3), 6)
+    expect(POWER_DRAIN_PER_SEC * KICK_TIMER_SECONDS).toBeCloseTo(0.675, 3)
   })
 
   it('a directional tap fights the drain back up (+2%)', () => {
