@@ -182,6 +182,53 @@ describe('⚠️ PRESSING IS FOR A BLITZ', () => {
   })
 })
 
+// ── ⚠️ A CORNER WITH NOBODY OVER THE TOP DOES NOT PRESS ─────────────────────
+//
+// Reported: "CB should never press the best reciever with no saftey help over the top."
+//
+// ⚠️ AND IT WAS PRESSING *BECAUSE* THERE WAS NO HELP. `decideShade` answers "no deep help" with
+// UNDER -- its own comment reads "nothing behind you: never get beaten deep" -- and the press rule read
+// `shade === 'under'` as licence to walk up and jam. So the single alignment most likely to lose deep
+// was chosen exactly when losing deep was the whole risk. The two meanings of `under` had collided:
+// sitting underneath a route with a safety behind you is sound, sitting on the line with the entire
+// field behind you is how a corner gets run past.
+//
+// Written as the general rule rather than "the best receiver" -- strictly safer, and this module never
+// sees receiver ratings, so singling one out would mean plumbing them in for weaker protection.
+//
+// ⚠️ NO MEASURABLE YARDS EFFECT IN SELF-PLAY: -0.07 ± 0.07 and +0.03 ± 0.04 over 250 paired plays
+// each. The error bars are tight, so that is a real absence rather than a thin sample -- the AI's own
+// offense does not attack the hole. It is kept on football grounds, and these tests are what protect it,
+// since the outcome measurement cannot.
+describe('⚠️ A CORNER WITH NO DEEP HELP DOES NOT PRESS', () => {
+  // The man shell above gives S1 a deep zone. Taking it away is what "no help over the top" means.
+  const noHelpShell = (extraRushers = 0) => {
+    const base = manShell(extraRushers)
+    return { ...base, assignments: { ...base.assignments, S1: { job: 'man' } } }
+  }
+
+  it('presses with a safety behind him', () => {
+    expect(find(align(manShell(1)), 'CB1').pressing).toBe(true)
+  })
+
+  it('…and does not once that safety is gone', () => {
+    expect(find(align(noHelpShell(0)), 'CB1').pressing).toBe(false)
+  })
+
+  // ⚠️ THE BLITZ EXCEPTION STAYS, and it is not an oversight. Sending extra men means the ball has to
+  // come out now, and pressing is the standard answer to that — Cover 0 is real football. What is
+  // indefensible is pressing with no help when nobody is being sent.
+  it('still presses on a blitz, help or no help', () => {
+    expect(find(align(noHelpShell(1)), 'CB1').pressing).toBe(true)
+  })
+
+  it('and keeps its cushion rather than creeping up', () => {
+    const helped = find(align(manShell(1)), 'CB1')
+    const alone  = find(align(noHelpShell(0)), 'CB1')
+    expect(alone.depth).toBeGreaterThan(helped.depth)
+  })
+})
+
 describe('zones slide toward the formation', () => {
   it('shifts toward where that side’s receivers actually are', () => {
     // Trips right sits at +6, +12 and +18 — a mean of +12. The corner drawn at +14 slides INWARD

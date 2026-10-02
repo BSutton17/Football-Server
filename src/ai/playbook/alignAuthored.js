@@ -660,7 +660,25 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
       // than he was drawn, which is the rule everything else in this file obeys.
       const quick = adjust?.quickBias ?? 0
       const deep = adjust?.deepBias ?? 0
-      const mayPress = d.label === 'CB' && (blitzing || shade === 'under' || quick > SHAPE_LEAN)
+      // ⚠️ A CORNER WITH NOBODY OVER THE TOP MUST NOT PRESS, AND THIS HAD IT EXACTLY BACKWARDS.
+      //
+      // `decideShade` answers "no deep help" with UNDER -- its own comment says "nothing behind you:
+      // never get beaten deep" -- and `shade === 'under'` was then read here as licence to walk up and
+      // jam. So the single alignment most likely to lose deep was being chosen BECAUSE there was no help
+      // deep. Reported as "CB should never press the best reciever with no saftey help over the top".
+      //
+      // The two meanings of `under` had collided. Sitting underneath a route when you have a safety is
+      // sound; sitting on the line with the whole field behind you is how a corner gets run past.
+      //
+      // ⚠️ A BLITZ IS THE REAL EXCEPTION AND IT STAYS. Sending extra men means the ball has to come
+      // out now, and pressing is the standard answer -- that is Cover 0, not an oversight. What is not
+      // defensible is pressing with no help when nobody is being sent.
+      //
+      // Written as the general rule rather than "the best receiver". It is strictly safer, and the data
+      // for "best" is not here: this module never sees receiver ratings, so singling one out would mean
+      // plumbing them through to buy a weaker version of the same protection.
+      const mayPress = d.label === 'CB'
+        && (blitzing || ((shade === 'under' || quick > SHAPE_LEAN) && hasDeepHelp))
       let depth = mayPress ? Math.min(d.depth, PRESS_DEPTH) : d.depth
       if (d.label === 'CB' && deep > SHAPE_LEAN) {
         // Back off toward the depth he was drawn at — never past it.
