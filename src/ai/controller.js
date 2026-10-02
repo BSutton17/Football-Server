@@ -38,6 +38,7 @@ import { chooseTempo, setTimeFor, tempoRunLean, TEMPO } from './tempo.js'
 // decision rather than a reaction.
 const RUN_ADJUST_AT = 1
 import { rankTargets, orderKey, developedFraction } from './reads.js'
+import { OPENNESS_OPEN } from '../constants.js'
 import { skillFor } from './difficulty.js'
 
 // Defensive placement bounds, mirroring the client's getPositionYBounds. A defender placed past
@@ -1017,6 +1018,10 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   // The beat he has to hold the ball before a throw is legal at all, in seconds of live play
   // (board time in manual). Short enough that a screen still goes early, long enough that the ball
   // is never gone on the snap.
+  // How far into the play the "he must actually be open" requirement holds before it lets go. Past it
+  // the bar alone decides, so a dying play still ends in a throw rather than a sack.
+  const OPEN_REQUIRED_UNTIL = Number(process.env.QB_OPEN_UNTIL ?? 0.5)
+
   const MIN_TIME_BEFORE_THROW = 0.65
 
   // ⚠️ AND LONGER WHEN THERE IS NO SUCH THING AS A QUICK THROW THAT HELPS. On 3rd and 8 a ball out
@@ -1115,6 +1120,27 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
         .sort((a, b) => orderKey(b) - orderKey(a))
       best = projected[0]
     }
+    // ⚠️ EARLY ON, THE MAN HE THROWS TO HAS TO ACTUALLY BE OPEN, AND "OPEN" IS A STEP.
+    //
+    // The completion odds are not a ramp: at OPENNESS_OPEN and above a throw is caught 95% of the time,
+    // and anywhere from 0.33 to 0.66 it is 45% -- so an 0.55 window and an 0.64 window are THE SAME
+    // THROW, and the gap between 0.64 and 0.66 is fifty points of completion. Everything above scores on
+    // continuous openness, which means the quarterback was optimising a number the engine cannot see.
+    //
+    // Measured over a real game: on 38% of his throws an open man was available and he found him, but
+    // only 35% of his throws went to one AT ALL. He was not missing open men. He was releasing when
+    // there were none, into a 45% window, because 0.60 looked good enough against a continuous bar.
+    //
+    // ⚠️ IT IS JUDGED ON THE RAW READ, NOT ON `score`. `score` is openness DISCOUNTED by how far short
+    // of the sticks the catch would be, so the two live in different units -- a 0.70 receiver short of
+    // the marker scores 0.35 and a 0.66 one past it scores 0.66. Raising the BAR was tried first and was
+    // inert for exactly that reason: it moved a threshold in the wrong units.
+    //
+    // Relaxed by the same `decay` everything else uses, so late in the play a 45% throw is available
+    // again -- which is right, because by then the alternative is a sack.
+    const rawOpen = best.trueScore ?? best.score
+    if (readDecay(sk, elapsed, urgency) < OPEN_REQUIRED_UNTIL && rawOpen < OPENNESS_OPEN) return false
+
     if (best.score < bar) {
       // [analytics] Holding on is a decision as much as throwing is, and it is the one that ends
       // in sacks. Sampled rather than logged every tick: 20 Hz of "still waiting" would drown it.

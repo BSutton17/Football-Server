@@ -249,6 +249,62 @@ describe('the quarterback waits for the play to develop', () => {
   })
 })
 
+// ── He throws to a man who is actually OPEN ([qb]) ──────────────────────────
+//
+// ⚠️ THE CATCH MODEL IS A STEP, AND THE READ WAS CONTINUOUS. At OPENNESS_OPEN and above a throw is
+// caught 95% of the time; anywhere from 0.33 to 0.66 it is 45% — so an 0.55 window and an 0.64 window
+// are THE SAME THROW, and the gap between 0.64 and 0.66 is fifty points of completion. Scoring targets
+// on continuous openness meant optimising a number the engine cannot see.
+//
+// Measured over a real game: on 38% of his throws an open man was available and he found him, but only
+// 35% of his throws went to one at all. He was not missing open men — he was releasing when there were
+// none, because 0.60 looked good enough against a continuous bar.
+//
+// Paired, manual, two holdout seed sets: 3rd & 8 +0.64 ± 0.29 yds / +4.4pp, 3rd & 12 +0.96 ± 0.32 /
+// +3.2pp, 2nd & 8 +0.40 ± 0.13. Incompletions fell 22% → 17% and interceptions 3% → 2%, sacks flat.
+describe('early on, the target has to clear the open step', () => {
+  const LOS2 = LOS
+  // One declared receiver, covered at the given separation, and nobody else. The AI's own estimate of
+  // openness is separation-based, so the distance is the dial.
+  const lone = (sep) => () => ([
+    { id: 'qb',  team: 'o', x: 26, y: LOS2 - 6, state: 'ball', qb: true },
+    { id: 'wr0', team: 'o', x: 44, y: LOS2 + 14, ready: true },
+    { id: 'cb0', team: 'd', x: 44 + sep, y: LOS2 + 14 },
+  ])
+
+  const threwBy = (frames, sep, gateOff = false) => {
+    const prev = process.env.QB_OPEN_UNTIL
+    if (gateOff) process.env.QB_OPEN_UNTIL = '0'
+    try {
+      const { socket, ai } = liveOffense({ down: 1, distance: 10, difficulty: 'hard' })
+      for (let i = 0; i < frames; i++) ai.onEvent('positions_update', lone(sep)())
+      return socket.of('throw_to_receiver').length
+    } finally {
+      if (prev === undefined) delete process.env.QB_OPEN_UNTIL
+      else process.env.QB_OPEN_UNTIL = prev
+    }
+  }
+
+  // ⚠️ THE SEPARATIONS STRADDLE THE STEP ON THE AI'S OWN SCALE, which is what matters here: its
+  // estimate is separation / OPEN_SEPARATION, and OPEN_SEPARATION is six. So 3.5 yards reads 0.58 (the
+  // 45% band) and 4.5 reads 0.75 (open). Four yards is 0.667 -- just OVER the line -- which is what the
+  // first version of this test picked, and it failed for being right about the engine and wrong about
+  // the arithmetic.
+  it('holds a throw that would land in the 45% band', () => {
+    expect(threwBy(20, 3.5, true)).toBeGreaterThan(0)   // without the gate the ball goes
+    expect(threwBy(20, 3.5)).toBe(0)                    // with it he keeps looking
+  })
+
+  it('takes a man who clears it at once', () => {
+    expect(threwBy(20, 4.5)).toBeGreaterThan(0)
+  })
+
+  // ⚠️ AND IT LETS GO LATE, or it would be sacks. Past the relax point a 45% throw beats a sack.
+  it('settles for the covered man once the play is spent', () => {
+    expect(threwBy(120, 3.5)).toBeGreaterThan(0)
+  })
+})
+
 describe('the minimum hold is longer when a short throw cannot convert', () => {
   // Everybody open, so the only thing deciding when the ball goes is the floor.
   const wideOpen = () => ([

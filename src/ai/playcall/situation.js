@@ -104,11 +104,38 @@ export function runShare(situation) {
   // League-ish baseline, then moved by the same reads `runLean` encodes. Expressed in odds so the
   // multipliers compose without ever leaving 0..1.
   const BASE_ODDS = 0.45 / 0.55
-  const odds = BASE_ODDS * runLean(situation)
+  // ⚠️ THE ONE DIAL ON HOW OFTEN THE BALL IS RUN, AND IT IS NOT SOLVED. `runShareConstraint` pins
+  // every bucket's split to this function, so the solver cannot move it however long it runs -- this is
+  // the lever. Read per call, and swept: see the note on RUN_LEAN_MULT.
+  const odds = BASE_ODDS * runLean(situation) * runLeanMult()
   const share = odds / (1 + odds)
   // Never certain either way: a team that literally never runs on 3rd and 12 is one the defense can
   // sit on, and the same in reverse on the goal line.
   return Math.max(0.05, Math.min(0.92, share))
+}
+
+// A global multiplier on the run odds, for sweeping the mix.
+//
+// ⚠️ THE AI'S OWN RUNS GAINED 0.99 YARDS A PLAY in a real game against 6.51 passing, over 38 snaps --
+// its own evidence, not a comparison with anybody. That is what sent me to this dial.
+//
+// 0.6, swept and then confirmed at a larger sample. Against the old mix, 2nd and 8 over 800 PAIRED
+// plays: conversions +4.5pp ± 2.1 (real) and +0.62 ± 0.32 yds (a whisker under two standard errors,
+// so stated as borderline rather than claimed). 1st and 10 moves the same way, +5.6pp, inside the noise
+// at 250. Short yardage, the case a GLOBAL multiplier risks, is unharmed: 3rd and 2 comes back
+// -0.21 ± 0.27 yds and +1.8pp, both noise.
+//
+// ⚠️ AND 0.35 IS WORSE THAN 0.6 at both situations, so this is an interior optimum rather than "run
+// as little as possible". Running matters; the old mix simply ran too often.
+//
+// ⚠️ CHANGING THIS DOES NOT CHANGE A PUBLISHED TABLE. `withRunShare` bakes the split in when the table
+// is BUILT, and the selector then reads the table rather than calling this -- so the live mix only
+// moves after `scripts/mergeSolve.mjs` is re-run (pure post-processing over the saved subgames, about a
+// minute) or after a full re-solve. A knob changed here and not republished does nothing at all.
+const RUN_LEAN_MULT = 0.6
+
+function runLeanMult() {
+  return Number(process.env.QB_RUN_LEAN ?? RUN_LEAN_MULT)
 }
 
 export function runLean({ down, distance, yardLine }) {

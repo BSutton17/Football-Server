@@ -20,6 +20,7 @@ const MODE = process.env.ARM_MODE ?? 'manual'
 
 const releases = []
 const declared = []
+const bestOpen = []
 let sacks = 0, noThrow = 0
 
 for (let i = 0; i < N; i++) {
@@ -44,10 +45,15 @@ for (let i = 0; i < N; i++) {
     ctx.seats[off].fire = (e, p) => {
       if (e === 'throw_to_receiver' && fired == null) {
         const catchers = (lastFrame ?? []).filter(x => x.ready != null)
+        // ⚠️ THE SHARE OF THROWS THAT CLEAR THE STEP IS THE METRIC THAT PAYS. The catch model is a step
+        // at OPENNESS_OPEN: 0.55 and 0.64 are the same 45% throw, and 0.66 is 95%. A mean-openness
+        // comparison measures a difference the engine is blind to -- and nearly got reported as a result.
+        const open = catchers.map(x => x.openness).filter(v => typeof v === 'number')
         fired = {
           t: frames * 0.05,                 // the sim tick is 50ms, and frames only arrive while live
           ready: catchers.filter(x => x.ready).length,
           total: catchers.length,
+          bestOpen: open.length ? Math.max(...open) : null,
         }
       }
       return orig(e, p)
@@ -59,6 +65,7 @@ for (let i = 0; i < N; i++) {
     if (!fired) { noThrow++; continue }
     if (fired.t != null) releases.push(fired.t)
     declared.push(fired.ready)
+    if (fired.bestOpen != null) bestOpen.push(fired.bestOpen)
   } finally { destroyTrainingGame(ctx) }
 }
 

@@ -36,8 +36,15 @@ function clampRating(r) {
 
 // Coverage tier thresholds — these MUST match the client's red/yellow/green coloring
 // (opennessFill in renderer.ts) so the outcome matches the window the QB actually saw.
-export const OPENNESS_OPEN = 0.66   // ≥ this → open (green)
-export const OPENNESS_RED  = 0.33   // < this → smothered (red); in between → covered (yellow)
+//
+// ⚠️ DEFINED IN constants.js AND ONLY RE-EXPORTED HERE. The AI needs them to aim at the step this
+// model actually pays out on, and `ai/` may not import from `game/` (aiBoundary.test.js) — so a second
+// copy over there would be a number free to drift away from the one the ball is settled on. A
+// quarterback optimising a stale threshold is optimising nothing.
+// ⚠️ IMPORTED *AND* RE-EXPORTED. A bare `export { X } from '...'` forwards the name without binding it
+// in this module's scope, so `opennessTier` below could not see it.
+import { OPENNESS_OPEN, OPENNESS_RED } from '../../constants.js'
+export { OPENNESS_OPEN, OPENNESS_RED }
 
 export function opennessTier(openness) {
   if (openness >= OPENNESS_OPEN) return 'open'

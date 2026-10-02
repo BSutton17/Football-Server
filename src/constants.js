@@ -106,6 +106,20 @@ export const DIFFICULTY = {
 // [medium] Difficulties that withhold the openness read from the offense. Medium hides it exactly
 // as hard does — the difference is purely that medium draws the route art back in while the play is
 // frozen, which is a client-side courtesy and changes nothing the server sends.
+// ── The openness tiers ([169]) ──────────────────────────────────────────────
+//
+// ⚠️ THE CATCH MODEL IS A STEP FUNCTION, AND THESE ARE THE STEPS. At 66 and above a throw is caught
+// 95% of the time; anywhere from 33 to 66 it is 45%, whatever the exact number; below 33 it is 10%. So
+// 0.55 and 0.64 are the SAME throw as far as the engine is concerned, and the difference between 0.64
+// and 0.66 is fifty points of completion.
+//
+// They live here rather than in game/utils/passOutcome.js because the AI needs them too and `ai/` may
+// not import from `game/` (aiBoundary.test.js). Knowing the published rules of the game is not the same
+// as reading the game state, but it DOES have to be one definition: a quarterback optimising a
+// threshold that has drifted from the one the ball is settled on is optimising nothing.
+export const OPENNESS_OPEN = 0.66   // ≥ this → open (green)
+export const OPENNESS_RED  = 0.33   // < this → smothered (red); in between → covered (yellow)
+
 export const HIDES_OPENNESS = new Set([DIFFICULTY.MEDIUM, DIFFICULTY.HARD])
 
 // ── Manual-mode timing ([manual]) ────────────────────────────────────────────

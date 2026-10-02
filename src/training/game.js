@@ -45,6 +45,25 @@ const MAX_PLAY_TICKS = 800
 // handlers, so this is a safety net against a controller that never sets, not a real delay.
 const MAX_SETUP_ROUNDS = 6
 
+// ⚠️ `forcePlayType: 'pass'` CANNOT BE TRUSTED IN SHORT YARDAGE, AND IT FAILS SILENTLY.
+//
+// Setting `overrideOffensiveCall` DISABLES the authored playbook (see the line in controller.js that
+// reads `self.overrideOffensiveCall ? null : authoredBook()`), so a forced call falls through to the
+// legacy concept offense -- and on short yardage that produces a play with NO ROUTES AT ALL. The
+// quarterback has nobody to throw to, throws it away, and the play is logged as an ordinary
+// incompletion.
+//
+// Measured: forced passing on 3rd and 2 came back 0.00 yards and 0% converted on 200 of 200 plays,
+// with five receivers and zero routes between them. 3rd and 8, 2nd and 8 and 1st and 10 all carry the
+// normal five routes and are fine, which is why this went unnoticed -- every bucket anybody had
+// measured happened to work.
+//
+// Rather than leave a trap, `playDown` shouts when a forced pass puts nobody on a route. The real fix
+// is to force the TYPE by choosing an authored play of that type (`forceAuthoredPlay`, which keeps the
+// book) instead of relabelling whatever was called; until then, do not compare run against pass through
+// this path in short yardage.
+let warnedRouteless = false
+
 let nextRoom = 1
 
 // Stands up a game with a computer in BOTH seats.
@@ -246,6 +265,20 @@ export function playDown(ctx, opts = {}) {
   if (state.phase !== PHASE.LIVE) {
     problems.push('snap refused')
     return { yards: 0, ticks: 0, outcome: 'no_snap', ok: false, problems, startYardLine }
+  }
+
+  // ⚠️ A FORCED PASS WITH NOBODY ON A ROUTE IS NOT A MEASUREMENT. See the note on
+  // `warnedRouteless`: `forcePlayType: 'pass'` disables the authored book, and on short yardage the
+  // fallback puts five receivers on the field with no routes between them. Every play then ends in a
+  // throwaway and reads as an ordinary incompletion, so 200 plays of 0.00 yards look like football.
+  if (situation.forcePlayType && situation.forcePlayType !== 'run' && !warnedRouteless) {
+    const routed = [...(state.offensePlayers?.values() ?? [])].filter(p => p.routeWaypoints?.length).length
+    if (routed === 0) {
+      warnedRouteless = true
+      console.warn('[training] ⚠️ forcePlayType=' + situation.forcePlayType + ' produced a play with NO ROUTES ' +
+        '(down ' + state.down + ', ' + Math.round(state.distance) + ' to go). Every play will be a throwaway. ' +
+        'Do not measure through this; force an authored play of that type instead. Warned once per process.')
+    }
   }
 
   // ⚠️ Inspected AFTER the snap, not before. The five linemen and the quarterback are not placed
