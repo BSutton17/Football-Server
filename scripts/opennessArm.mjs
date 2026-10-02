@@ -17,10 +17,18 @@ const N = Number(process.argv[2] ?? 200)
 const down = Number(process.argv[3] ?? 2)
 const distance = Number(process.argv[4] ?? 8)
 const yardLine = Number(process.argv[5] ?? 40)
+// ⚠️ A HOLDOUT NEEDS DIFFERENT SEEDS. A knob chosen by sweeping one seed set and then reported on
+// that same set is reporting its own search, and a winner picked that way has already reversed sign at
+// four times the sample in this codebase.
+const BASE = Number(process.env.SEED_BASE ?? 64000)
+// ⚠️ MODE MATTERS AND IS NOT THE DEFAULT. The game is PLAYED in manual, and manual takes a
+// different path through tryThrow (its own re-rank, board time instead of live time). A result measured
+// only in automatic says nothing certain about the mode anybody uses. ARM_MODE=manual switches it.
+const MODE = process.env.ARM_MODE ?? 'automatic'
 
 for (let i = 0; i < N; i++) {
-  const seed = 64000 + i
-  const ctx = createTrainingGame({ seed })
+  const seed = BASE + i
+  const ctx = createTrainingGame({ seed, mode: MODE })
   try {
     const r = runPlay(ctx, { down, distance, yardLine, ballX: HASHES[i % 3], forcePlayType: 'pass' })
     if (r.outcome === 'no_snap' || r.outcome === 'hung') continue

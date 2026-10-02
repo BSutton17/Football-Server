@@ -37,7 +37,7 @@ import { chooseTempo, setTimeFor, tempoRunLean, TEMPO } from './tempo.js'
 // One beat before the snap: late enough that the defense has finished moving, early enough to be a
 // decision rather than a reaction.
 const RUN_ADJUST_AT = 1
-import { rankTargets } from './reads.js'
+import { rankTargets, orderKey } from './reads.js'
 import { skillFor } from './difficulty.js'
 
 // Defensive placement bounds, mirroring the client's getPositionYBounds. A defender placed past
@@ -977,9 +977,15 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
 
   // The openness he currently requires, which falls with time and with pressure. Lifted out of
   // tryThrow because in manual the decision to STOP THE BOARD is made against the same number.
+  // How far through the play he is, 0 at the snap and 1 once his patience is spent or the rush is on
+  // top of him. One definition, two users: the openness he requires falls with it, and so does how
+  // much he insists on a throw that converts (reads.js, shortReach).
+  function readDecay(sk, elapsed, urgency) {
+    return Math.max(Math.min(1, elapsed / sk.patience), urgency)
+  }
+
   function currentBar(sk, elapsed, urgency) {
-    const decay = Math.max(Math.min(1, elapsed / sk.patience), urgency)
-    return sk.throwThreshold - (sk.throwThreshold - sk.throwFloor) * decay
+    return sk.throwThreshold - (sk.throwThreshold - sk.throwFloor) * readDecay(sk, elapsed, urgency)
   }
 
   // The beat he has to hold the ball before a throw is legal at all, in seconds of live play
@@ -998,12 +1004,18 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
 
   function tryThrow() {
     const sk = skill()
-    const targets = rankTargets(k, { noise: sk.readNoise, rng })
 
     self.liveFor = (self.liveFor ?? 0) + (isManualRoom() ? 0 : TICK_SECONDS)
     const elapsed = isManualRoom() ? (self.boardTime ?? 0) : self.liveFor
     const urgency = pressureUrgency()
 
+    // ⚠️ THE CLOCK IS READ BEFORE THE FIELD IS, and that is load-bearing now. On a down that must
+    // convert, how badly a throw short of the sticks is discounted depends on how much play he has
+    // left -- early he wants the first down, late he wants the completion. Ranking first and timing
+    // afterwards would have ranked against a snap-time picture on every tick.
+    const targets = rankTargets(k, {
+      noise: sk.readNoise, rng, decay: readDecay(sk, elapsed, urgency),
+    })
 
     // ⚠️ Bail out rather than eat the sack. A throwaway costs nothing and a sack costs seven yards
     // plus the down, so a quarterback with nobody open and a defender in his lap should always take
@@ -1052,11 +1064,17 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
 
     // [manual anticipation] Re-rank on where each receiver is HEADING rather than where he is, then
     // judge that against the same bar. Only in manual, and only when he has had ticks to watch.
+    //
+    // ⚠️ SORTED THROUGH `orderKey`, NOT ON THE SCORE. This re-sorted on the score alone, which
+    // threw away the tiering reads.js had just done -- so "prefer the first down over the checkdown"
+    // was live everywhere EXCEPT a manual room, which is the mode the game is played in. The
+    // anticipation belongs on the openness; the preference between a conversion and a checkdown is
+    // not something projecting a receiver forward has anything to say about.
     let best = targets[0]
     if (isManualRoom() && targets.length) {
       const projected = targets
         .map(t => ({ ...t, score: anticipate(t.id, t.score) }))
-        .sort((a, b) => b.score - a.score)
+        .sort((a, b) => orderKey(b) - orderKey(a))
       best = projected[0]
     }
     if (best.score < bar) {

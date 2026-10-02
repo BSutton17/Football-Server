@@ -84,7 +84,7 @@ function laneBlocked(qb, receiver, defenders) {
 //
 // `trueScore` is kept alongside so telemetry and tests can see what the read actually was versus
 // what this tier thought it was.
-export function rankTargets(k, { noise = 0, rng = Math.random } = {}) {
+export function rankTargets(k, { noise = 0, rng = Math.random, decay = 0 } = {}) {
   const own = []
   const defenders = []
   let qb = null
@@ -123,11 +123,71 @@ export function rankTargets(k, { noise = 0, rng = Math.random } = {}) {
       const noisy = noise ? clamp01(trueScore + (rng() * 2 - 1) * noise) : trueScore
       // A yard of slack, so somebody standing on the marker counts as past it.
       const shortOfSticks = (p.y ?? 0) < sticks - 1
-      const score = shortOfSticks ? noisy * shortReach(p, k, mustConvert) : noisy
-      return { ...p, score, rankScore: score * depthPreference(p, k), trueScore, estimated: p.openness == null, shortOfSticks }
+      const score = shortOfSticks ? noisy * shortReach(p, k, mustConvert, decay) : noisy
+      const tier = tierOf(p, k, noisy, mustConvert)
+      const entry = { ...p, score, tier, trueScore, estimated: p.openness == null, shortOfSticks }
+      return { ...entry, rankScore: orderKey(entry, score * depthPreference(p, k)) }
     })
-    // ⚠️ ORDERED BY `rankScore`, JUDGED BY `score` — see depthPreference.
+    // ⚠️ ORDERED BY `rankScore`, JUDGED BY `score` — see depthPreference and tierOf.
     .sort((a, b) => b.rankScore - a.rankScore)
+}
+
+// ── Looking for the first down before looking for the easy throw ([qb]) ─────
+//
+// Asked for: "make the QB prefer to pick up a first down, especially on 3rd down, instead of just
+// throwing checkdowns. In fact checkdowns should usually be the last thing the QB considers."
+//
+// So the read is TIERED rather than weighted, because a weight can always be outvoted by a wide-open
+// checkdown and that is the behaviour being complained about:
+//
+//     2  past the sticks        — the throw that ends the series
+//     1  a real gain short of them
+//     0  a checkdown            — at, behind, or barely past the line of scrimmage
+//
+// Within a tier it is openness that decides, exactly as before. Between tiers the tier decides, so a
+// receiver who converts is taken ahead of a more open man who does not.
+//
+// ⚠️ A TIER HAS TO BE EARNED, OR THIS JUST THROWS INTERCEPTIONS. A blanketed receiver past the
+// marker is not a conversion, he is a turnover, so a tier above the bottom is claimed only by somebody
+// at least minimally throwable. Below that floor he sorts on openness with the checkdowns, which is
+// where a covered man belongs.
+//
+// ⚠️ AND THIS ORDERS, IT DOES NOT RELEASE. `score` still reaches the patience/pressure bar
+// untouched, so none of this makes him throw EARLIER or hold LONGER — see the note on
+// depthPreference, which exists for the same reason. When the bar has fallen far enough that only the
+// checkdown clears it, he takes the checkdown. That is the difference between "last thing he
+// considers" and "a sack".
+//
+// ⚠️ ON 3RD AND 1 IT DOES NOTHING, and should not: everybody is past the sticks, so every
+// receiver is tier 2 and openness decides the whole read. The shorter the distance the less this says.
+const CHECKDOWN_YARDS = 3
+
+// How open a receiver must be before his depth counts for anything. Lower on a down that must
+// convert: there a tight window past the marker is worth more than a comfortable one short of it,
+// which is the whole point. On 1st and 2nd a checkdown is a perfectly good football play, so the
+// conversion has to be a real one before it jumps the queue.
+const TIER_FLOOR = Number(process.env.QB_TIER_FLOOR ?? 0.30)
+const TIER_FLOOR_EARLY = Number(process.env.QB_TIER_FLOOR_EARLY ?? 0.45)
+
+function tierOf(p, k, noisy, mustConvert) {
+  if (process.env.QB_CONVERT_FIRST === '0') return 0     // the off switch, for A/B in two processes
+  const gained = (p.y ?? 0) - (k.yardLine ?? 0)
+  const need = Math.max(1, k.distance ?? 10)
+  if (noisy < (mustConvert ? TIER_FLOOR : TIER_FLOOR_EARLY)) return 0
+  // ⚠️ CONVERTING IS CHECKED FIRST. On 3rd and 1 a one-yard catch is both a conversion and a
+  // checkdown by the yardage, and it is the conversion that matters.
+  if (gained >= need - 1) return 2
+  return gained <= CHECKDOWN_YARDS ? 0 : 1
+}
+
+// How a tier and a score combine into one sortable number.
+//
+// ⚠️ ONE AUTHORITY, BECAUSE THERE ARE TWO PLACES THAT SORT. controller.js re-ranks in a manual
+// room on where each receiver is HEADING, and it sorted on the score alone — so every ordering
+// preference in this file was silently discarded in the only mode the game is actually played in.
+// Scores live in [0, 1], so a whole point is a clean break between tiers.
+export function orderKey(t, score = t.score) {
+  return (t.tier ?? 0) + clamp01(score)
 }
 
 // ── Preferring the throw that is worth more ([qb]) ──────────────────────────
@@ -195,12 +255,59 @@ const SHORT_FLOOR = 0.40
 // quarterback should take it.
 const SHORT_FLOOR_EARLY = Number(process.env.QB_EARLY_FLOOR ?? 0.70)
 
-function shortReach(p, k, mustConvert = true) {
+// ⚠️ A SIX-YARD THROW ON 3RD AND 8 WAS SCORING 0.81 AND CLEARING THE BAR INSTANTLY.
+//
+// This is the measurement that redirected the whole change. Asked to stop the quarterback "throwing
+// checkdowns instead of picking up the first down", the obvious reading is that he favours the back in
+// the flat. He does not. 48 throws on 3rd and 8, by air yards:
+//
+//     mean 6.2 yds    past the sticks 17%    at-or-behind 3 yards 8%
+//     6 6 11 6 5 6 6 11 9 6 3 10 6 5 6 6 6 6 6 6 9 16 6 7 6 6 6 3 3 3 6 5 6 4 6 ...
+//
+// It is a six-yard throw, over and over, which is the depth a route is at when it first DECLARES. He
+// was not choosing the short man over the first down; he was releasing before anybody could get to the
+// marker. A true checkdown was 8% of his throws.
+//
+// The LINEAR discount is why. Six yards of an eight-yard need is three quarters of the way there, so
+// it kept 85% of its value and sailed over the bar. Raised to a power, the same throw keeps 61%, and
+// the nearly-there throw is still barely touched -- which preserves the thing the flat version got
+// right, that a ten-yard catch on 3rd and 12 is not a two-yard one.
+//
+// Both knobs are env-overridable and read PER CALL, because they were swept (a module-load read makes
+// every trial in a run identical, which has cost a measurement here before).
+const SHORT_CURVE = 2.5
+
+// How far into his patience the insistence on a conversion starts to let go. See shortReach.
+const FADE_START = 0.7
+
+function shortReach(p, k, mustConvert = true, decay = 0) {
   const need = Math.max(1, k.distance ?? 10)
   const gained = (p.y ?? 0) - (k.yardLine ?? 0)
-  const fraction = Math.max(0, Math.min(1, gained / need))
-  const floor = mustConvert ? SHORT_FLOOR : SHORT_FLOOR_EARLY
-  return floor + (1 - floor) * fraction
+  const fraction = clamp01(gained / need)
+  if (!mustConvert) return SHORT_FLOOR_EARLY + (1 - SHORT_FLOOR_EARLY) * fraction
+  // ⚠️ ONE OFF SWITCH FOR THE WHOLE CHANGE, so the control arm of an A/B is the OLD behaviour and
+  // not a half-reverted version of the new one. Turning off only the curve left the fade in place, the
+  // control moved under me, and a baseline measured twice came back 18% and then 16%.
+  if (process.env.QB_CONVERT_FIRST === '0') return SHORT_FLOOR + (1 - SHORT_FLOOR) * fraction
+  const floor = Number(process.env.QB_SHORT_FLOOR ?? SHORT_FLOOR)
+  const curve = Number(process.env.QB_SHORT_CURVE ?? SHORT_CURVE)
+  const demand = floor + (1 - floor) * Math.pow(fraction, curve)
+  // ⚠️ AND THE DEMAND RELAXES AS THE PLAY AGES, WHICH IS WHAT KEEPS THIS FROM BEING SACKS.
+  //
+  // The curve alone bought the conversions and charged for them: on 3rd and 12 it took the sack rate
+  // from 11% to 23% over 300 held-out plays, because he held out for twelve yards that nobody was ever
+  // going to cover. Raising the floor did not help -- the cost is in the curve, not the floor.
+  //
+  // `decay` is the controller's own measure of how much play is left (readDecay), the SAME number the
+  // openness bar falls on: 0 at the snap, 1 once his patience is spent or the rush is on him. At 0 he
+  // insists on the first down; at 1 the discount is gone entirely and he takes the completion. That is
+  // the difference between "a checkdown is the last thing he considers" and "a checkdown is a sack".
+  // Nothing relaxes until he is FADE_START of the way through his patience: the fade from the snap
+  // relaxed the demand almost at once (urgency or elapsed reaches it fast) and gave back four fifths of
+  // the conversions it was there to win -- +2.3pp instead of +10.7pp, holdout.
+  const start = Number(process.env.QB_FADE_START ?? FADE_START)
+  const relax = clamp01((clamp01(decay) - start) / Math.max(1e-6, 1 - start))
+  return demand + (1 - demand) * relax
 }
 
 function clamp01(v) { return Math.max(0, Math.min(1, v)) }

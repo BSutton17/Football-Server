@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@jest/globals'
 import { createController } from '../ai/controller.js'
-import { estimateOpenness, rankTargets } from '../ai/reads.js'
+import { estimateOpenness, rankTargets, orderKey } from '../ai/reads.js'
 import { createKnowledge, applyEvent } from '../ai/knowledge.js'
 
 // [offline] The quarterback has to actually throw the ball.
@@ -197,6 +197,32 @@ describe('manual rooms', () => {
     expect(socket.of('go_release').length).toBeGreaterThan(0)
   })
 
+  // ⚠️ THE MANUAL RE-RANK DISCARDED THE WHOLE CONVERSION PREFERENCE, and nothing noticed because
+  // every other test of it calls rankTargets directly. This path re-sorts on where each receiver is
+  // HEADING, and it sorted on the score alone -- so "go for the first down rather than the checkdown"
+  // worked in automatic and did nothing in the mode the game is actually played in. Both sorts go
+  // through orderKey now, and this is the test that would have caught it.
+  it('still prefers the first down over the shorter throw after the anticipation re-rank', () => {
+    // 3rd and 12 from the 40, so the sticks are at 52. One receiver alone at SIX yards -- the throw
+    // that was the complaint -- and one past the marker with a defender two yards off him. The deep
+    // one is deliberately the LOWER-scoring of the two (0.36 against 0.51), so the only thing that can
+    // put him first is the tier.
+    //
+    // ⚠️ HARD, SO THE READ CARRIES NO NOISE. On medium the 0.12 of readNoise can push the covered
+    // receiver under the tier floor, and the test then passes or fails on the seed.
+    const sticksVsShort = () => ([
+      { id: 'qb',  team: 'o', x: 26, y: LOS - 6, state: 'ball', qb: true },
+      { id: 'rb0', team: 'o', x: 18, y: LOS + 6,  ready: true },        // nobody within ten yards
+      { id: 'wr0', team: 'o', x: 44, y: LOS + 13, ready: true },        // past the sticks, covered
+      { id: 'cb0', team: 'd', x: 46.1, y: LOS + 13.4 },
+    ])
+    const { socket, ai } = liveOffense({ mode: 'manual', difficulty: 'hard' })
+    for (let i = 0; i < 90; i++) ai.onEvent('positions_update', sticksVsShort())
+    ai.onEvent('manual_frozen', {})
+    expect(socket.of('throw_to_receiver').length).toBeGreaterThan(0)
+    expect(socket.of('throw_to_receiver')[0].payload).toBe('wr0')
+  })
+
   it('throws while frozen', () => {
     const { socket, ai } = liveOffense({ mode: 'manual', difficulty: 'medium' })
     for (let i = 0; i < 40; i++) ai.onEvent('positions_update', frame())
@@ -320,5 +346,138 @@ describe('⚠️ ON THIRD DOWN, OPEN IS NOT THE SAME AS USEFUL', () => {
 
   it('does nothing on 3rd and 1, where everyone is past the sticks', () => {
     for (const t of rankTargets(field(3, 1))) expect(t.shortOfSticks).toBe(false)
+  })
+})
+
+// ── Going for the first down instead of the checkdown ([qb]) ────────────────
+//
+// Asked for: "make the QB prefer to pick up a first down, especially on 3rd down, instead of just
+// throwing checkdowns. In fact checkdowns should usually be the last thing the QB considers."
+//
+// ⚠️ THE OBVIOUS READING OF THAT COMPLAINT WAS WRONG, and measuring first is the only reason the fix
+// works. He was not favouring the back in the flat: of 48 throws on 3rd and 8, a true checkdown (three
+// yards or less) was 8% of them, and the mean throw was 6.2 air yards — 6, 6, 6, over and over, which
+// is the depth a route sits at when it first DECLARES. He was releasing before anyone could reach the
+// marker. The ordering was barely the problem; the linear discount was, because six yards of an
+// eight-yard need kept 85% of its value and cleared the bar instantly.
+//
+// Measured paired on identical seeds, two separate holdout seed sets, and in BOTH modes:
+//
+//     automatic  3rd & 8    +15.3pp converted  +1.22 ± 0.39 yds   sacks 1% -> 4%
+//     automatic  3rd & 12   +10.0pp converted  +2.16 ± 0.44 yds   sacks 10% -> 10%
+//     manual     3rd & 8    +12.4pp converted  +1.00 ± 0.42 yds   sacks 0% -> 3%
+//     manual     3rd & 12    +6.0pp converted  +0.76 ± 0.31 yds   sacks 6% -> 5%
+//
+// and the behaviour itself: on 3rd and 8 the mean throw went 5.8 -> 7.1 air yards, throws past the
+// sticks 13% -> 31%, checkdowns 10% -> 2%. On 3rd and 12, checkdowns went to nought.
+describe('the read is tiered: conversion first, checkdown last', () => {
+  // 3rd & 12 from the 30, so the sticks are at 42. A wide-open back at the line, a moderately open
+  // receiver short of the marker, and a tighter one past it.
+  const tierField = (down, distance, overrides = {}) => {
+    const live = new Map([
+      ['qb',   { id: 'qb',  team: 'o', qb: true, x: 26, y: 27 }],
+      ['rb',   { id: 'rb',  team: 'o', ready: true, x: 20, y: 31, openness: overrides.rb ?? 0.98 }],
+      ['mid',  { id: 'mid', team: 'o', ready: true, x: 10, y: 38, openness: overrides.mid ?? 0.60 }],
+      ['conv', { id: 'conv', team: 'o', ready: true, x: 40, y: 45, openness: overrides.conv ?? 0.40 }],
+    ])
+    return { down, distance, yardLine: 30, live }
+  }
+
+  it('takes the first down over a more open man who cannot convert', () => {
+    const ranked = rankTargets(tierField(3, 12))
+    expect(ranked[0].id).toBe('conv')
+    expect(ranked[0].tier).toBe(2)
+  })
+
+  it('puts the checkdown last, behind a receiver it is more open than', () => {
+    const ranked = rankTargets(tierField(3, 12))
+    expect(ranked[ranked.length - 1].id).toBe('rb')
+    expect(ranked.find(t => t.id === 'rb').tier).toBe(0)
+  })
+
+  // ⚠️ A TIER HAS TO BE EARNED, OR THIS JUST THROWS INTERCEPTIONS. A blanketed man past the marker is
+  // a turnover, not a conversion.
+  it('will not promote a receiver who is smothered, however deep he is', () => {
+    const ranked = rankTargets(tierField(3, 12, { conv: 0.05 }))
+    expect(ranked[0].id).not.toBe('conv')
+    expect(ranked.find(t => t.id === 'conv').tier).toBe(0)
+  })
+
+  it('does nothing on 3rd and 1, where converting and checking down are the same throw', () => {
+    const ranked = rankTargets(tierField(3, 1))
+    expect(ranked[0].id).toBe('rb')          // everybody converts, so openness decides outright
+    for (const t of ranked) expect(t.tier).toBe(2)
+  })
+
+  // ⚠️ THE MANUAL RE-RANK THREW ALL OF THIS AWAY. controller.js re-sorts on where each receiver is
+  // HEADING in a manual room, and it sorted on the score alone — so the preference was live in every
+  // mode except the one the game is played in. Both sorts go through orderKey now.
+  it('orders by tier first and openness within it, through one shared key', () => {
+    // The converter is deliberately the LOWER-SCORING of the two here, so what is being shown is the
+    // tier doing the work rather than the discount happening to be enough on its own.
+    const ranked = rankTargets(tierField(3, 12, { conv: 0.35 }))
+    for (let i = 1; i < ranked.length; i++) {
+      expect(orderKey(ranked[i - 1])).toBeGreaterThanOrEqual(orderKey(ranked[i]))
+    }
+    const rb = ranked.find(t => t.id === 'rb')
+    const conv = ranked.find(t => t.id === 'conv')
+    // The checkdown is the MORE open of the two and still sorts below it.
+    expect(rb.score).toBeGreaterThan(conv.score)
+    expect(orderKey(rb)).toBeLessThan(orderKey(conv))
+  })
+})
+
+describe('how hard a throw short of the sticks is discounted', () => {
+  const at = (id, y, openness) => ({ id, team: 'o', x: 26, y, ready: true, openness })
+  // 3rd & 8 from the 40: the sticks are at 48 and the six-yard throw lands at 46.
+  const sixYards = (decay = 0) => {
+    const live = new Map([
+      ['qb', { id: 'qb', team: 'o', qb: true, x: 26, y: 38 }],
+      ['six', at('six', 46, 0.95)],
+    ])
+    return rankTargets({ down: 3, distance: 8, yardLine: 40, live }, { decay }).find(t => t.id === 'six')
+  }
+
+  // ⚠️ THE NUMBER THAT WAS THE BUG. Linearly, six of eight yards kept 0.40 + 0.6*0.75 = 85% of its
+  // value: 0.81 against a bar it cleared at once. Curved it keeps about 61%.
+  it('a six-yard throw on 3rd and 8 no longer scores like a conversion', () => {
+    const t = sixYards()
+    expect(t.score / t.trueScore).toBeLessThan(0.7)
+    // …and it is not crushed to nothing either — a sack is worse than six yards.
+    expect(t.score / t.trueScore).toBeGreaterThan(0.45)
+  })
+
+  it('still barely touches a throw that nearly gets there', () => {
+    const live = new Map([
+      ['qb', { id: 'qb', team: 'o', qb: true, x: 26, y: 38 }],
+      ['near', at('near', 47.5, 0.8)],
+    ])
+    const t = rankTargets({ down: 3, distance: 8, yardLine: 40, live }).find(x => x.id === 'near')
+    expect(t.score / t.trueScore).toBeGreaterThan(0.85)
+  })
+
+  // ⚠️ AND IT LETS GO LATE, WHICH IS WHAT KEEPS IT FROM BEING SACKS. The curve on its own took the
+  // sack rate on 3rd and 12 from 11% to 23% over 300 held-out plays: he held out for twelve yards
+  // nobody was going to cover. `decay` is the controller's own measure of how much play is left.
+  it('gives up the demand entirely once the play is spent', () => {
+    const early = sixYards(0)
+    const late = sixYards(1)
+    expect(late.score).toBeGreaterThan(early.score)
+    expect(late.score).toBeCloseTo(late.trueScore, 5)
+  })
+
+  it('holds the demand through the early part of the play rather than fading from the snap', () => {
+    // Fading from the snap gave back four fifths of the conversions: +2.3pp instead of +10.7pp.
+    expect(sixYards(0.3).score).toBeCloseTo(sixYards(0).score, 5)
+  })
+
+  it('leaves early downs alone — the curve and the fade are for downs that must convert', () => {
+    const live = new Map([
+      ['qb', { id: 'qb', team: 'o', qb: true, x: 26, y: 38 }],
+      ['six', at('six', 46, 0.95)],
+    ])
+    const sit = { down: 1, distance: 8, yardLine: 40, live }
+    expect(rankTargets(sit, { decay: 0 }).find(t => t.id === 'six').score)
+      .toBeCloseTo(rankTargets(sit, { decay: 1 }).find(t => t.id === 'six').score, 5)
   })
 })
