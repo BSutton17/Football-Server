@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@jest/globals'
 import { enqueue, processQueue, EVENT } from '../game/eventQueue.js'
-import { resolvePass } from '../game/utils/passOutcome.js'
+import { resolvePass, passProbabilities } from '../game/utils/passOutcome.js'
 import { PHASE } from '../game/stateMachine.js'
 
 // [209] Passing outcomes: completions, interceptions, incompletions, throwaways, and the
@@ -64,8 +64,26 @@ describe('completion → post-catch transition ([181])', () => {
 })
 
 describe('interception', () => {
+  // ⚠️ THIS PINNED A MAGIC ROLL AND BROKE ON A DELIBERATE REBALANCE. It asked for 0.15 on a
+  // smothered window with 50/50 ratings, which landed in the pick band only while the smothered
+  // interception rate was 20%. That rate was cut to 9% on purpose -- a heavily contested throw is
+  // knocked down, not picked, and the old number was skewing the solved table toward the run -- and
+  // this test has been failing ever since, unnoticed because Jest was not collecting the file (see
+  // quarterEnd.test.js).
+  //
+  // The band is DERIVED now, so a future rebalance moves it with the code instead of breaking a test
+  // that was never about the odds. The odds themselves are pinned on purpose in passOutcome.test.js,
+  // which is where that belongs -- and they need pinning: the comments in passOutcome.js record that
+  // the covered rate was once silently reverted.
   it('resolvePass intercepts a smothered window on a roll into the pick band', () => {
-    expect(resolvePass({ openness: 0.05, qbAccuracy: 50, receiverCatch: 50 }, () => 0.15).outcome).toBe('intercepted')
+    const throwAt = { openness: 0.05, qbAccuracy: 50, receiverCatch: 50 }
+    const { catchP, intP } = passProbabilities(throwAt.openness, throwAt.qbAccuracy, throwAt.receiverCatch)
+    expect(intP).toBeGreaterThan(0)                 // there IS a pick band to roll into
+    const intoTheBand = catchP + intP / 2
+    expect(resolvePass(throwAt, () => intoTheBand).outcome).toBe('intercepted')
+    // …and either side of it is not a pick.
+    expect(resolvePass(throwAt, () => catchP / 2).outcome).toBe('complete')
+    expect(resolvePass(throwAt, () => Math.min(0.999, catchP + intP + 0.001)).outcome).toBe('incomplete')
   })
 
   it('INTERCEPTION turns the defender into the live returner', () => {

@@ -2,7 +2,7 @@ import { describe, it, expect } from '@jest/globals'
 import { beginStoppage, endStoppage, isStopped, stoppageReason, tickStoppage, STOPPAGE } from '../game/pause.js'
 import { initGame, getGame } from '../game/gameState.js'
 import { validateCallTimeout } from '../game/validation.js'
-import { enqueue, processQueue, EVENT } from '../game/eventQueue.js'
+import { enqueue, processQueue, startNextPlay, EVENT } from '../game/eventQueue.js'
 import { createRoom, joinRoom } from '../game/roomManager.js'
 import { PHASE } from '../game/stateMachine.js'
 import { RULES } from '../constants.js'
@@ -47,20 +47,25 @@ describe('timeout tracking ([70])', () => {
     expect(s.stoppage).toBeNull()
   })
 
+  // ⚠️ THIS DROVE THE HALF THROUGH A LIVE PLAY AND HAS BEEN FAILING EVER SINCE THE RULE CHANGED.
+  // A period no longer ends the instant the clock strikes zero -- a down in progress is completed, and
+  // `startNextPlay` resolves the period after the whistle. See quarterEnd.test.js, which has the whole
+  // story, including why nothing reported it.
   it('resets both teams to three timeouts at halftime', () => {
     const roomId = 'to-half'
     createRoom(roomId, 'a'); joinRoom(roomId, 'b')
     const io = { sockets: { sockets: new Map() }, to: () => ({ emit: () => {} }) }
     const s = getGame(roomId) ?? initGame(roomId, 0)
     Object.assign(s, {
-      phase: PHASE.LIVE, quarter: 2, clock: 0, possession: 0, openingPossession: 0,
+      phase: PHASE.DEAD, quarter: 2, clock: 0, possession: 0, openingPossession: 0,
       timeouts: [1, 0], direction: 1, yardLine: 50, down: 1, distance: 10,
+      headless: true, nextPlayTimer: null,
     })
-    enqueue(roomId, EVENT.CLOCK_EXPIRED, {})
-    processQueue(roomId, s, io)
+    startNextPlay(roomId, io)
 
     expect(s.quarter).toBe(3)
     expect(s.timeouts).toEqual([RULES.TIMEOUTS_PER_HALF, RULES.TIMEOUTS_PER_HALF])
+    if (s.nextPlayTimer) clearTimeout(s.nextPlayTimer)   // the resolved period books the next play
   })
 })
 
