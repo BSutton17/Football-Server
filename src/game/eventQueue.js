@@ -427,6 +427,26 @@ function onPassComplete({ receiverId, x, y }, state, _io) {
   // no instant snap north the moment it secures the ball. See moveBallCarrier in movement.js.
   const catcher = state.offensePlayers.get(receiverId)
   if (catcher) {
+    // ── [forward progress] A curl or a comeback is spotted where it was CAUGHT ──────────
+    //
+    // Asked for: "for these routes the ball is downed where they caught it, not where they were
+    // tackled unless they begin moving upfield again."
+    //
+    // ⚠️ THE ENGINE WAS ACTIVELY CARRYING HIM BACKWARDS, so this was not a rounding matter. The
+    // momentum window two lines below exists to keep his route heading for a beat after the catch --
+    // "back on a curl", as the note says -- and the spot was wherever contact happened at the end of
+    // that. A receiver who caught the ball at the sticks could be marked a yard and a half short of
+    // them having done nothing wrong.
+    //
+    // The mark is set here, at the catch, and `runMovement` pushes it upfield as he does. So the spot
+    // is the furthest point his progress reached, which is the actual rule, and "unless they begin
+    // moving upfield again" falls out of it rather than needing a case of its own.
+    //
+    // ⚠️ ONLY ON A ROUTE THAT GAVE UP DEPTH. `givesUpDepth`, not `breaksBack`: a return comes back
+    // across the field without surrendering any, so it has no backward momentum to forgive, and
+    // forgiving it anyway would hand every crosser a free yard.
+    if (catcher.routeTraits?.givesUpDepth) state.progressSpot = { x, y }
+
     catcher.catchMomentum = CATCH_MOMENTUM_TIME
     catcher.caughtPass    = true   // [73] cap this carrier at its true top speed (no run breakaway gear)
 
@@ -537,6 +557,23 @@ function settleInterception(state, io, absX, absY) {
 }
 
 // payload: { carrierId, x, y, interceptionReturn? }
+// [forward progress] The spot, given where contact happened. Returns the mark when the carrier is the
+// man who caught a curl and has not got back to where he caught it; otherwise the contact spot itself.
+//
+// Measured in the OFFENSE's direction, which is what `dir` is for: "upfield" is +y going one way and
+// -y going the other, and a comparison that forgets this hands the forgiveness to the wrong team on
+// every second drive.
+function forwardProgress(state, carrierId, x, y) {
+  const mark = state.progressSpot
+  if (!mark) return { x, y }
+  // The off switch exists so the rule can be A/B'd in two processes against one code path, and so the
+  // question "is this doing anything at all in a real game" has an answer rather than an opinion.
+  if (process.env.FORWARD_PROGRESS === '0') return { x, y }
+  if (carrierId && state.ballCarrierId && carrierId !== state.ballCarrierId) return { x, y }
+  const dir = state.direction === 1 ? 1 : -1
+  return (mark.y - y) * dir > 0 ? { x: mark.x, y: mark.y } : { x, y }
+}
+
 function onTackle({ carrierId, x, y, interceptionReturn }, state, io) {
   // [190] Contact ends an interception return: the intercepting team takes over at the spot.
   if (interceptionReturn) { settleInterception(state, io, x, y); return }
@@ -546,6 +583,21 @@ function onTackle({ carrierId, x, y, interceptionReturn }, state, io) {
   // [fatigue effort] Contact tires both players: the carrier absorbing the hit and the nearest
   // defender making the tackle. Charged now, while the play's offense/defense maps are still populated.
   applyTackleStamina(state, carrierId, x, y)
+
+  // [forward progress] A curl or comeback is spotted where his progress stopped, not where contact
+  // did. The mark is only ever set on a route that gave up depth (see onPassComplete) and is only ever
+  // ahead of the tackle when he was still going backwards, so this is inert on every other play.
+  //
+  // ⚠️ APPLIED BEFORE THE SAFETY CHECK BELOW, deliberately. A receiver who catches it at his own 2
+  // and is driven into the end zone has not conceded a safety, and that is the same rule, not an
+  // exception to it.
+  {
+    const mark = forwardProgress(state, carrierId, x, y)
+    x = mark.x; y = mark.y
+    // Spent. It is cleared again when the next play is set up, but leaving a live mark lying on the
+    // state between the whistle and that reset is how a spot from the last play reaches the next one.
+    state.progressSpot = null
+  }
 
   // Record the exact spot the runner was brought down ([162]) — the authoritative dead-ball
   // location that the next LOS, the first-down measurement, and scoring all derive from.
@@ -1550,6 +1602,7 @@ export function startNextPlay(roomId, io, { quiet = false } = {}) {
   state.targetReceiverId      = null
   state.deadBallSpot          = null
   state.catchSpot             = null
+  state.progressSpot       = null
   state.qbScrambling          = false
   state.interceptionReturn    = false
   state.activeThrow           = null

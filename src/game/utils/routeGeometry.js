@@ -165,7 +165,7 @@ export function drawnRouteWaypoints(points, startX, startY, dir) {
 //   deepVertical — gets well downfield without breaking back; the deep shell should recognize it
 //   maxDepth     — deepest point past the LOS, in yards
 export function routeTraits(waypoints, startY, losY, dir, startX = null, pivotX = null) {
-  const empty = { settles: false, breaksBack: false, deepVertical: false, maxDepth: 0, goesNowhere: false }
+  const empty = { settles: false, breaksBack: false, deepVertical: false, maxDepth: 0, goesNowhere: false, givesUpDepth: false }
   if (!Array.isArray(waypoints) || waypoints.length === 0) return empty
 
   const depthOf = (p) => (p.y - losY) * dir
@@ -230,7 +230,13 @@ export function routeTraits(waypoints, startY, losY, dir, startX = null, pivotX 
 
   // goesNowhere is surfaced because the THROW LIGHT needs it as well as `settles` does: a route the
   // receiver never runs has nothing to declare, so it is throwable from the snap ([screen]).
-  return { settles, breaksBack, deepVertical, maxDepth, goesNowhere }
+  //
+  // ⚠️ `givesUpDepth` IS `comesDown` ON ITS OWN, and none of the three flags above can stand in for
+  // it. [forward progress] needs exactly "a curl or a comeback": a route whose last leg surrenders
+  // depth, so the receiver is travelling AWAY from the sticks when the ball arrives. `breaksBack` also
+  // catches a return, which works back across the field without losing any depth and so has no backward
+  // momentum to forgive; `settles` also catches a route the receiver never runs at all.
+  return { settles, breaksBack, deepVertical, maxDepth, goesNowhere, givesUpDepth: comesDown }
 }
 
 // Turn angle in degrees at each interior vertex — the client uses the same threshold to decide

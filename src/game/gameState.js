@@ -141,6 +141,8 @@ export function initGame(roomId, offenseSlot, { mode, difficulty, quarterSeconds
     // Recorded the instant a catch is secured; the basis for first-down measurement and
     // future passing statistics. Null until a pass is completed.
     catchSpot: null,
+    // [forward progress] Where a curl/comeback catch is spotted from, pushed upfield as he advances.
+    progressSpot: null,
 
     // [184][185] True once the offense converts the QB into a runner on a pass play.
     // Irreversible for the rest of the play: it locks out throwing and routes the QB
@@ -318,6 +320,7 @@ export function resetPlay(state) {
   state.ballCarrierId    = null
   state.targetReceiverId = null
   state.catchSpot        = null
+  state.progressSpot     = null
   state.qbScrambling     = false
   state.interceptionReturn = false
   state.playDesign       = null

@@ -149,9 +149,14 @@ describe('routeTraits', () => {
     expect(t.maxDepth).toBeCloseTo(25, 5)
   })
 
+  // ⚠️ `toEqual`, SO THE SHAPE IS PART OF THE ASSERTION. Adding a trait fails this test on purpose:
+  // the empty route is the contract every caller falls back to, and a flag that exists on a real route
+  // but is missing here reads as `undefined` rather than false. `givesUpDepth` was added for [forward
+  // progress] and had to be added here too.
   it('an empty route classifies as nothing rather than throwing', () => {
     expect(routeTraits([], START, LOS, DIR)).toEqual({
       settles: false, breaksBack: false, deepVertical: false, maxDepth: 0, goesNowhere: false,
+      givesUpDepth: false,
     })
   })
 })

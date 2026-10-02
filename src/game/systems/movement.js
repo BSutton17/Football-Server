@@ -2407,7 +2407,27 @@ export function runMovement(state, _io, dt) {
   applySeparation(state.offensePlayers, dt)
   applyLineSpacing(state.offensePlayers, dt)
   moveDefense(state, dt)
+  advanceForwardProgress(state)
   if (lineDebugOn()) logLine(state)   // [pocket] OL/DL movement + protection trace
+}
+
+// [forward progress] Push the curl/comeback mark upfield as the carrier gets there.
+//
+// The mark is set at the catch (onPassComplete) and the spot is taken from whichever is further
+// upfield, the mark or the tackle. Advancing it here is what makes that the FURTHEST POINT HIS PROGRESS
+// REACHED rather than merely "the catch or the tackle", and it is what the player meant by "unless they
+// begin moving upfield again" -- once he gets past where he caught it, the mark follows him and the
+// forgiveness quietly stops applying.
+//
+// ⚠️ UPFIELD IS A DIRECTION, NOT A SIGN. `direction` flips between drives, so a bare `y >` comparison
+// would advance the mark for one team and never for the other.
+export function advanceForwardProgress(state) {
+  const mark = state.progressSpot
+  if (!mark) return
+  const carrier = state.ballCarrierId ? state.offensePlayers.get(state.ballCarrierId) : null
+  if (!carrier) return
+  const dir = state.direction === 1 ? 1 : -1
+  if ((carrier.y - mark.y) * dir > 0) { mark.x = carrier.x; mark.y = carrier.y }
 }
 
 // ── Run-play player tracing ([run debug]) ────────────────────────────────────
