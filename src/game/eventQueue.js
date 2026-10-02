@@ -1317,6 +1317,12 @@ function onClockExpired(_payload, state, io) {
   // the period from there. That path already existed — it was written for the case where a
   // play-ending event beat CLOCK_EXPIRED in the queue — and it is now simply the only path.
   if (state.phase === PHASE.LIVE) {
+    // ⚠️ NOT DEAD STATE, THOUGH IT LOOKS LIKE IT. Nothing in src/ reads this flag -- the period is
+    // resolved off `clock <= 0` in startNextPlay, which is the one signal -- so a grep that excludes
+    // the tests concludes it is vestigial and deletes it. It is the observable marker that the engine
+    // NOTICED the expiry and chose to defer, and pauseAndQuarter.test.js asserts it for exactly that:
+    // "it is remembered, not acted on". Without it, deferring and silently dropping the event look
+    // identical from outside.
     state.periodEndPending = true
     console.log(`[game] ${state.roomId} clock hit zero during a live play — finishing the down first`)
     return

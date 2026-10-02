@@ -20,8 +20,13 @@ import { RULES } from '../constants.js'
 // COUNT: `ls src/__tests__/*.js | wc -l` against `jest --listTests | wc -l`, and run the suite with
 // `--runTestsByPath $(ls src/__tests__/*.js | tr '\n' ' ')` when they disagree.
 //
-// So there are two paths to a period ending and BOTH are tested here now. The deferred one is the
-// common one in a real game, and it had no coverage outside the solo half-time case.
+// So there are two paths to a period ending and BOTH are tested here now.
+//
+// The first half of the rule -- that a live down is not cut off -- is ALSO asserted in
+// pauseAndQuarter.test.js, which is where it was added with the fix and which additionally pins
+// `periodEndPending`. The duplication here is deliberate: this is the period-transition file and it
+// should not describe half a rule. The genuinely new coverage below is the deferred RESOLUTION --
+// quarter advance, half-time, game over, tie -- which had none outside the solo half-time case.
 
 function mockIo(socketIds = []) {
   const emits = []
