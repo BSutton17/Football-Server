@@ -25,12 +25,16 @@ const BASE = Number(process.env.SEED_BASE ?? 64000)
 // different path through tryThrow (its own re-rank, board time instead of live time). A result measured
 // only in automatic says nothing certain about the mode anybody uses. ARM_MODE=manual switches it.
 const MODE = process.env.ARM_MODE ?? 'automatic'
+// Which play type to force. 'pass' is the default because the QB changes are what this was built for;
+// FORCE_TYPE=run gives the other half, which is what a question about the SOLVED MIX needs -- the mix is
+// a choice between the two, so it can only be judged on both payoffs measured the same way.
+const FORCE = process.env.FORCE_TYPE ?? 'pass'
 
 for (let i = 0; i < N; i++) {
   const seed = BASE + i
   const ctx = createTrainingGame({ seed, mode: MODE })
   try {
-    const r = runPlay(ctx, { down, distance, yardLine, ballX: HASHES[i % 3], forcePlayType: 'pass' })
+    const r = runPlay(ctx, { down, distance, yardLine, ballX: HASHES[i % 3], forcePlayType: FORCE })
     if (r.outcome === 'no_snap' || r.outcome === 'hung') continue
     console.log(`${seed},${r.yards ?? 0},${(r.yards ?? 0) >= distance ? 1 : 0},${r.outcome}`)
   } finally { destroyTrainingGame(ctx) }
