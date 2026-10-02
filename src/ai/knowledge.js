@@ -59,6 +59,9 @@ export function createKnowledge(slot) {
     mode: 'automatic',
     difficulty: 'easy',
     specialTeams: null,
+    // What this seat has already committed to on the kick currently on the field. See the note
+    // on `special_teams_update` below: it cannot live on `specialTeams`, which is replaced wholesale.
+    aiKick: null,
     decision: null,
 
     // The field. `own` is this seat's players, `opp` the other side's — named by SIDE rather than
@@ -173,6 +176,27 @@ export function applyEvent(k, event, payload) {
     // short from anywhere. Forty attempts from each of seven distances: none good, all short.
     case 'special_teams_update':
       k.specialTeams = payload ?? null
+      // ⚠️ THE MENU IT HAD ALREADY ANSWERED STAYED OPEN IN HERE FOR THE WHOLE KICK.
+      //
+      // `decision` is only ever cleared by a `game_state`, and resolveDecision does NOT send one
+      // when the answer was punt or field goal -- it sends this instead. So the AI answered the
+      // 4th-down menu, the kicking interface came up, and every wake-up for the next eight seconds
+      // found a decision still sitting on its knowledge and re-answered it (refused: the menu is
+      // closed) rather than touching the meter.
+      //
+      // It therefore fired ZERO kick inputs, on every kick it has ever taken. The meter drained
+      // from full to 0.32 and the aim never moved off centre: punts came out at 21.4 yards, the
+      // floor of the distance curve, and field goals went 0 for 20 from 37 and 49 yards in the lab.
+      // Both were reported as separate bugs and neither was about kicking.
+      //
+      // A kick on the field IS the decision having been resolved, so the menu closes here.
+      if (payload) k.decision = null
+      // Per-kick memory for the AI's own committed strike. It cannot live on `k.specialTeams`:
+      // that object is REPLACED by every one of these updates, so anything stored on it is
+      // forgotten ten times a second -- which re-rolled the field-goal make/miss intent on every
+      // frame of the kick.
+      if (!payload) k.aiKick = null
+      else if (!k.aiKick || k.aiKick.kickType !== payload.kickType) k.aiKick = { kickType: payload.kickType }
       return k
 
     case 'positions_update': {
@@ -220,6 +244,7 @@ function onGameState(k, gs) {
   k.mode = gs.mode ?? k.mode
   k.difficulty = gs.difficulty ?? k.difficulty
   k.specialTeams = gs.specialTeams ?? null
+  if (!k.specialTeams) k.aiKick = null
   k.decision = gs.decision ?? null
 
   // Each play starts from a clean field: the server wipes placed players between plays, so a

@@ -188,35 +188,49 @@ export function specialTeamsAction(k, rng = Math.random) {
     return { event: 'fg_block', payload: { position: 0 } }
   }
 
-  // ⚠️ BACKSPIN, WHICH THE COMPUTER NEVER USED. It is a punt-only setup toggle that checks the
-  // ball up instead of letting it roll, and it is the difference between pinning somebody inside
-  // the ten and watching the ball trickle into the end zone for a touchback. A human had it and the
-  // AI did not, so the AI gave away field position it never had to.
+  // ⚠️ THE WHOLE STRIKE IS COMMITTED IN ONE INPUT, AND THE AI DOES NOT WORK THE METER.
   //
-  // Decided before any power is built, and only when there is something to pin against: from deep
-  // in its own end the roll is worth more than the placement.
-  if (st.kicking && st.kickType === 'punt' && st.backspin !== true && wantsBackspin(k)) {
-    return { event: 'special_teams_input', payload: { backspin: true } }
-  }
-
-  // ⚠️ THE POWER IS STATED, NOT TAPPED OUT. Tapping is a hand-speed simulation, and the computer
-  // has no hand: it only acts when a `special_teams_update` arrives, so its meter was set by the
-  // broadcast cadence and it punted 22 yards. It names the power it is going for, once, and then
-  // goes on tapping for AIM exactly as before -- where the kick goes is unchanged.
-  if (st.kicking && st.phase === 'setup' && st.__aiPower === undefined) {
-    const want = kickPowerFor(st, k, rng)
-    st.__aiPower = want
-    return { event: 'special_teams_input', payload: { power: want, aim: nextTap(st, k, rng) } }
-  }
-
-  // Kicking. The meter is tapped up with alternating aim so the angle lands where it was aimed:
-  // each tap adds power AND rotates, so an odd number of taps leaves the aim off-centre unless the
-  // rotations cancel.
+  // The meter is a hand-speed minigame and the computer has no hand. What it had instead was a
+  // dependence on how often `special_teams_update` happened to be broadcast, and that dependence
+  // did not merely make it a poor kicker -- combined with the stale-menu bug in knowledge.js it
+  // meant it fired no kick inputs AT ALL. Measured: punts 21.4 yards every time (the floor of the
+  // distance curve) and field goals 0 for 20 from 37 and 49 yards.
+  //
+  // So it states what it is doing -- power, aim, and the backspin toggle -- in a single input, the
+  // same abstraction the make/miss intent was already using. One message per kick, no tap loop, no
+  // cadence to depend on, and the result is a function of the decision rather than of the network.
+  //
+  // ⚠️ NOT A HANDICAP BYPASS AND NOT A PERFECT KICKER. The make/miss rate is unchanged (it is
+  // still `fieldGoalChance`, decided here and then expressed as an aim instead of being lost), and
+  // punt power is deliberately short of full with real spread -- see kickPowerFor.
   if (st.kicking && st.phase === 'setup') {
-    return { event: 'special_teams_input', payload: { aim: nextTap(st, k, rng) } }
+    const memo = kickMemo(k, st)
+    if (memo.committed) return null                 // one strike per kick; nothing left to say
+    memo.committed = true
+    return {
+      event: 'special_teams_input',
+      payload: {
+        power: kickPowerFor(st, k, rng),
+        angle: aimFor(st, k, memo, rng),
+        // Punt-only: checks the ball up instead of letting it roll, which is the difference between
+        // pinning somebody inside the ten and a touchback. A human had this and the AI did not.
+        ...(st.kickType === 'punt' ? { backspin: wantsBackspin(k) } : {}),
+      },
+    }
   }
 
   return null
+}
+
+// This seat's memory of the kick currently on the field.
+//
+// ⚠️ IT CANNOT LIVE ON `st`. The view object is replaced wholesale by every
+// `special_teams_update`, so a flag written on it is forgotten ten times a second -- which is how
+// the field-goal make/miss intent came to be re-rolled on every frame of the kick. knowledge.js
+// owns `aiKick` and clears it when the kick ends.
+function kickMemo(k, st) {
+  if (!k.aiKick || k.aiKick.kickType !== st.kickType) k.aiKick = { kickType: st.kickType }
+  return k.aiKick
 }
 
 // How well the computer strikes this one, as a fraction of the meter.
@@ -239,23 +253,29 @@ function kickPowerFor(st, k, rng) {
   return Math.max(0.35, Math.min(1, PUNT_POWER_MEAN + jitter))
 }
 
-// Which way to tap next. The AI decides ONCE per kick whether this one is going in (at the rate the
-// design specified) and then aims accordingly: at the target when it means to make it, deliberately
-// wide when it does not. Everything else is just building the meter.
-function nextTap(st, k, rng) {
-  const target = st.targetAngle ?? 0
-  const aim = st.angle ?? 0
+// Where the kick is aimed. The AI decides ONCE per kick whether this one is going in, at the rate
+// the design specified, and then aims accordingly: at the target when it means to make it,
+// deliberately wide when it does not.
+//
+// ⚠️ THE INTENT USED TO BE DECIDED AND THEN NEVER EXPRESSED. It was turned into one tap of a
+// rotation that takes ten taps to cross the face of the uprights, and the AI was firing no taps, so
+// the aim sat on nought and the make/miss decision reached the ball as noise. Every band and curve
+// in this file was being computed and thrown away. It is stated outright now.
+const MISS_BY = 0.8
 
-  // Decide the outcome once, on the first tap, and remember it on the state the AI owns.
-  if (st.__aiIntent === undefined) {
+function aimFor(st, k, memo, rng) {
+  const target = st.targetAngle ?? 0
+  // A punt has no uprights to split: the target is straight ahead and the aim stays there.
+  if (st.kickType === 'punt' || st.kickType === 'kickoff') return target
+
+  if (memo.intent === undefined) {
     const chance = st.kickType === 'extra_point'
       ? XP_MAKE_CHANCE
       : fieldGoalChance(st.fieldGoalDistance ?? yardsToGoal(k) + 17)
-    st.__aiIntent = rng() < chance ? 'make' : 'miss'
+    memo.intent = rng() < chance ? 'make' : 'miss'
   }
 
-  const wanted = st.__aiIntent === 'make' ? target : (target > 0 ? -0.8 : 0.8)
-  return aim < wanted ? 'right' : 'left'
+  return memo.intent === 'make' ? target : (target > 0 ? -MISS_BY : MISS_BY)
 }
 
 // Punting from far enough upfield that the ball would otherwise reach the end zone on the roll.

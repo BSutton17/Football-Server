@@ -1104,27 +1104,34 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     try { doSpecialTeams() } finally { kicking = false }
   }
 
-  // ⚠️ THE COMPUTER TAPPED ONCE PER BROADCAST AND PUNTED 22 YARDS.
+  // ⚠️ THE COMPUTER COULD NOT KICK AT ALL, AND TWICE THE REASON LOOKED LIKE THE POWER METER.
   //
-  // A tap is worth +2% of the meter and the drain is 25.7% a second, so holding the bar takes about
-  // thirteen taps a second. The AI only acts when it hears `special_teams_update`, which is sent
-  // when the DISPLAYED power changes. Measured in a real game: the human reached 75% of the meter
-  // and punted 40 yards; the computer reached NINE PERCENT and punted 21.8 -- four times out of
-  // four, which is the floor of the distance curve.
+  // Reported as "the AI punts 22 yards", then as "still punting at the minimum" after a fix aimed
+  // at the meter. The second report is the useful one: a fix that does not move the number was not
+  // the fault. scripts/kickLab.mjs measured the whole path and added the column that found it --
+  // the power the ball was struck at. It was full-meter-minus-one-complete-drain, on every kick.
+  // The AI was not kicking badly. It was firing NOTHING, and 21.4 yards is what a punt travels at
+  // no power. Field goals went 0 for 20 from 37 and 49 yards for the same reason.
   //
-  // ⚠️ SO ITS KICK WAS DECIDED BY BROADCAST CADENCE, AND TAPPING HARDER DOES NOT FIX THAT. Firing
-  // a burst of taps per update was tried: in the headless harness the AI reaches 100% of the meter
-  // with ONE tap per update, which is not what prod does with the same code, so the harness cannot
-  // measure the thing being changed. A fix that can only be verified in production is not a fix.
+  // The cause was in neither the meter nor the policy: `k.decision` is cleared only by a
+  // `game_state`, and resolving the menu into a punt or a field goal does not send one. So the
+  // answered menu stayed open in the AI's knowledge and every wake-up for the rest of the kick
+  // re-answered it instead of kicking. Fixed in knowledge.js, where the view is what was wrong.
   //
-  // The computer does not have a thumb. Simulating one through an event bus is what produced the
-  // 22-yard punt, so it states the power it is going for instead -- the same kind of abstraction as
-  // the make/miss intent it already decides up front for a field goal (see nextTap). Deterministic,
-  // testable, and no longer coupled to how often a message happens to be sent.
+  // Two things remain true here. A KICK OUTRANKS A MENU: if both are somehow present, the ball on
+  // the field is the live question. And the kick that this call just put on the field is acted on
+  // IN THIS CALL -- its broadcast woke this function re-entrantly and the guard below swallowed it,
+  // which is right for a tap loop and wrong for a one-shot strike. Without it the computer sits
+  // silent until the five-second inactivity timer starts the meter for it, so every AI kick took
+  // eight and a half seconds of real time.
   function doSpecialTeams() {
-    const action = k.decision
-      ? fourthDownChoice(k, rng)
-      : specialTeamsAction(k, rng)
+    if (k.specialTeams) return fireAction(specialTeamsAction(k, rng))
+    if (!k.decision) return
+    fireAction(fourthDownChoice(k, rng))
+    if (k.specialTeams) fireAction(specialTeamsAction(k, rng))
+  }
+
+  function fireAction(action) {
     if (!action) return
     say('special teams:', action.event, JSON.stringify(action.payload))
     socket.fire(action.event, action.payload)

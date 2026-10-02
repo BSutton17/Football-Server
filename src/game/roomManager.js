@@ -1,4 +1,5 @@
 import { GAME_MODE, DIFFICULTY } from '../constants.js';
+import { isAiSocketId } from '../ai/virtualSocket.js';
 
 const VALID_DIFFICULTIES = new Set(Object.values(DIFFICULTY));
 
@@ -117,6 +118,15 @@ export function getRoles(roomId) {
 
 export function getRoom(roomId) {
   return rooms.get(roomId) ?? null;
+}
+
+// Whether a seat is held by the computer. Resolved from the room rather than trusted from anything
+// a client sends, and kept here because more than one part of the engine now asks: the kicking
+// engine accepts a committed strike only from a computer seat, and serializePositions gives a
+// computer offense the openness read a human on this difficulty would not get.
+export function slotIsAi(roomId, slot) {
+  const id = rooms.get(roomId)?.players?.[slot];
+  return !!id && isAiSocketId(id);
 }
 
 export function isFull(roomId) {
