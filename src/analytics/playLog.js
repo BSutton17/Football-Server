@@ -20,6 +20,7 @@ import { appendFileSync, writeFileSync, mkdirSync, existsSync, readFileSync, sta
 import { computeReceiverOpenness } from '../game/utils/openness.js'
 import { isReceiverReady } from '../game/serialization.js'
 import { RECEIVER_LABELS } from '../ai/knowledge.js'
+import { ratingOf } from '../data/ratings.js'
 import { join } from 'node:path'
 import { execSync } from 'node:child_process'
 
@@ -123,8 +124,7 @@ function offenseSnapshot(state) {
       drawnRoute: (p.drawnRoute ?? p.routeDrawn ?? null)?.map(w => ({ dx: r2(w.dx), dd: r2(w.dd) })) ?? null,
       routeTraits: p.routeTraits ?? null,
       routeDepthScale: r2(p.routeDepthScale),
-      ovr: p.ratings?.ovr ?? null,
-      speed: p.ratings?.speed ?? null,
+      ...ratingsOf(p),
     })
   }
   return out
@@ -179,11 +179,26 @@ function defenseSnapshot(state) {
       // outside leverage, measured from the ball.
       shade: shadeOf(p, c, state),
       leverage: r2(leverageOf(p, c, state)),
-      ovr: p.ratings?.ovr ?? null,
-      speed: p.ratings?.speed ?? null,
+      ...ratingsOf(p),
     })
   }
   return out
+}
+
+// ⚠️ THE RATING THE SIM USED, NOT THE RAW FIELD. This logged `p.ratings?.speed ?? null`, and the
+// engine does not read ratings that way -- `ratingOf` falls back to the POSITION BASELINE when a player
+// has none. So a corner with no roster was recorded as `speed: null` while actually running at 90.
+//
+// That made `null` mean two different things, and the ambiguity hid a real bug for a whole game: every
+// one of the computer's 332 player records came back with no speed, which reads as a logging gap and was
+// in fact a synthetic roster (see ai/roster.js). `hasRatings` is what separates the two now -- the
+// number is always what the simulation used, and the flag says whether it came from a real player.
+function ratingsOf(p) {
+  return {
+    ovr: p.ratings?.ovr ?? null,
+    speed: r2(ratingOf(p, 'speed')),
+    hasRatings: !!p.ratings,
+  }
 }
 
 // Every eligible receiver's openness, as the offense reads it.

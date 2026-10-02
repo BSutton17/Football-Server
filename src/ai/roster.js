@@ -47,8 +47,29 @@ export function syntheticRoster(teamId = 'AI') {
 // not look like a player. A malformed roster falls back to synthetic rather than producing an AI
 // that cannot field a team — an opponent with average players is a game, an opponent with no
 // players is a bug report.
+// ⚠️ FALLING BACK TO SYNTHETIC IS A SILENT, WHOLE-GAME DEGRADATION, SO IT SAYS SO NOW.
+//
+// A synthetic roster has ids and positions and NOTHING ELSE: no ratings, no X-Factors. The computer
+// then plays on generic position baselines for speed, awareness, catching, route running and
+// tackling, with the entire X-Factor mechanic missing on its side, against a human using their real
+// roster. And it is invisible from the outside, because the generated ids (`sea_cb1`) are identical
+// to the real ones, so the opponent still shows as Seattle with Seattle's logo.
+//
+// It happened for a whole game before anybody noticed, and it was reported as a gameplay complaint --
+// "the CBs were getting burned deep and the offense just could not do much" -- rather than as a bug,
+// which is exactly what an invisible handicap looks like from the player's chair. One line in the log
+// would have found it on the first snap.
+function fallToSynthetic(teamId, why) {
+  console.warn(`[offline] ⚠️ ${teamId ?? 'the computer'} is fielding a SYNTHETIC roster (${why}) -- ` +
+    'no ratings and no X-Factors, position baselines only. The client sends the roster; a solo room ' +
+    'without one is a handicapped opponent.')
+  return syntheticRoster(teamId)
+}
+
 export function normalizeRoster(supplied, teamId) {
-  if (!Array.isArray(supplied) || supplied.length === 0) return syntheticRoster(teamId)
+  if (!Array.isArray(supplied) || supplied.length === 0) {
+    return fallToSynthetic(teamId, supplied == null ? 'none was sent' : 'the one sent was empty')
+  }
 
   const clean = supplied
     .filter(p => p && typeof p.id === 'string' && typeof p.position === 'string')
@@ -66,5 +87,20 @@ export function normalizeRoster(supplied, teamId) {
   for (const p of clean) have[p.position] = (have[p.position] ?? 0) + 1
   const enough = (have.WR ?? 0) + (have.TE ?? 0) + (have.RB ?? 0) >= 5 &&
     (have.CB ?? 0) + (have.S ?? 0) + (have.LB ?? 0) >= 7
-  return enough ? clean : syntheticRoster(teamId)
+  if (!enough) {
+    return fallToSynthetic(teamId,
+      `only ${(have.WR ?? 0) + (have.TE ?? 0) + (have.RB ?? 0)} pass catchers and ` +
+      `${(have.CB ?? 0) + (have.S ?? 0) + (have.LB ?? 0)} in coverage, from ${supplied.length} sent`)
+  }
+
+  // ⚠️ AND A ROSTER WITH NO RATINGS IS NOT A ROSTER, however many names are in it. It would pass the
+  // count test above and field eleven men who are all position baselines -- the same degradation as
+  // synthetic, arriving through the front door and without the warning.
+  const rated = clean.filter(p => p.ratings).length
+  if (rated === 0) {
+    console.warn(`[offline] ⚠️ ${teamId ?? 'the computer'} was sent ${clean.length} players and NOT ONE ` +
+      'has ratings -- it will play on position baselines with no X-Factors.')
+  }
+
+  return clean
 }

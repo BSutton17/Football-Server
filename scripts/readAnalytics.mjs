@@ -96,6 +96,47 @@ for (const p of plays) {
   }
 }
 
+// ⚠️ WHETHER EITHER SIDE HAD A ROSTER AT ALL, stated up front. A synthetic roster is ids and
+// positions with no ratings and no X-Factors, and it is invisible in play: the generated ids match the
+// real ones, so the opponent still shows as its real team. It cost a whole game before anybody noticed,
+// and the complaint that surfaced it was "the CBs were getting burned deep".
+{
+  const sides = new Map()
+  for (const p of plays) {
+    for (const [side, group] of [['offense', p.offense], ['defense', p.defense]]) {
+      for (const pl of group?.players ?? []) {
+        const team = String(pl.id).split('_')[0]
+        if (team === 'auto') continue
+        const k = `${team} ${side}`
+        const row = sides.get(k) ?? { rated: 0, total: 0, known: 0 }
+        row.total++
+        // ⚠️ A REPORT WRITTEN BEFORE `hasRatings` EXISTED CANNOT ANSWER THIS, and must not be made to
+        // guess. Reading a missing field as false reported the HUMAN'S fully-rated team as synthetic,
+        // which is the same ambiguity this field was added to remove, one layer up.
+        if (typeof pl.hasRatings === 'boolean') { row.known++; if (pl.hasRatings) row.rated++ }
+        sides.set(k, row)
+      }
+    }
+  }
+  const known = [...sides].filter(([, v]) => v.known > 0)
+  const bad = known.filter(([, v]) => v.rated === 0)
+  if (!sides.size) {
+    // nothing to say
+  } else if (!known.length) {
+    console.log('')
+    console.log('  ── rosters ──')
+    console.log('    (this report predates the roster check — replay a game to see it)')
+  } else {
+    console.log('')
+    console.log('  ── rosters ──')
+    for (const [k, v] of known) {
+      console.log(`    ${k.padEnd(16)} ${v.rated}/${v.known} players carried real ratings` +
+        (v.rated === 0 ? '   ⚠️ SYNTHETIC — baselines only, no X-Factors' : ''))
+    }
+    if (bad.length) console.log('    ⚠️ A side with no ratings is a handicapped team. See ai/roster.js.')
+  }
+}
+
 console.log(`
   ── totals ──
    plays              ${plays.length}   (${passes.length} pass, ${plays.length - passes.length} run)

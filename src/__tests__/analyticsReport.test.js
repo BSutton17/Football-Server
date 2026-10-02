@@ -125,6 +125,56 @@ describe('what the report calls the outcome of a play', () => {
   })
 })
 
+// ⚠️ `speed: null` MEANT TWO DIFFERENT THINGS, AND THE AMBIGUITY HID A REAL BUG FOR A WHOLE GAME.
+//
+// The snapshot logged `p.ratings?.speed ?? null`, but the engine reads ratings through `ratingOf`, which
+// falls back to the POSITION BASELINE. So a corner with no roster was recorded as having no speed while
+// actually running at 90 — and when every one of the computer's 332 player records came back null, it
+// read as a logging gap. It was a synthetic roster: no ratings, no X-Factors, a handicapped opponent for
+// the whole game, reported only as "the CBs were getting burned deep".
+//
+// The number is now always what the simulation used; `hasRatings` is the separate question.
+describe('the ratings in the report are the ones the sim used', () => {
+  const withPlayers = (offense, defense) => {
+    const s = state('an-ratings')
+    s.offensePlayers = new Map(offense.map(p => [p.id, p]))
+    s.defensePlayers = new Map(defense.map(p => [p.id, p]))
+    return s
+  }
+
+  it('records the position baseline for a player with no ratings, not null', () => {
+    const s = withPlayers(
+      [{ id: 'sea_wr1', label: 'WR', x: 20, y: 50 }],
+      [{ id: 'sea_cb1', label: 'CB', x: 21, y: 51 }],
+    )
+    log.beginPlay(s)
+    log.noteEvent(s, 'TACKLE', {})
+    log.endPlay(s)
+
+    const r = lastRecord()
+    const wr = r.offense.players.find(p => p.id === 'sea_wr1')
+    const cb = r.defense.players.find(p => p.id === 'sea_cb1')
+    expect(wr.speed).toBe(92)          // the WR baseline — what the sim ran him at
+    expect(cb.speed).toBe(90)          // the CB baseline
+    expect(wr.hasRatings).toBe(false)  // …and the report says where that number came from
+    expect(cb.hasRatings).toBe(false)
+  })
+
+  it('records a real rating as itself, and flags it as real', () => {
+    const s = withPlayers(
+      [{ id: 'ind_wr1', label: 'WR', x: 20, y: 50, ratings: { speed: 93, ovr: 88 } }],
+      [{ id: 'ind_cb1', label: 'CB', x: 21, y: 51, ratings: { speed: 95 } }],
+    )
+    log.beginPlay(s)
+    log.noteEvent(s, 'TACKLE', {})
+    log.endPlay(s)
+
+    const r = lastRecord()
+    expect(r.offense.players[0]).toMatchObject({ speed: 93, ovr: 88, hasRatings: true })
+    expect(r.defense.players[0]).toMatchObject({ speed: 95, hasRatings: true })
+  })
+})
+
 describe('recording is opt-in', () => {
   it('writes nothing for a room that is not a solo game', () => {
     const before = recordsFor().length
