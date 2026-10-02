@@ -135,6 +135,11 @@ export function serializeGameState(state, viewerSlot) {
     // started a solo game — a refresh would otherwise lose the flag, and with it the Set Defense
     // button, which is the same class of bug as the reconnect role drift.
     solo: !!state.solo,
+    // [transition screens] ⚠️ THE CLIENT COULD NOT SEE THAT THE GAME WAS WAITING FOR IT. The
+    // half-time hold lives only in React state (`periodTransition`), so a refresh destroyed the "Tap to
+    // continue" affordance while the server went on waiting for the tap -- a softlock that refreshing
+    // made worse rather than better. Sent so a reconnecting client can put the overlay back.
+    awaitingTransitionTap: !!state.awaitingTransitionTap,
     // [chew clock] Whether this viewer may chew the clock on this snap. Only the conditions that hold
     // still for the whole pre-snap (offense, solo, no kick or menu) — the play-clock threshold moves
     // every tick, so the client applies `chewMinPlayClock` against the clock it is already showing.

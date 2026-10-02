@@ -9,6 +9,7 @@ import { getTokensByRoomId, invalidateSession } from '../game/sessionManager.js'
 import { stopGameLoop } from '../game/simulation.js'
 import { PHASE } from '../game/stateMachine.js'
 import { startNextPlay } from '../game/eventQueue.js'
+import { serializeGameState } from '../game/serialization.js'
 import { registerRoomHandlers } from '../socket/roomHandlers.js'
 import { registerTeamSelectHandlers } from '../socket/teamSelectHandlers.js'
 import { registerGameHandlers } from '../socket/gameHandlers.js'
@@ -71,12 +72,41 @@ function endTheHalf() {
 }
 
 describe('half-time in a solo game', () => {
-  it('⚠️ HOLDS, AND BOOKS NO NEXT PLAY', () => {
+  // ⚠️ THIS USED TO ASSERT THAT NOTHING WAS SCHEDULED AT ALL, and that invariant was a SOFTLOCK.
+  //
+  // "Nothing scheduled" made the guarantee structural -- no timer, so nothing could possibly start the
+  // clock behind the box score. It also meant a `transition_continue` from the client was the only thing
+  // in existence that could ever restart the game, and if it never arrived the game was over for good. A
+  // refresh destroyed the overlay that sends it, so refreshing made it worse. Reported as "the set
+  // defense button looks like it's been pressed but the game freezes ... refreshing does not work its a
+  // softlock".
+  //
+  // The guarantee is now "nothing starts SOON" rather than "nothing is scheduled": the fallback is far
+  // longer than any overlay, so the reason the hold exists is untouched, and one dropped message can no
+  // longer cost the game.
+  it('⚠️ HOLDS — but with a way out, so a lost tap cannot end the game', () => {
     const st = endTheHalf()
     expect(st.awaitingTransitionTap).toBe(true)
-    // Nothing scheduled means nothing can start the clock behind the overlay.
-    expect(st.nextPlayTimer == null).toBe(true)
     expect(st.phase).toBe(PHASE.DEAD)
+    // There IS a fallback booked, and it is long enough that nothing runs behind the box score.
+    expect(st.nextPlayTimer == null).toBe(false)
+    expect(st.nextPlayDueAt - Date.now()).toBeGreaterThan(30_000)
+  })
+
+  // ⚠️ AND THE CLIENT HAS TO BE ABLE TO SEE THE HOLD. The overlay that sends the tap lives in React
+  // state, so a refresh destroyed it; without this field a reconnecting client cannot put it back and the
+  // player is left pressing phase-gated buttons that return silently.
+  it('tells a reconnecting client that it is being waited on', () => {
+    endTheHalf()
+    const gs = serializeGameState(getGame(ROOM), 0)
+    expect(gs.awaitingTransitionTap).toBe(true)
+    expect(gs.solo).toBe(true)
+  })
+
+  it('stops saying so once the tap arrives', () => {
+    endTheHalf()
+    g.you.fire('transition_continue')
+    expect(serializeGameState(getGame(ROOM), 0).awaitingTransitionTap).toBe(false)
   })
 
   it('sends the box score with the transition', () => {

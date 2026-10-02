@@ -1454,8 +1454,7 @@ function onClockExpired(_payload, state, io) {
   // `advanceQuarter` has already incremented, so quarter 3 means the half just ended — the same
   // test it uses itself to pick the interstitial.
   if (state.quarter === 3 && isSoloRoom(state) && !state.headless) {
-    state.awaitingTransitionTap = true
-    console.log(`[game] ${state.roomId} halftime — holding for the player`)
+    holdForTransitionTap(state, state.roomId, io)
     return
   }
 
@@ -1622,8 +1621,7 @@ export function startNextPlay(roomId, io, { quiet = false } = {}) {
     // finishing — and this is the common one. Handling only the other left half-time auto-advancing
     // on almost every real game.
     if (state.quarter === 3 && isSoloRoom(state) && !state.headless) {
-      state.awaitingTransitionTap = true
-      console.log(`[game] ${roomId} halftime — holding for the player`)
+      holdForTransitionTap(state, roomId, io)
       return
     }
     // advanceQuarter has just told both clients to hold a full-screen interstitial. Falling
@@ -1718,6 +1716,34 @@ export function startNextPlay(roomId, io, { quiet = false } = {}) {
   }
 
   console.log(`[game] ${roomId} Q${state.quarter} — ready for next snap (${state.down}&${state.distance} at ${state.yardLine})`)
+}
+
+// [transition screens] Hold the game on the half-time box score until the player dismisses it.
+//
+// ⚠️ THIS WAS A SOFTLOCK WITH NO WAY OUT, AND IT IS THE BUG THAT WAS REPORTED. Arming the hold
+// deliberately does not book the next play -- so nothing is scheduled, nothing ticks in DEAD, and the
+// ONLY thing that can ever restart the game is a `transition_continue` from the client. If that message
+// never arrives the game is over, permanently:
+//
+//   • a refresh destroys the overlay (`periodTransition` is React state), so the "Tap to continue"
+//     affordance is gone -- which is why refreshing made it WORSE rather than better;
+//   • `awaitingTransitionTap` was not in `game_state`, so a reconnecting client could not know to
+//     put it back;
+//   • and every button is phase-gated. In DEAD, `set_defense` and `set_offense` return SILENTLY --
+//     no emit, no error -- so the button looks pressed and the game looks frozen.
+//
+// Reported exactly that way: "the set defense button looks like it's been pressed but the game freezes
+// and pausing and unpausesing and refreshing does not work its a softlock".
+//
+// So the hold now has a floor under it. The player still gets as long as they want in practice, but the
+// game cannot be lost to one dropped message. The reason the hold exists -- no clock running behind the
+// box score -- is untouched: nothing advances until either the tap or the fallback.
+const TRANSITION_TAP_FALLBACK_MS = 90_000
+
+function holdForTransitionTap(state, roomId, io) {
+  state.awaitingTransitionTap = true
+  console.log(`[game] ${roomId} halftime — holding for the player`)
+  beginNextPlay(roomId, io, TRANSITION_TAP_FALLBACK_MS)
 }
 
 function beginNextPlay(roomId, io, delayMs = BETWEEN_PLAYS_MS) {
