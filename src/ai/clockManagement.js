@@ -31,6 +31,10 @@ export const TIMEOUT_SECONDS_SAVED = 40
 // Below this there is no next snap to buy, so a timeout is simply thrown away.
 const MIN_CLOCK_TO_BOTHER = 6
 
+// Inside your own twenty, the extra snaps a timeout buys are all taken from a place where the realistic
+// outcome is giving the ball up, not scoring.
+const BACKED_UP = 20
+
 function lateness(k) {
   const quarterSeconds = k.quarterSeconds ?? 300
   return (LATE_FRACTION[k.quarter] ?? 0) * quarterSeconds
@@ -39,11 +43,6 @@ function lateness(k) {
 // Is this seat the one with the ball?
 function hasBall(k) {
   return k.role === 'offense'
-}
-
-// Reachable scoring range, generously: a drive that starts here can plausibly end in points.
-function inStrikingRange(k) {
-  return (k.yardLine ?? 0) >= 40
 }
 
 export function shouldCallTimeout(k) {
@@ -73,9 +72,26 @@ export function shouldCallTimeout(k) {
     // thing protecting the lead; stopping it to hurry a drive you do not need is helping the other
     // team. Only a side that must SCORE spends here — level or behind.
     if (k.quarter === 4) return margin <= 0
-    // In the second quarter there is no lead worth protecting — the half ends either way, and points
-    // before it are free — but there does have to be something to drive for.
-    return inStrikingRange(k)
+
+    // ⚠️ A TIMEOUT NOT SPENT BEFORE HALF TIME IS WORTH NOTHING. Both teams are reset to three at the
+    // break, so carrying one into the locker room is the one guaranteed way to waste it. The second
+    // quarter therefore has no "save it for later" — there is no later.
+    //
+    // This used to require being in striking range (the opponent's 40 or better), which is a FIELD
+    // POSITION test standing in for a TIME question, and it got the common case wrong: an offense on
+    // its own 25, behind, with forty seconds and three timeouts has a real chance and was spending
+    // none of them. Field position is not what makes a timeout valuable; a snap that would otherwise
+    // not happen is.
+    //
+    // So the test above the floor is the module's own: is there time for the saved seconds to become
+    // snaps? Two is the minimum worth spending for -- one more snap is a heave, two is a drive.
+    //
+    // ⚠️ THE FLOOR STAYS, AND IT IS NOT THE SAME RULE. Backed up on your own goal line the half
+    // really is over: the extra snaps are all taken from inside your own twenty, where the live risk is
+    // a turnover handing them points before the break rather than you scoring. That is why the original
+    // rule existed and a test defends it; what it got wrong was using the OPPONENT'S 40 as the line,
+    // which refused the ordinary case of an offense at its own 25, behind, with forty seconds in hand.
+    return (k.yardLine ?? 0) > BACKED_UP && snapsLeft(k) >= 2
   }
 
   // On defense the time is only worth having if you are going to need the ball: level or behind.

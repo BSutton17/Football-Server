@@ -367,7 +367,12 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // play so the offense does not change its mind mid-walk-up.
     if (self.setAt == null) {
       self.tempo = chooseTempo(k)
-      self.setAt = setTimeFor(self.tempo, rng)
+      // [tempo] A hurry is measured from NOW -- the moment the formation is ready -- rather than from a
+      // fixed play-clock reading, which on a new drive's 45-second clock meant a 25-second wait. See
+      // hurrySetTime.
+      self.setAt = self.tempo === TEMPO.HURRY
+        ? hurrySetTime(k.playClock ?? 0, rng)
+        : setTimeFor(self.tempo, rng)
       if (self.tempo !== TEMPO.NORMAL) say(`tempo: ${self.tempo} (set at :${self.setAt.toFixed(0)})`)
     }
     if (!self.forceSet && !shouldSetNow(k.playClock ?? 0, self.setAt)) return

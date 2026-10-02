@@ -55,6 +55,20 @@ describe('spending a timeout', () => {
     expect(shouldCallTimeout(k({ quarter: 2, clock: 40, score: { offense: 30, defense: 0 } }))).toBe(true)
   })
 
+  // ⚠️ A TIMEOUT NOT SPENT BEFORE HALF TIME IS WORTH NOTHING — both teams reset to three at the
+  // break, so carrying one into the locker room is the one guaranteed way to waste it. The old rule
+  // required being in STRIKING RANGE (the opponent's 40 or better), which is a field-position test
+  // standing in for a time question, and it refused the ordinary case below.
+  it('spends from its own half when there is time, since the timeout expires at the break anyway', () => {
+    // Own 25, forty seconds, three timeouts in hand: that is a real drive, and saving them is saving
+    // nothing. This was refused outright before.
+    expect(shouldCallTimeout(k({ quarter: 2, clock: 40, yardLine: 25 }))).toBe(true)
+  })
+
+  it('and still will not when there is no time for the seconds to become snaps', () => {
+    expect(shouldCallTimeout(k({ quarter: 2, clock: 40, yardLine: 25, timeouts: { own: 0, opp: 3 } }))).toBe(false)
+  })
+
   it('…but there has to be something to drive for', () => {
     // Backed up on the second-quarter two-minute warning, the half is simply over.
     expect(shouldCallTimeout(k({ quarter: 2, clock: 40, yardLine: 12 }))).toBe(false)

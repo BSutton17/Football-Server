@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
-import { chooseTempo, setTimeFor, tempoRunLean, snapsLeft, TEMPO } from '../ai/tempo.js'
+import { chooseTempo, setTimeFor, hurrySetTime, HURRY_SET_WITHIN, tempoRunLean, snapsLeft, TEMPO } from '../ai/tempo.js'
 import { leanRun } from '../ai/playcall/select.js'
 import { AI_SET_LATEST, AI_SET_EARLIEST } from '../ai/timing.js'
 
@@ -101,6 +101,41 @@ describe('⚠️ WHEN THAT ACTUALLY PUTS THE BALL IN PLAY', () => {
       const v = draws(t)
       expect(Math.max(...v)).toBeGreaterThan(Math.min(...v))
     }
+  })
+})
+
+describe('⚠️ HURRYING IS MEASURED FROM NOW, NOT FROM A READING ON THE CLOCK', () => {
+  // The band for a hurry is an absolute play-clock reading, 18-20 seconds showing. On the ordinary
+  // 25-second clock that is a five-second wait, which is nearly fine. On the FORTY-FIVE second clock of
+  // a new drive it is a TWENTY-FIVE SECOND WAIT -- so an offense taking over after a kickoff with fifty
+  // seconds left in the half, needing points, stood at the line and burned half of what it had. The one
+  // situation the tempo exists for was the one it handled worst.
+  //
+  // Asked for: "when in situations where they need to play very fast (end of a half and down in points)
+  // allow them to set the offense within 3 seconds".
+  const draws = (playClock) => Array.from({ length: 40 }, (_, i) => hurrySetTime(playClock, () => i / 40))
+
+  it('sets within three seconds on the ordinary play clock', () => {
+    for (const v of draws(25)) {
+      expect(25 - v).toBeLessThanOrEqual(HURRY_SET_WITHIN)
+      expect(25 - v).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  // ⚠️ THE CASE THAT WAS BROKEN. A new drive starts the play clock at 45.
+  it('…and within three seconds on a new drive, where it used to wait twenty-five', () => {
+    for (const v of draws(45)) expect(45 - v).toBeLessThanOrEqual(HURRY_SET_WITHIN)
+    // What the old fixed band would have done, for the record.
+    expect(45 - setTimeFor(TEMPO.HURRY, () => 0.5)).toBeGreaterThan(20)
+  })
+
+  it('is still a band rather than a metronome', () => {
+    const v = draws(25)
+    expect(Math.max(...v)).toBeGreaterThan(Math.min(...v))
+  })
+
+  it('never asks for a reading below zero', () => {
+    for (const v of draws(1)) expect(v).toBeGreaterThanOrEqual(0)
   })
 })
 

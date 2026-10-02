@@ -46,6 +46,28 @@ const BANDS = {
   [TEMPO.HURRY]: { min: AI_SET_LATEST - 2, max: AI_SET_LATEST },
 }
 
+// ⚠️ HURRY CANNOT BE A FIXED PLAY-CLOCK READING, AND AS ONE IT WAS BARELY A HURRY AT ALL.
+//
+// The band above is an absolute reading, so hurrying meant "set with 18 to 20 seconds showing". On the
+// ordinary 25-second play clock that is a five-second wait, which is nearly fine. On the FORTY-FIVE
+// second clock of a new drive it is a TWENTY-FIVE SECOND WAIT -- so an offense taking over after a
+// kickoff with fifty seconds left in the half, needing points, stood at the line and burned half of
+// what it had. The one situation the tempo exists for is the one it handled worst.
+//
+// Asked for: "when in situations where they need to play very fast (end of a half and down in points)
+// allow them to set the offense within 3 seconds". So a hurry is measured from the moment the offense is
+// READY rather than from a number on the clock, and it is the same three seconds whatever the play clock
+// happens to be.
+//
+// The jitter stays, for the reason every band here has one: a rhythm a human can time is a rhythm a
+// human can jump.
+export const HURRY_SET_WITHIN = 3
+
+// The reading to set at when hurrying, given what the play clock says right now.
+export function hurrySetTime(playClockNow, rng = Math.random) {
+  return Math.max(0, (playClockNow ?? 0) - rng() * HURRY_SET_WITHIN)
+}
+
 // A score is a touchdown and the extra point. Two scores is the line at which a team stops managing
 // the clock and starts needing possessions.
 const ONE_SCORE = 8
