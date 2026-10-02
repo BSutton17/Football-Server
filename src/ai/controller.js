@@ -37,7 +37,7 @@ import { chooseTempo, setTimeFor, tempoRunLean, TEMPO } from './tempo.js'
 // One beat before the snap: late enough that the defense has finished moving, early enough to be a
 // decision rather than a reaction.
 const RUN_ADJUST_AT = 1
-import { rankTargets, orderKey } from './reads.js'
+import { rankTargets, orderKey, developedFraction } from './reads.js'
 import { skillFor } from './difficulty.js'
 
 // Defensive placement bounds, mirroring the client's getPositionYBounds. A defender placed past
@@ -981,7 +981,33 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   // top of him. One definition, two users: the openness he requires falls with it, and so does how
   // much he insists on a throw that converts (reads.js, shortReach).
   function readDecay(sk, elapsed, urgency) {
-    return Math.max(Math.min(1, elapsed / sk.patience), urgency)
+    const t = Math.min(1, elapsed / sk.patience)
+
+    // ⚠️ TIME ONLY BUYS PATIENCE BACK AS FAST AS THE PLAY ACTUALLY DEVELOPS.
+    //
+    // Reported as "the QB is still throwing very fast and not letting plays develop", and the report
+    // bore it out: a median release at 1.05s of board time, where an average of 1.3 receivers had
+    // declared. The first short route breaks at 0.7-0.9s, reads wide open -- a back in the flat with
+    // nobody within five yards -- and by then the bar has already decayed from 0.66 to about 0.57,
+    // so even a discounted checkdown clears it. The ball was gone before the play existed.
+    //
+    // So the TIME half of the decay is scaled by how much of the route distribution is live. Pressure
+    // is deliberately left alone: a rush closing on him is a real reason to get rid of it, and that is
+    // what keeps this from turning into sacks.
+    //
+    // ⚠️ AND `t` IS ITS OWN FLOOR, which is what stops it being a deadlock. Early, the decay has to
+    // be earned by receivers declaring; by the time his patience is spent, t is 1 and time counts in
+    // full whether anybody got open or not. A play where the routes are jammed must still end in a
+    // throwaway rather than a quarterback standing still for ever.
+    //
+    // At full development this is exactly the old expression, so it is inert on a developed play.
+    // ⚠️ THE FLOOR'S SHAPE WAS SWEPT AND IS INERT. Weakening it early (t squared, t cubed) was tried
+    // on the theory that `t` neuters the gate exactly when development is lowest. It changed nothing
+    // measurable -- release 1.19s and 42% of throws with two or fewer declared, at every exponent --
+    // because the development term is already the larger of the two nearly all the time. So the simple
+    // form stays rather than a knob that does not move anything.
+    const gate = process.env.QB_DEVELOP_GATE === '0' ? 1 : Math.max(developedFraction(k), t)
+    return Math.max(t * gate, urgency)
   }
 
   function currentBar(sk, elapsed, urgency) {
@@ -992,6 +1018,18 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   // (board time in manual). Short enough that a screen still goes early, long enough that the ball
   // is never gone on the snap.
   const MIN_TIME_BEFORE_THROW = 0.65
+
+  // ⚠️ AND LONGER WHEN THERE IS NO SUCH THING AS A QUICK THROW THAT HELPS. On 3rd and 8 a ball out
+  // at 0.75s cannot convert whatever happens to it, so the floor above is the only thing he is really
+  // waiting for. A screen still has to go early, which is why this is conditioned on the down needing
+  // real yards rather than applied to everything.
+  const CONVERT_MIN_TIME = Number(process.env.QB_CONVERT_MIN_TIME ?? 1.2)
+  const CONVERT_MIN_DISTANCE = 4
+
+  function minHold() {
+    const mustConvert = (k.down ?? 1) >= 3 && (k.distance ?? 10) >= CONVERT_MIN_DISTANCE
+    return mustConvert ? Math.max(MIN_TIME_BEFORE_THROW, CONVERT_MIN_TIME) : MIN_TIME_BEFORE_THROW
+  }
 
   // [analytics] Forwards a decision to the report for this socket's room. A no-op off a solo game
   // and wrapped besides: a missing report must never cost a throw.
@@ -1056,7 +1094,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // ⚠️ BELOW THE BAIL-OUT ON PURPOSE. Throwing it away is not "letting it go early" -- it is
     // already gated far harder, at 2s of live play by the server's throwaway window, and putting
     // this above it stopped a quarterback with a defender in his lap from saving the down.
-    if (elapsed < MIN_TIME_BEFORE_THROW) return false
+    if (elapsed < minHold()) return false
 
     // The bar falls with TIME (a receiver worth waiting for at two seconds is the best you will get
     // at four) or with PRESSURE, whichever is more urgent.

@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@jest/globals'
 import { createController } from '../ai/controller.js'
-import { estimateOpenness, rankTargets, orderKey } from '../ai/reads.js'
+import { estimateOpenness, rankTargets, orderKey, developedFraction } from '../ai/reads.js'
 import { createKnowledge, applyEvent } from '../ai/knowledge.js'
 
 // [offline] The quarterback has to actually throw the ball.
@@ -46,9 +46,9 @@ const ROSTER = [
 // The play type is the AI's own choice, so the seed is searched until it calls a pass — a run
 // returns from onLive immediately (correctly: a run has no throw), and a test that happened to
 // land on one would silently assert nothing.
-function liveOffense({ mode = 'automatic', difficulty = 'medium' } = {}) {
+function liveOffense({ mode = 'automatic', difficulty = 'medium', down = 3, distance = 12 } = {}) {
   const situation = (phase, playClock) => ({
-    phase, role: 'offense', down: 3, distance: 12, yardLine: LOS,
+    phase, role: 'offense', down, distance, yardLine: LOS,
     clock: 600, playClock, quarter: 1, score: { own: 0, opp: 0 }, mode, difficulty, playSerial: 1,
   })
 
@@ -170,6 +170,114 @@ describe('automatic rooms', () => {
 
     for (let i = 0; i < 90; i++) ai.onEvent('positions_update', covered())
     expect(socket.of('throw_to_receiver')).toHaveLength(1)   // …but the rush is coming
+  })
+})
+
+// ── He waits for the play to exist ([qb]) ───────────────────────────────────
+//
+// Both halves of the fix for "the QB is still throwing very fast and not letting plays develop",
+// measured paired on identical seeds in MANUAL mode, which is the mode the game is played in:
+//
+//     3rd & 8    +1.08 ± 0.38 yds   conversions 26% -> 44%   sacks 3% -> 6%
+//     3rd & 12   +1.21 ± 0.43 yds   conversions 24% -> 31%   sacks 6% -> 8%
+//     1st & 10   +0.26 ± 0.09 yds   (the gate alone; the minimum hold does not apply)
+//
+// and the behaviour itself, from scripts/releaseLab.mjs: receivers declared at the moment of release
+// 3.11 -> 4.18, and throws going out with two or fewer in existence 42% -> 10%.
+describe('the quarterback waits for the play to develop', () => {
+  // One receiver broken open at once, three still running. This is the shape that produced the
+  // complaint: the first short route declares, reads WIDE open because nobody is near him, and the ball
+  // is gone at 0.8s while the rest of the play has not happened.
+  // ⚠️ THE COVERAGE HERE IS MARGINAL ON PURPOSE, four yards off, and that is the whole point of the
+  // test. A receiver with SIX yards of space is thrown to at frame 13 either way and should be: this
+  // gate exists to stop the marginal early throw, not every early throw. Swept across the separations:
+  //
+  //     defender    0.5-3 yds   never thrown, either arm (he is covered)
+  //     defender    4 yds       frame 17 -> 27  with the gate
+  //     defender    4.5 yds     frame 16 -> 22
+  //     defender    6+ yds      frame 13, unchanged (wide open, take it)
+  const oneReady = () => ([
+    { id: 'qb',  team: 'o', x: 26, y: LOS - 6, state: 'ball', qb: true },
+    { id: 'rb0', team: 'o', x: 18, y: LOS + 2,  ready: true },
+    { id: 'wr0', team: 'o', x: 44, y: LOS + 9,  ready: false },
+    { id: 'wr1', team: 'o', x: 8,  y: LOS + 11, ready: false },
+    { id: 'te0', team: 'o', x: 34, y: LOS + 7,  ready: false },
+    { id: 'cb0', team: 'd', x: 22, y: LOS + 2 },        // four yards off the only declared receiver
+  ])
+  const allReady = () => oneReady().map(p => (p.ready === false ? { ...p, ready: true } : p))
+
+  const framesUntilThrow = (gateOff, frame, n = 20) => {
+    const prev = process.env.QB_DEVELOP_GATE
+    if (gateOff) process.env.QB_DEVELOP_GATE = '0'
+    else delete process.env.QB_DEVELOP_GATE
+    try {
+      const { socket, ai } = liveOffense({ down: 1, distance: 10 })
+      for (let i = 0; i < n; i++) ai.onEvent('positions_update', frame())
+      return socket.of('throw_to_receiver').length
+    } finally {
+      if (prev === undefined) delete process.env.QB_DEVELOP_GATE
+      else process.env.QB_DEVELOP_GATE = prev
+    }
+  }
+
+  it('holds a marginal throw that it used to make, while only one receiver has broken', () => {
+    expect(framesUntilThrow(true, oneReady)).toBeGreaterThan(0)   // without the gate, the ball is gone
+    expect(framesUntilThrow(false, oneReady)).toBe(0)             // with it, he is still looking
+  })
+
+  // A receiver with real space is thrown to at once, gate or no gate. Waiting on a man who is already
+  // open is not patience, it is a sack.
+  it('still takes a wide-open man immediately', () => {
+    const open = () => oneReady().map(p => (p.id === 'cb0' ? { ...p, x: 30 } : p))
+    expect(framesUntilThrow(false, open, 16)).toBeGreaterThan(0)
+  })
+
+  it('…and throws once the rest of the play arrives', () => {
+    const { socket, ai } = liveOffense({ down: 1, distance: 10 })
+    for (let i = 0; i < 18; i++) ai.onEvent('positions_update', oneReady())
+    for (let i = 0; i < 18; i++) ai.onEvent('positions_update', allReady())
+    expect(socket.of('throw_to_receiver').length).toBeGreaterThan(0)
+  })
+
+  // ⚠️ AND IT MUST NOT BE A DEADLOCK. If the routes never come open the bar has to fall anyway, or a
+  // quarterback stands still for ever on a play where nobody gets free. `t` is its own floor for
+  // exactly this, and past his patience time counts in full.
+  it('gives up waiting once his patience is spent, even if nobody else breaks', () => {
+    const { socket, ai } = liveOffense({ down: 1, distance: 10 })
+    for (let i = 0; i < 120; i++) ai.onEvent('positions_update', oneReady())
+    expect(socket.of('throw_to_receiver').length + socket.of('throwaway').length).toBeGreaterThan(0)
+  })
+})
+
+describe('the minimum hold is longer when a short throw cannot convert', () => {
+  // Everybody open, so the only thing deciding when the ball goes is the floor.
+  const wideOpen = () => ([
+    { id: 'qb',  team: 'o', x: 26, y: LOS - 6, state: 'ball', qb: true },
+    { id: 'rb0', team: 'o', x: 18, y: LOS + 2, ready: true },
+    { id: 'wr0', team: 'o', x: 44, y: LOS + 9, ready: true },
+  ])
+
+  // ⚠️ A SCREEN STILL HAS TO GO EARLY, which is why this is conditioned on the down needing real yards
+  // rather than applied to every snap.
+  it('lets it go early on 1st and 10', () => {
+    const { socket, ai } = liveOffense({ down: 1, distance: 10 })
+    for (let i = 0; i < 16; i++) ai.onEvent('positions_update', wideOpen())   // 0.8s
+    expect(socket.of('throw_to_receiver').length).toBeGreaterThan(0)
+  })
+
+  it('and on 3rd and 2, where a short throw is the whole job', () => {
+    const { socket, ai } = liveOffense({ down: 3, distance: 2 })
+    for (let i = 0; i < 16; i++) ai.onEvent('positions_update', wideOpen())
+    expect(socket.of('throw_to_receiver').length).toBeGreaterThan(0)
+  })
+
+  // On 3rd and 8 a ball out at 0.8s cannot convert whatever happens to it.
+  it('but not on 3rd and 8 — and then it does', () => {
+    const { socket, ai } = liveOffense({ down: 3, distance: 8 })
+    for (let i = 0; i < 16; i++) ai.onEvent('positions_update', wideOpen())   // 0.8s
+    expect(socket.of('throw_to_receiver')).toHaveLength(0)
+    for (let i = 0; i < 16; i++) ai.onEvent('positions_update', wideOpen())   // past 1.2s
+    expect(socket.of('throw_to_receiver').length).toBeGreaterThan(0)
   })
 })
 
@@ -424,6 +532,43 @@ describe('the read is tiered: conversion first, checkdown last', () => {
     // The checkdown is the MORE open of the two and still sorts below it.
     expect(rb.score).toBeGreaterThan(conv.score)
     expect(orderKey(rb)).toBeLessThan(orderKey(conv))
+  })
+})
+
+// ── Letting the play develop ([qb]) ─────────────────────────────────────────
+//
+// Reported after a full game: "the QB is still throwing very fast and not letting plays develop."
+// The report said exactly how fast. Averaged over the computer's pass plays, by board time:
+//
+//     time       0.5s   0.8s   1.05s   1.4s   1.6s
+//     declared   0.14   0.93   ~1.3    2.16   2.64
+//
+// He released at a MEDIAN of 1.05s, with about one and a third receivers in existence as targets, and
+// on 7 of 13 throws there were two or fewer. ⚠️ SO HE WAS NOT CHOOSING THE SHORT MAN OVER THE FIRST
+// DOWN — there was nobody else to choose, which is also why the tiering above could not help: it
+// reorders the declared, and almost nobody had declared.
+describe('how much of the play exists yet', () => {
+  const field = (ready) => ({
+    live: new Map([
+      ['qb', { id: 'qb', team: 'o', qb: true, x: 26, y: 30 }],
+      ...ready.map((r, i) => [`w${i}`, { id: `w${i}`, team: 'o', ready: r, x: 10 + i * 8, y: 40 }]),
+      ['cb', { id: 'cb', team: 'd', x: 20, y: 42 }],
+    ]),
+  })
+
+  it('is nought at the snap and one once everybody has broken', () => {
+    expect(developedFraction(field([false, false, false, false]))).toBe(0)
+    expect(developedFraction(field([true, true, true, true]))).toBe(1)
+  })
+
+  it('counts only pass catchers — not the passer, not the defense', () => {
+    expect(developedFraction(field([true, false]))).toBeCloseTo(0.5, 5)
+  })
+
+  // A run play has no catchers carrying `ready`; dividing by nothing must not report "undeveloped" and
+  // hold a quarterback who has no read to wait for.
+  it('reports a developed play when there is nobody to wait for', () => {
+    expect(developedFraction({ live: new Map() })).toBe(1)
   })
 })
 

@@ -132,6 +132,33 @@ export function rankTargets(k, { noise = 0, rng = Math.random, decay = 0 } = {})
     .sort((a, b) => b.rankScore - a.rankScore)
 }
 
+// ── How far along the play is ([qb]) ───────────────────────────────
+//
+// The fraction of this formation's pass catchers who have DECLARED -- broken off their route, so the
+// engine will accept a throw at them. 0 at the snap, 1 once the whole distribution is live.
+//
+// ⚠️ THIS IS THE NUMBER THAT EXPLAINS "THE QB THROWS TOO FAST AND DOES NOT LET PLAYS DEVELOP".
+// From a real game's report, averaged over the computer's pass plays:
+//
+//     board time   0.5s   0.8s   1.05s   1.4s   1.6s
+//     declared     0.14   0.93   ~1.3    2.16   2.64
+//
+// He released at a MEDIAN of 1.05s, where about one and a third receivers existed as targets, and on
+// 7 of 13 throws there were two or fewer. He was not choosing the short man over the first down -- at
+// that moment there was nobody else to choose. Which is also why the tiering below cannot fix it: it
+// reorders the declared, and almost nobody had declared.
+export function developedFraction(k) {
+  let total = 0, ready = 0
+  for (const p of k.live.values()) {
+    if (p.team === 'd') continue
+    if (p.qb || p.carrier) continue
+    if (p.ready == null) continue        // only pass catchers carry `ready`
+    total++
+    if (p.ready) ready++
+  }
+  return total === 0 ? 1 : ready / total
+}
+
 // ── Looking for the first down before looking for the easy throw ([qb]) ─────
 //
 // Asked for: "make the QB prefer to pick up a first down, especially on 3rd down, instead of just
