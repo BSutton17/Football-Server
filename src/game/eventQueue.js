@@ -533,7 +533,24 @@ function settleInterception(state, io, absX, absY) {
 
   // Spot in the new offense's frame: the same physical point mirrors to (100 − old-frame spot).
   const spotRel = yardLineFromAbsY(state, absY)
-  const newPossessionSlot = turnover(state, io, Math.max(0, Math.min(100, 100 - spotRel)))
+  let newSpot = 100 - spotRel
+
+  // ⚠️ A PICK THAT ENDS IN THE END ZONE IS A TOUCHBACK, NOT A SPOT ON THE GOAL LINE.
+  //
+  // The mirrored spot is negative in the end zone, and this used to clamp it to 0 — so intercepting a
+  // pass in your own end zone, which is a good play, handed you the ball on your own GOAL LINE. The
+  // next snap came out of your own end zone with a safety one bad play away. Reported as "an
+  // interception in the endzone should be a touchback and taken to the 20".
+  //
+  // It covers the ordinary case too: a defender who catches it in the end zone and RUNS IT OUT is
+  // settled wherever he is actually brought down, because the return is live until contact and this
+  // only looks at where it ended. And a defender who intercepts in the field of play and is dragged
+  // back into his own end zone gets the same twenty rather than a safety, which is the real rule --
+  // his own momentum does not concede two points.
+  const touchback = newSpot <= 0
+  if (touchback) newSpot = RULES.TOUCHBACK_YARD_LINE
+
+  const newPossessionSlot = turnover(state, io, Math.max(0, Math.min(100, newSpot)))
   state.clockStopped = true   // [204] change of possession stops the clock
 
   state.interceptionReturn = false
@@ -552,7 +569,8 @@ function settleInterception(state, io, absX, absY) {
     })
   }
 
-  console.log(`[game] ${state.roomId} INTERCEPTION return over — possession → slot ${newPossessionSlot} at ${state.yardLine}`)
+  console.log(`[game] ${state.roomId} INTERCEPTION return over — possession → slot ${newPossessionSlot} at ${state.yardLine}` +
+    (touchback ? ' (touchback — the pick ended in the end zone)' : ''))
   beginNextPlay(state.roomId, io)
 }
 
