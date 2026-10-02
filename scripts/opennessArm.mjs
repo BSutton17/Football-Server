@@ -1,0 +1,29 @@
+// ── One arm of the "should the AI quarterback see the real openness" A/B ────
+//
+//   NODE_ENV=test node scripts/opennessArm.mjs <plays> [down] [dist] [yard]
+//   NODE_ENV=test AI_SEES_OPENNESS=0 node scripts/opennessArm.mjs ...      (the other arm)
+//
+// Prints seed,yards,converted,outcome — one line per PASS play. Pair the two arms by seed with
+// scripts/pairArms.mjs: the seed fixes the play call, the coverage and every roll, so the only thing
+// that differs is which read the quarterback picked his receiver on.
+//
+// ⚠️ TWO PROCESSES, AND PASS PLAYS ONLY. Two arms in one process cannot differ (and an earlier
+// version of exactly this mistake returned results identical to the decimal, which is the tell).
+// Runs are included in neither arm: they dilute a passing change toward zero and buy nothing, since
+// the call is made pre-snap and is identical in both arms anyway.
+import { createTrainingGame, destroyTrainingGame, runPlay, HASHES } from '../src/training/game.js'
+
+const N = Number(process.argv[2] ?? 200)
+const down = Number(process.argv[3] ?? 2)
+const distance = Number(process.argv[4] ?? 8)
+const yardLine = Number(process.argv[5] ?? 40)
+
+for (let i = 0; i < N; i++) {
+  const seed = 64000 + i
+  const ctx = createTrainingGame({ seed })
+  try {
+    const r = runPlay(ctx, { down, distance, yardLine, ballX: HASHES[i % 3], forcePlayType: 'pass' })
+    if (r.outcome === 'no_snap' || r.outcome === 'hung') continue
+    console.log(`${seed},${r.yards ?? 0},${(r.yards ?? 0) >= distance ? 1 : 0},${r.outcome}`)
+  } finally { destroyTrainingGame(ctx) }
+}

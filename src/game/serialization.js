@@ -8,6 +8,7 @@ import { computeReceiverOpenness } from './utils/openness.js'
 import { ratingOf } from '../data/ratings.js'
 import { findBallCarrier } from './systems/movement.js'
 import { serializeSpecialTeams, serializeDecision, serializeConversion } from './specialTeams.js'
+import { slotIsAi } from './roomManager.js'
 import { activeXFactorIds } from './systems/xFactors.js'
 
 const RECEIVER_LABELS = new Set(['WR', 'TE', 'RB'])
@@ -205,7 +206,30 @@ export function serializePositions(state, viewerSlot = null) {
   // play yet and live possession is correct.
   const offenseSlot = state.tendencySlot ?? state.possession
   const isOffenseViewer = viewerSlot != null && viewerSlot === offenseSlot
-  const hideOpenness = viewerSlot != null && (
+  // ⚠️ A COMPUTER SEAT ALWAYS GETS THE TRUE READ, AND THIS IS DELIBERATELY ASYMMETRIC.
+  //
+  // Asked for in as many words: "allow the AI for the QB to read wr/te/rb openness -- this will
+  // break symmetry but will make the QB stronger and the game more fun." It is a knowing exception
+  // to the rule that the two seats are sent the same picture, so it is stated here rather than
+  // smuggled into the difficulty table, and it is the ONLY such exception.
+  //
+  // What it changes: ai/reads.js prefers `openness` when it is sent and falls back to its own
+  // estimate when it is not. The estimate is separation plus a lane check; the engine's number also
+  // weighs leverage, closing speed, bracketing and safety help, and -- the part that matters -- it
+  // is the same number the throw is actually RESOLVED on. So the quarterback was being asked to
+  // pick a receiver on one read and then judged on another.
+  //
+  // What it does NOT change: the ready gate (an undeclared receiver is still not a target), the
+  // handicap noise that easy and medium add on top, or anything the defense sees.
+  //
+  // AI_SEES_OPENNESS=0 turns the exception off. It exists because an A/B of this needs two processes
+  // with one code path, and because the way to find out what a change is worth is to be able to run
+  // the game without it. Read per call, never at module load: a module-load read makes every trial
+  // in a run identical, which has already wasted a measurement in this codebase.
+  const aiViewer = viewerSlot != null
+    && process.env.AI_SEES_OPENNESS !== '0'
+    && slotIsAi(state.roomId, viewerSlot)
+  const hideOpenness = viewerSlot != null && !aiViewer && (
     isOffenseViewer
       ? HIDES_OPENNESS.has(state.difficulty)
       : state.defenseSeesOpenness === false

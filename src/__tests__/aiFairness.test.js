@@ -6,19 +6,32 @@ import { rankTargets } from '../ai/reads.js'
 import { HIDES_OPENNESS, DIFFICULTY } from '../constants.js'
 import { createRoom, getRoom, leaveRoomBySlot } from '../game/roomManager.js'
 
-// [offline][difficulty] THE COMPUTER MUST NOT SEE MORE THAN A HUMAN IN ITS SEAT WOULD.
+// [offline][difficulty] WHAT THE COMPUTER IS SENT, ON THE WIRE.
 //
-// aiBoundary.test.js proves that structurally, by reading the source: nothing in ai/ can reach the
-// game state, so the picture can only be what was sent. This file proves the other half
-// EMPIRICALLY, on the wire — because the structural argument says nothing about what the server
-// CHOOSES to send, and medium and hard are defined by the server sending less.
+// aiBoundary.test.js proves structurally that nothing in ai/ can reach the game state, so the
+// picture can only be what was sent. This file asserts what that is — because the structural
+// argument says nothing about what the server CHOOSES to send.
 //
-// The specific promise: on medium and hard the offense is denied the receiver-openness read. That
-// is the whole meaning of those difficulties for a human, and it has to bind the AI identically,
-// or "hard" would quietly mean "the computer plays better AND it can see something you cannot".
+// ⚠️ ONE EXCEPTION WAS GRANTED, DELIBERATELY, AND IT IS THE RECEIVER-OPENNESS READ.
 //
-// ⚠️ Both directions are asserted. A test that only checked "no openness on hard" would pass just
-// as happily if openness had been deleted everywhere and the feature were dead.
+// This file used to assert that the computer is denied that read on medium and hard exactly as a
+// human is. It was asked for the other way: "allow the AI for the QB to read wr/te/rb openness --
+// this will break symmetry but will make the QB stronger and the game more fun." So the assertion is
+// now the reverse, with the reasoning recorded rather than the test quietly deleted.
+//
+// It was worth it. Paired on identical seeds, pass plays only (scripts/opennessArm.mjs):
+//
+//     2nd & 8    +1.99 ± 0.51 yds/play   sacks 26% -> 4%    caught 19% -> 46%
+//     3rd & 10   +2.93 ± 0.84 yds/play   sacks 29% -> 11%   caught 31% -> 66%
+//
+// The quarterback's own estimate (ai/reads.js) is separation plus a lane check. The engine's number
+// also weighs leverage, closing speed, bracketing and safety help, and it is the number the throw is
+// RESOLVED on — so he was choosing a receiver on one read and being judged on another, and a quarter
+// of his pass plays ended in a sack.
+//
+// ⚠️ EVERYTHING ELSE STILL BINDS BOTH SIDES THE SAME WAY, and a HUMAN offense on medium or hard
+// is still denied the read — that part is asserted in manualDifficulty.test.js, which can put a
+// human in the seat. Both seats here are computers, so this file can only speak to the computer's.
 
 function capture(ctx, slot) {
   // Tap the seat's inbox. This is the actual wire, so whatever is asserted here is what the AI was
@@ -64,8 +77,8 @@ function playSome(difficulty) {
   return { frames, applied }
 }
 
-describe('the openness read reaches the computer on exactly the terms it reaches a human', () => {
-  it('EASY: the computer on offense IS sent the read (the control)', () => {
+describe('the openness read reaches the computer quarterback on every tier', () => {
+  it('EASY: the computer on offense IS sent the read', () => {
     const { frames, applied } = playSome(DIFFICULTY.EASY)
     expect(applied).toBe(DIFFICULTY.EASY)
 
@@ -75,16 +88,15 @@ describe('the openness read reaches the computer on exactly the terms it reaches
   })
 
   for (const difficulty of [DIFFICULTY.MEDIUM, DIFFICULTY.HARD]) {
-    it(`${difficulty.toUpperCase()}: the computer on offense is sent NO openness, on any frame`, () => {
+    it(`${difficulty.toUpperCase()}: the computer is sent it too, although the tier hides it from a human`, () => {
       const { frames, applied } = playSome(difficulty)
       expect(applied).toBe(difficulty)
+      // The tier still means what it always meant for a PLAYER — see manualDifficulty.test.js.
       expect(HIDES_OPENNESS.has(difficulty)).toBe(true)
 
       const catchers = receivers(frames)
-      // …and the sample is not vacuous: these are the same situations that DO carry openness on
-      // easy, so if the read were still being sent it would show up right here.
       expect(catchers.some(p => p.ready === true)).toBe(true)
-      expect(catchers.filter(p => p.openness != null)).toEqual([])
+      expect(catchers.some(p => p.openness != null)).toBe(true)
     })
   }
 

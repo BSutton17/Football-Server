@@ -1,16 +1,20 @@
 // ── Reading the field ([offline]) ────────────────────────────────────────────
 //
-// How open is a receiver? On EASY the server answers that for you: every receiver arrives with an
-// `openness` score. On MEDIUM and HARD it does not — `HIDES_OPENNESS` withholds it from the
-// offense, which is the entire point of those difficulties. A human on medium looks at the picture
-// and judges it themselves.
+// How open is a receiver? The server now answers that for a computer seat on EVERY difficulty: see
+// the note in serialization.js. `estimateOpenness` below is what it used to have to do instead, and
+// it remains the fallback — for AI_SEES_OPENNESS=0, and for any seat the server does not answer for.
 //
-// So must the AI. Without this it simply never throws: the first version gated on
-// `openness >= 0.55`, `openness` was `undefined` on a medium room, and the quarterback stood in the
-// pocket until he was sacked. Twice, in the first two plays of a real game.
+// ⚠️ THE ESTIMATE WAS NOT GOOD ENOUGH, AND THAT IS WHY THE READ IS NOW SENT. It is separation
+// plus a lane check. The engine's number also weighs leverage, closing speed, bracketing and safety
+// help, and — the part that decided it — it is the number the throw is RESOLVED on, so the
+// quarterback was choosing a receiver on one read and being judged on another. Paired on identical
+// seeds, pass plays only: a quarter of his pass plays ended in a SACK on the estimate (26% on 2nd
+// and 8, 29% on 3rd and 10) against 4% and 11% on the true read, worth about two to three yards a
+// play. Measured by scripts/opennessArm.mjs.
 //
-// Everything here is computed from positions the AI is already sent, so it works identically on
-// every difficulty — and on easy it defers to the server's number, which is the true one.
+// The history is worth keeping, because a worse version of this cost two plays of a real game: the
+// first version gated on `openness >= 0.55`, `openness` was `undefined` on a medium room, and the
+// quarterback simply stood in the pocket until he was sacked.
 
 // Yards of separation at which a receiver counts as fully open. Roughly the point where a defender
 // can no longer make a play on an instantly-resolved pass.

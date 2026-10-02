@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from '@jest/globals'
 import { serializePositions } from '../game/serialization.js'
 import { runBroadcast } from '../game/systems/broadcast.js'
 import { initGame, deleteGame } from '../game/gameState.js'
-import { createRoom, joinRoom } from '../game/roomManager.js'
+import { createRoom, joinRoom, leaveRoom } from '../game/roomManager.js'
 import { PHASE } from '../game/stateMachine.js'
 import { GAME_MODE, DIFFICULTY } from '../constants.js'
 
@@ -197,5 +197,63 @@ describe('defense vision', () => {
   it('the full internal payload still carries the read for either setting', () => {
     expect(find(serializePositions(withVision(DIFFICULTY.HARD, false)), 'wr1').openness)
       .not.toBeUndefined()
+  })
+})
+
+// ── The one knowing exception: a computer quarterback ([offline]) ────────────
+//
+// Asked for in as many words: "allow the AI for the QB to read wr/te/rb openness -- this will break
+// symmetry but will make the QB stronger and the game more fun." It does both. Paired on identical
+// seeds, pass plays only, 500 plays over two situations (scripts/opennessArm.mjs):
+//
+//     2nd & 8    +1.99 ± 0.51 yds/play   sacks 26% -> 4%    caught 19% -> 46%
+//     3rd & 10   +2.93 ± 0.84 yds/play   sacks 29% -> 11%   caught 31% -> 66%
+//
+// The quarterback's own estimate (ai/reads.js) is separation plus a lane check; the engine's number
+// also weighs leverage, closing speed, bracketing and safety help, and is the number the throw is
+// RESOLVED on. He was picking a receiver on one read and being judged on another, so he held the
+// ball — a quarter of his pass plays ended in a sack.
+describe('a computer offense is given the true read on any difficulty', () => {
+  const AI_ROOM = 'ai-openness-room'
+  const aiState = (difficulty, { aiSlot = 0 } = {}) => {
+    deleteGame(AI_ROOM)
+    // The room map outlives a test, so the previous case's seats have to be given up first —
+    // otherwise createRoom refuses and the seat under test is still held by the other kind of player.
+    for (const id of ['ai:x:0', 'ai:x:1', 'human-0', 'human-1']) leaveRoom(id)
+    createRoom(AI_ROOM, aiSlot === 0 ? 'ai:x:0' : 'human-0', { solo: true, difficulty })
+    joinRoom(AI_ROOM, aiSlot === 0 ? 'human-1' : 'ai:x:1')
+    const s = initGame(AI_ROOM, 0, { mode: GAME_MODE.MANUAL, difficulty })
+    s.phase = PHASE.LIVE
+    s.playDesign = { playType: 'pass', players: [] }
+    s.offensePlayers = new Map([
+      ['qb',  { id: 'qb',  label: 'QB', x: 26, y: 30 }],
+      ['wr1', { id: 'wr1', label: 'WR', x: 40, y: 55, routeWaypoints: [{}, {}, {}], routeWaypointIdx: 2 }],
+    ])
+    s.defensePlayers = new Map([['cb1', { id: 'cb1', label: 'CB', x: 44, y: 57 }]])
+    return s
+  }
+
+  it('sends openness to an AI offense on HARD, where a human offense gets none', () => {
+    const s = aiState(DIFFICULTY.HARD)                       // slot 0 is the computer, and has the ball
+    expect(typeof find(serializePositions(s, 0), 'wr1').openness).toBe('number')
+    expect(find(serializePositions(s, 1), 'wr1').openness).not.toBeUndefined()   // the defence, as always
+  })
+
+  it('still withholds it from a HUMAN offense in the same room', () => {
+    const s = aiState(DIFFICULTY.HARD, { aiSlot: 1 })         // slot 0 is the human, and has the ball
+    expect(find(serializePositions(s, 0), 'wr1').openness).toBeUndefined()
+  })
+
+  // The off switch exists so this can be A/B'd in two processes against one code path.
+  it('AI_SEES_OPENNESS=0 puts the computer back on its own estimate', () => {
+    const s = aiState(DIFFICULTY.HARD)
+    const prev = process.env.AI_SEES_OPENNESS
+    process.env.AI_SEES_OPENNESS = '0'
+    try {
+      expect(find(serializePositions(s, 0), 'wr1').openness).toBeUndefined()
+    } finally {
+      if (prev === undefined) delete process.env.AI_SEES_OPENNESS
+      else process.env.AI_SEES_OPENNESS = prev
+    }
   })
 })
