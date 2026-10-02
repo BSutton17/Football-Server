@@ -709,6 +709,17 @@ function enterKickoff(state, io, kickingSlot) {
 
 // payload: { scoringSlot, carrierId, x, y }
 function onTouchdown({ scoringSlot, carrierId }, state, io) {
+  state.prevPlayIncompletePass = false   // [294] a TD isn't an incomplete pass
+
+  // [51] Reaching the end zone DURING a two-point try is the conversion succeeding — worth 2, then a
+  // kickoff. (No nested extra-point decision.)
+  //
+  // ⚠️ AND IT IS NOT A TOUCHDOWN IN THE BOX SCORE, which is why this check now comes FIRST. The score
+  // was recorded above it, so a successful two-point conversion also credited a receiving or rushing
+  // touchdown — two points and a phantom TD in the stats. Real football counts neither the score nor
+  // the yardage on a try.
+  if (state.twoPointActive != null) { applyTwoPointResult(state, io, true); return }
+
   // [stats] Credited by HOW the scorer got the ball, not by his position — a receiver who took a
   // handoff scored a rushing touchdown.
   recordTouchdown(state.stats, {
@@ -716,11 +727,36 @@ function onTouchdown({ scoringSlot, carrierId }, state, io) {
     passer: state.statsPasser,
     viaPass: !!state.statsWasPass,
   })
-  state.prevPlayIncompletePass = false   // [294] a TD isn't an incomplete pass
 
-  // [51] Reaching the end zone DURING a two-point try is the conversion succeeding — worth 2, then a
-  // kickoff. (No nested extra-point decision.)
-  if (state.twoPointActive != null) { applyTwoPointResult(state, io, true); return }
+  // ⚠️ AND THE YARDS, WHICH A SCORING PLAY USED TO LOSE ENTIRELY.
+  //
+  // Reported from the stats screen: "I think it doesn't log yards if you score a touchdown on that
+  // play." It did not. The gain is settled in `onTackle`, because that is where the spot is known —
+  // and a touchdown never goes through it. So an eighty-yard touchdown catch added a reception, six
+  // points and ZERO receiving yards, and a forty-yard touchdown run added no rushing yards and not
+  // even a carry.
+  //
+  // It is the worst play to lose: touchdowns are the longest gains in a box score, so the leaders and
+  // the impact ranking were both being computed with every scoring play missing.
+  //
+  // The gain is measured to the goal line rather than from a spot — there is no spot on a touchdown,
+  // the ball is in the end zone. Credited through the same two recorders `onTackle` uses, so a
+  // scoring run books its carry exactly as any other run does.
+  //
+  // ⚠️ ONLY FOR THE TEAM THAT WAS ON OFFENSE. On a defensive return the offense gained nothing, and
+  // crediting seventy-five rushing yards to a cornerback would be worse than the bug.
+  if (scoringSlot === state.possession) {
+    const gained = Math.round(100 - (state.yardLine ?? 0))
+    if (state.statsWasPass) {
+      recordPassYards(state.stats, {
+        passer: state.statsPasser,
+        receiver: offensePlayer(state, carrierId),
+        yards: gained,
+      })
+    } else if (carrierId) {
+      recordRush(state.stats, { runner: offensePlayer(state, carrierId), yards: gained })
+    }
+  }
 
   // [294] Credit X-Factor progress for a touchdown by the OFFENSE (not a defensive return).
   if (scoringSlot === state.possession) {
