@@ -314,18 +314,33 @@ export function endPlay(state, result = {}) {
     // The two numbers any analysis starts from. Derived here rather than left to the reader:
     // `yards` is the field-position delta across the play, and `outcome` is the last terminal
     // event the engine fired -- the events array has the whole sequence if the detail is wanted.
-    const TERMINAL = new Set(['TACKLE', 'PASS_INCOMPLETE', 'TOUCHDOWN', 'SACK', 'INTERCEPTION', 'OUT_OF_BOUNDS', 'SAFETY', 'TURNOVER_ON_DOWNS'])
-    const last = [...rec.events].reverse().find(e => TERMINAL.has(e.type))
+    // ⚠️ THE LAST TERMINAL EVENT IS NOT THE OUTCOME, AND A REAL GAME'S REPORT LOGGED A PICK AS A
+    // TACKLE BECAUSE OF IT. An interception fires THROW -> INTERCEPTION -> TACKLE: the tackle ends the
+    // RETURN, not the play, so reading backwards found it and the record said "TACKLE". The only hint
+    // that anything had happened was `yards: null`, and anybody counting interceptions off this file
+    // would have counted none.
+    //
+    // So the outcome is the most DEFINING event in the sequence rather than the last one. A turnover or
+    // a score defines a play whatever happens afterwards; a sack outranks the tackle that is part of
+    // it; the ordinary endings come last.
+    const PRECEDENCE = ['TOUCHDOWN', 'SAFETY', 'INTERCEPTION', 'TURNOVER_ON_DOWNS', 'SACK', 'OUT_OF_BOUNDS', 'PASS_INCOMPLETE', 'TACKLE']
+    const seen = new Set(rec.events.map(e => e.type))
+    const outcome = PRECEDENCE.find(t => seen.has(t)) ?? null
     rec.result = {
       ...result,
-      outcome: last?.type ?? null,
+      outcome,
+      // ⚠️ AND WHETHER THE BALL CHANGED HANDS IS STATED, not left to be inferred from a null.
+      // A SAFETY is resolved inside onSack/onTackle without enqueuing an event of its own, so it cannot
+      // be NAMED here — a real game produced a record reading `TACKLE` on 1st and 10 from the offense's
+      // own 1, with possession flipped and nothing else to say so. This flag is what makes that visible.
+      possessionChanged: state.possession !== rec.situation.possession,
       // ⚠️ END MINUS START IS ONLY THE GAIN WHEN THE DRIVE SURVIVES THE PLAY. A touchdown resets
       // the field for the kickoff and a turnover flips the frame, so the raw delta read 0 on a
       // 19-yard scoring run and something meaningless on a pick. Scores are measured to the goal
       // line; a change of possession gets null rather than a number that looks real and is not.
       yards: (() => {
         const start = rec.situation.yardLine ?? 0
-        if (last?.type === 'TOUCHDOWN') return r2(100 - start)
+        if (outcome === 'TOUCHDOWN') return r2(100 - start)
         if (state.possession !== rec.situation.possession) return null
         return r2((state.yardLine ?? 0) - start)
       })(),

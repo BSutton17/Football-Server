@@ -46,7 +46,9 @@ for (const p of plays) {
   const sit = `Q${s.quarter} ${s.down}&${Math.round(s.distance)} @${Math.round(s.yardLine)}`.padEnd(18)
   const call = `${p.offense.playType ?? '?'} ${p.offense.playName ?? p.offense.playId ?? ''}`.slice(0, 24).padEnd(25)
   const def = `${p.defense.shellName ?? p.defense.shellId ?? '?'}`.slice(0, 24).padEnd(25)
-  const res = `${p.result?.outcome ?? '?'} ${n2(p.result?.yards)}`
+  // A turnover gets no yardage (the frame flips), so the arrow stands in for a number that would not
+  // be real -- see the note on `yards` in analytics/playLog.js.
+  const res = `${p.result?.outcome ?? '?'} ${p.result?.possessionChanged ? ' ->opp' : n2(p.result?.yards)}`
   console.log(`  ${String(p.play).padStart(3)} ${sit} ${call} ${def} ${res}`)
 }
 
@@ -66,6 +68,11 @@ if (kicks.length) {
 // ── Aggregates worth having in front of you ────────────────────────────────
 const passes = plays.filter(p => p.offense.playType === 'pass')
 const sacks = plays.filter(p => p.result?.outcome === 'SACK')
+// ⚠️ COUNTED OFF THE OUTCOME, WHICH USED TO SAY "TACKLE" ON A PICK. An interception fires
+// THROW -> INTERCEPTION -> TACKLE, the outcome was read as the LAST terminal event, and this total came
+// back as nought on a game that had one. Fixed in playLog.js; the total is here so it cannot hide again.
+const picks = plays.filter(p => p.result?.outcome === 'INTERCEPTION')
+const flips = plays.filter(p => p.result?.possessionChanged)
 const throws = plays.flatMap(p => p.decisions.filter(d => d.kind === 'throw'))
 const helds = plays.flatMap(p => p.decisions.filter(d => d.kind === 'held'))
 const aways = plays.flatMap(p => p.decisions.filter(d => d.kind === 'throwaway'))
@@ -94,6 +101,8 @@ console.log(`
    plays              ${plays.length}   (${passes.length} pass, ${plays.length - passes.length} run)
    yards / play       ${f2(mean(plays.map(p => p.result?.yards ?? 0)))}
    sacks              ${sacks.length}  (${Math.round(100 * sacks.length / Math.max(1, passes.length))}% of pass plays)
+   interceptions      ${picks.length}
+   possession lost    ${flips.length}   (picks, safeties, turnovers on downs — these carry no yardage)
    throwaways         ${aways.length}
    throws             ${throws.length}   mean hold ${f2(mean(throws.map(t => t.elapsed)))}s, mean score ${f2(mean(throws.map(t => t.score)))} vs bar ${f2(mean(throws.map(t => t.bar)))}
    held samples       ${helds.length}   mean best available while waiting ${f2(mean(helds.map(h => h.best)))}
