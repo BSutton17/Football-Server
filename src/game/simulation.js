@@ -25,7 +25,7 @@ import { runCoverageDebug }     from './systems/coverageDebug.js'
 import { runThrowawayWindow }   from './systems/throwawayWindow.js'
 import { runRpo }               from './systems/rpo.js'
 import { runManualHold, revealPassOutcome, takePendingOutcome } from './manual.js'
-import { enqueue }               from './eventQueue.js'
+import { enqueue, startNextPlay } from './eventQueue.js'
 
 // ── Fixed timestep ────────────────────────────────────────────────────────────
 //
@@ -111,6 +111,61 @@ export function stopGameLoop(roomId) {
 
 // Exported so tests can drive the loop one deterministic step at a time. Production code should
 // always go through startGameLoop / stopGameLoop rather than calling this directly.
+// ── [watchdog] Nothing is allowed to wait for ever ──────────────────────────
+//
+// ⚠️ THE GAME CAN REACH A STATE WITH NOTHING SCHEDULED, AND THEN IT IS OVER. Reported twice: "I'll
+// click set defense or offense and the game will just freeze and I'm stuck ... pausing and unpausesing
+// and refreshing does not work its a softlock." The first fix addressed the half-time hold, which was
+// one such state and not the one being hit.
+//
+// The general shape, and the reason a watchdog is the right answer rather than a third guess:
+//
+//   • COUNTDOWN is driven by timers scheduled UP FRONT, all cancelled together by bumping
+//     `countdownToken`. `set_defense` during a countdown does exactly that and then emits a single
+//     `hike_countdown { count: 0 }` in their place. That one emit is now the only thing in existence
+//     that can start the play — there is no timer left, no clock running, and no retry. If the offense
+//     does not act on it (the computer is mid-stoppage and drops the event, its handler throws and is
+//     swallowed, it has already marked itself snapped) the game sits in COUNTDOWN for ever.
+//   • DEAD is the same shape: the next play is booked on a `setTimeout`, and a path that reaches DEAD
+//     without booking one has nothing to advance it.
+//
+// Both are invisible from the outside. Every button is phase-gated and returns silently, so the player
+// sees a pressed button and a frozen field — which is exactly how it was reported, and why it could not
+// be diagnosed from the description.
+//
+// ⚠️ THIS DOES NOT FIX THE CAUSE, AND IS NOT MEANT TO. It makes the whole CLASS survivable: whatever
+// strands the game, it un-strands within a few seconds and says so in the log, with the phase and how
+// long it sat there. The next occurrence names itself instead of being a mystery.
+
+// Longer than any real countdown (at most ~16s of ticks) plus a healthy margin.
+const COUNTDOWN_STUCK_MS = 25_000
+// The ordinary dead-ball gap is 2s and a period transition 5s; the half-time hold books its own long
+// fallback, which this must not pre-empt — so it only acts when NOTHING is booked at all.
+const DEAD_STUCK_MS = 15_000
+
+function runPhaseWatchdog(roomId, state, io) {
+  const since = state.phaseSince
+  if (!since) return
+  const stuckFor = Date.now() - since
+
+  if (state.phase === PHASE.COUNTDOWN && stuckFor > COUNTDOWN_STUCK_MS) {
+    // Re-issue the thing that was lost. Harmless if the offense simply has not snapped yet of its own
+    // accord — a human offense reads it as "the countdown is over", which it is.
+    console.warn(`[watchdog] ${roomId} stuck in COUNTDOWN for ${Math.round(stuckFor / 1000)}s — ` +
+      're-issuing the hike. Something cancelled the countdown and nothing restarted the play.')
+    state.phaseSince = Date.now()          // one nudge per window, not one per tick
+    io.to(roomId).emit('hike_countdown', { count: 0 })
+    return
+  }
+
+  if (state.phase === PHASE.DEAD && state.nextPlayTimer == null && stuckFor > DEAD_STUCK_MS) {
+    console.warn(`[watchdog] ${roomId} stuck in DEAD for ${Math.round(stuckFor / 1000)}s with no next ` +
+      'play booked — starting one.')
+    state.phaseSince = Date.now()
+    startNextPlay(roomId, io)
+  }
+}
+
 export function tick(roomId, io) {
   const state = getGame(roomId)
 
@@ -149,6 +204,10 @@ export function tick(roomId, io) {
     }
     return
   }
+
+  // [watchdog] Checked on every tick and before anything else acts on the phase, because the states it
+  // catches are exactly the ones where nothing else is going to run.
+  runPhaseWatchdog(roomId, state, io)
 
   switch (state.phase) {
     case PHASE.PRE_SNAP:

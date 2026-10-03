@@ -52,6 +52,10 @@ export function transition(state, newPhase) {
   }
   const was = state.phase
   state.phase = newPhase
+  // [watchdog] When this phase began, in wall-clock ms. Stamped HERE because every phase change in
+  // the engine goes through this one function -- the same reason the analytics hooks below live here
+  // rather than at a dozen call sites. See `runPhaseWatchdog` in simulation.js for what reads it.
+  state.phaseSince = Date.now()
   // [analytics] The snap and the whistle, wherever they came from. Hooked here rather than at the
   // call sites: the snap hook lived in the socket handler at first and never fired for anything
   // that reached LIVE another way, and there are a dozen separate `transition(state, PHASE.DEAD)`
