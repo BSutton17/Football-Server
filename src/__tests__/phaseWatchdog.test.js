@@ -3,6 +3,7 @@ import { tick } from '../game/simulation.js'
 import { initGame, deleteGame, getGame } from '../game/gameState.js'
 import { createRoom, joinRoom, leaveRoom } from '../game/roomManager.js'
 import { PHASE } from '../game/stateMachine.js'
+import { beginStoppage, isStopped, STOPPAGE, beginPlayerPause } from '../game/pause.js'
 
 // ── [watchdog] Nothing is allowed to wait for ever ──────────────────────────
 //
@@ -86,6 +87,63 @@ describe('a countdown that nothing will ever finish', () => {
     const said = warn.mock.calls.map(c => c.join(' ')).join('\n')
     expect(said).toMatch(/watchdog/i)
     expect(said).toMatch(/COUNTDOWN/)
+  })
+})
+
+// ⚠️ THE FAMILY THAT ACTUALLY HAPPENS, AND THE ONE THE FIRST WATCHDOG COULD NOT SEE.
+//
+// An OPEN-ENDED stoppage freezes the tick — and the watchdog used to sit BELOW that early return, so a
+// dead game was precisely the state in which it never ran. Reported as "the saftey net isn't working".
+//
+// The real chain: the AI snaps a RUN in manual mode, its hold loop releases GO (it never checked the
+// play type), the server freezes the board on an open-ended MANUAL_HOLD, and `onManualFrozen` returns
+// early because it is a run — so nobody ever presses GO again. No clock, no timer, no path back, and
+// every button phase-gated into a silent refusal.
+describe('a board frozen with nobody left to press GO', () => {
+  function frozenGame() {
+    const s = initGame(ROOM, 0, { mode: 'manual' })
+    s.phase = PHASE.LIVE
+    s.phaseSince = Date.now()
+    s.manual = { holding: false, heldFor: 0, released: true, autoRun: false, pending: null }
+    beginStoppage(s, STOPPAGE.MANUAL_HOLD, null)
+    return s
+  }
+
+  it('leaves a fresh freeze alone — reading the field is the point of it', () => {
+    frozenGame()
+    tick(ROOM, mockIo())
+    expect(isStopped(getGame(ROOM))).toBe(true)
+    expect(warn.mock.calls).toHaveLength(0)
+  })
+
+  it('resumes it once it has clearly been abandoned', () => {
+    const s = frozenGame()
+    s.stoppageSince = Date.now() - 30_000
+    tick(ROOM, mockIo())
+    expect(isStopped(getGame(ROOM))).toBe(false)
+    expect(warn.mock.calls.map(c => c.join(' ')).join(' ')).toMatch(/frozen/i)
+  })
+
+  // ⚠️ AND IT CLEARS THE FREEZE EVEN WHEN A PRESS CANNOT LIFT IT. `pressGo` refuses when the play has
+  // gone to autoRun, which would leave the game just as dead as before.
+  it('clears a freeze that a press cannot lift', () => {
+    const s = frozenGame()
+    s.manual.autoRun = true
+    s.stoppageSince = Date.now() - 30_000
+    tick(ROOM, mockIo())
+    expect(isStopped(getGame(ROOM))).toBe(false)
+  })
+
+  // ⚠️ A PLAYER PAUSE IS DELIBERATE AND IS LEFT ALONE. Un-pausing somebody who walked away from the
+  // game would be its own bug.
+  it('never lifts a pause the player asked for', () => {
+    const s = initGame(ROOM, 0, {})
+    s.phase = PHASE.PRE_SNAP
+    s.phaseSince = Date.now()
+    beginPlayerPause(s, 0)
+    s.stoppageSince = Date.now() - 120_000
+    tick(ROOM, mockIo())
+    expect(isStopped(getGame(ROOM))).toBe(true)
   })
 })
 

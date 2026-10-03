@@ -387,6 +387,48 @@ describe('manual rooms', () => {
     expect(socket.of('throw_to_receiver')[0].payload).toBe('wr0')
   })
 
+  // ── ⚠️ THE SOFTLOCK: A FREEZE THE AI NEVER LIFTS ────────────────────────
+  //
+  // Reported three times, the last as "The softlock is still happening" after a fix aimed at the
+  // half-time hold -- a real unrecoverable state, and not this one.
+  //
+  // `onManualFrozen` used to return early whenever the AI had nothing left to throw, and then NOBODY
+  // pressed GO. A MANUAL_HOLD is OPEN-ENDED: no clock, no timer, no path back. `isStopped` makes the
+  // sim tick return immediately, which is also why the phase watchdog never caught it -- it sat below
+  // that return. All a player sees is a pressed Set Defense button and a field that will not move.
+  //
+  // ⚠️ THE PATH IS AN RPO, NOT A RUN, and I had it wrong first: a designed run never has manual state
+  // at all (`isManualPlay` admits only `pass` and `rpo`), so a run cannot freeze. An RPO can --
+  // `rpo_handoff` sets `done.threw` when the read window shuts, the play goes on as a run with the hold
+  // loop still live, and the next freeze had nobody to lift it. A throw the server REFUSES leaves the
+  // same state.
+  it('⚠️ PRESSES GO AFTER AN RPO HANDOFF, rather than leaving the board frozen for ever', () => {
+    const { socket, ai } = liveOffense({ mode: 'manual', difficulty: 'medium' })
+    for (let i = 0; i < 10; i++) ai.onEvent('positions_update', frame())
+    ai.onEvent('rpo_handoff', {})          // the read window shut; there is nothing left to throw
+    socket.clear()
+    ai.onEvent('manual_frozen', {})
+    expect(socket.of('go_press').length).toBeGreaterThan(0)
+    expect(socket.of('throw_to_receiver')).toHaveLength(0)
+  })
+
+  it('…and after it believes it has already thrown', () => {
+    const { socket, ai } = liveOffense({ mode: 'manual', difficulty: 'medium' })
+    for (let i = 0; i < 40; i++) ai.onEvent('positions_update', frame())
+    expect(socket.of('throw_to_receiver').length).toBeGreaterThan(0)   // it threw
+    socket.clear()
+    ai.onEvent('manual_frozen', {})                                    // …and the board froze anyway
+    expect(socket.of('go_press').length).toBeGreaterThan(0)
+  })
+
+  it('but the DEFENSE never touches the board — it does not own it', () => {
+    const { socket, ai } = liveOffense({ mode: 'manual', difficulty: 'medium' })
+    ai.onEvent('switch_sides', { role: 'defense' })
+    socket.clear()
+    ai.onEvent('manual_frozen', {})
+    expect(socket.of('go_press')).toHaveLength(0)
+  })
+
   it('throws while frozen', () => {
     const { socket, ai } = liveOffense({ mode: 'manual', difficulty: 'medium' })
     for (let i = 0; i < 40; i++) ai.onEvent('positions_update', frame())

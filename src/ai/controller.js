@@ -884,11 +884,28 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   function onManualFrozen() {
     self.manualFrozen = true
     self.looks = (self.looks ?? 0) + 1
-    if (!isOffense(k) || self.done.threw || self.lastCall?.playType === 'run') return
 
-    // The one window in which a throw is legal. Take it if anybody is open; otherwise start the
-    // board again and look once more.
-    if (tryThrow()) return
+    // ⚠️ IF THIS SEAT OWNS THE BOARD, IT MUST ALWAYS LEAVE IT MOVING. THIS IS THE SOFTLOCK.
+    //
+    // The old guard returned early whenever the AI had nothing to throw -- and then nobody pressed GO.
+    // A MANUAL_HOLD is OPEN-ENDED, so the game had no clock, no timer and no path back; `isStopped`
+    // makes the sim tick return immediately, which is also why the phase watchdog never saw it (it sat
+    // below that return). All a player sees is a pressed Set Defense button and a still field.
+    //
+    // ⚠️ THE PATH IS AN RPO, NOT A RUN. A designed run never has manual state at all -- `isManualPlay`
+    // admits only `pass` and `rpo` -- so a run cannot freeze. An RPO CAN: `rpo_handoff` sets
+    // `done.threw` when the read window closes, the play carries on as a run with the hold loop still
+    // live, `runManualClock` goes on releasing GO, and the freeze that follows had nobody to lift it. A
+    // throw the server REFUSES ("too late to throw") leaves the same state behind.
+    //
+    // So pressing GO is the DEFAULT and throwing is the exception, which is the right way round: the
+    // worst a stray press can do is start a board that was already going to move.
+    if (!isOffense(k)) return
+
+    // The one window in which a throw is legal. Take it if there is still a throw to make; otherwise
+    // start the board again, because the play has to finish either way.
+    const mayThrow = !self.done.threw && self.lastCall?.playType !== 'run'
+    if (mayThrow && tryThrow()) return
     socket.fire('go_press')
   }
 

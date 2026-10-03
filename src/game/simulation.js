@@ -24,7 +24,7 @@ import { runTackleDetection }   from './systems/tackleDetection.js'
 import { runCoverageDebug }     from './systems/coverageDebug.js'
 import { runThrowawayWindow }   from './systems/throwawayWindow.js'
 import { runRpo }               from './systems/rpo.js'
-import { runManualHold, revealPassOutcome, takePendingOutcome } from './manual.js'
+import { runManualHold, revealPassOutcome, takePendingOutcome, pressGo } from './manual.js'
 import { enqueue, startNextPlay } from './eventQueue.js'
 
 // ── Fixed timestep ────────────────────────────────────────────────────────────
@@ -142,8 +142,47 @@ const COUNTDOWN_STUCK_MS = 25_000
 // The ordinary dead-ball gap is 2s and a period transition 5s; the half-time hold books its own long
 // fallback, which this must not pre-empt — so it only acts when NOTHING is booked at all.
 const DEAD_STUCK_MS = 15_000
+// A manual freeze is a beat for the offense to read the field, not a state to live in. Generous enough
+// that a human taking their time is never interrupted.
+const MANUAL_HOLD_STUCK_MS = 20_000
 
 function runPhaseWatchdog(roomId, state, io) {
+  // ⚠️ AN OPEN-ENDED STOPPAGE IS THE SOFTLOCK THAT ACTUALLY HAPPENS, so it is checked first and it
+  // is checked on its OWN clock rather than the phase's -- a manual freeze does not change phase, so
+  // `phaseSince` says nothing about how long the board has been still.
+  //
+  // MANUAL_HOLD and PLAYER_PAUSE are the two with no timer behind them. A manual freeze is lifted by
+  // the offense pressing GO, and if the offense is the computer and it decides it has nothing to do --
+  // on a run, or once the ball has gone -- nobody ever presses. The game then has no clock, no timer
+  // and no path back, and every button is phase-gated into a silent refusal.
+  //
+  // A player pause is deliberate and is left alone: un-pausing somebody who walked away would be its
+  // own bug. A MANUAL freeze is not deliberate in that sense -- it is a mechanic, and one that is
+  // supposed to last a beat.
+  if (isStopped(state)) {
+    const reason = stoppageReason(state)
+    if (reason === STOPPAGE.MANUAL_HOLD) {
+      state.stoppageSince = state.stoppageSince ?? Date.now()
+      const held = Date.now() - state.stoppageSince
+      if (held > MANUAL_HOLD_STUCK_MS) {
+        console.warn(`[watchdog] ${roomId} the board has been frozen for ${Math.round(held / 1000)}s ` +
+          'with nobody pressing GO — resuming it. Something froze the play and never restarted it.')
+        state.stoppageSince = null
+        pressGo(state, io)
+        // If the freeze was not liftable by a press (no manual state, autoRun) clear it outright
+        // rather than leave the game dead.
+        if (isStopped(state) && stoppageReason(state) === STOPPAGE.MANUAL_HOLD) {
+          endStoppage(state)
+          io.to(roomId).emit('manual_resumed')
+        }
+      }
+    } else {
+      state.stoppageSince = null
+    }
+    return
+  }
+  state.stoppageSince = null
+
   const since = state.phaseSince
   if (!since) return
   const stuckFor = Date.now() - since
@@ -178,6 +217,12 @@ export function tick(roomId, io) {
   // [69] A stoppage (timeout, and later injuries / challenges / halftime) freezes EVERYTHING: no
   // clock advances and the live sim is held, so the exact state is preserved until it resumes. A
   // timed stoppage counts down here and auto-resumes when it elapses.
+  // [watchdog] ⚠️ CHECKED BEFORE THE STOPPAGE RETURN, WHICH IS WHY THE FIRST VERSION OF THIS NEVER
+  // FIRED. It sat below, so the one family of softlocks that matters -- an OPEN-ENDED stoppage nobody
+  // lifts -- froze the tick and the watchdog with it. Reported as "the saftey net isn't working", and it
+  // was: a dead game is exactly the state in which nothing downstream of here runs.
+  runPhaseWatchdog(roomId, state, io)
+
   if (isStopped(state)) {
     // [chew clock] Anything that freezes the game cancels an in-flight fast-forward. A timeout in
     // particular is the OPPOSITE intent — the player just paid to stop the clock, so resuming into a
@@ -204,10 +249,6 @@ export function tick(roomId, io) {
     }
     return
   }
-
-  // [watchdog] Checked on every tick and before anything else acts on the phase, because the states it
-  // catches are exactly the ones where nothing else is going to run.
-  runPhaseWatchdog(roomId, state, io)
 
   switch (state.phase) {
     case PHASE.PRE_SNAP:
