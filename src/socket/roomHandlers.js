@@ -2,11 +2,12 @@ import { createRoom, joinRoom, leaveRoomBySlot, updateSocketId, getRoom } from '
 import { updatePlayer } from '../game/playerRegistry.js';
 import { createSession, markDisconnected, reconnect, getTokenBySocketId, invalidateSession, getTokensByRoomId, setSessionRole } from '../game/sessionManager.js';
 import { getGame, deleteGame } from '../game/gameState.js';
-import { isPlayerPaused, beginPlayerPause } from '../game/pause.js';
+import { isPlayerPaused, beginPlayerPause, isAutoPaused, resumePlayerPause } from '../game/pause.js';
 import { isSoloRoom } from '../ai/timing.js';
 import { PAUSE_RECONNECT_WINDOW_MS } from '../constants.js';
 import { stopGameLoop } from '../game/simulation.js';
 import { serializeGameState } from '../game/serialization.js';
+import { repairAfterResume } from '../game/resumeRepair.js';
 import { beginTeamSelect, getTeamSelect, clearTeamSelect } from '../game/teamSelect.js';
 import { TEAMS } from '../data/teams.js';
 
@@ -152,6 +153,24 @@ export function registerRoomHandlers(io, socket) {
     socket.emit('reconnect_success', { roomId, role, slot });
     socket.to(roomId).emit('opponent_reconnected');
 
+    // ⚠️ LIFT THE PAUSE THE SERVER CALLED ON THIS PLAYER'S BEHALF. The disconnect handler pauses a
+    // solo game so the computer does not play on to an empty stadium, and its comment has always
+    // promised "Reconnecting resumes it" -- nothing ever did. The player came back to a game frozen on
+    // a stoppage they did not ask for, every button phase-gated into a silent refusal, and no clock
+    // running to get out of it.
+    //
+    // Only the AUTOMATIC one. A pause the player actually asked for must survive their phone dropping,
+    // or stepping away would cost them the thing they stepped away for.
+    {
+      const live = getGame(roomId);
+      if (isAutoPaused(live) && resumePlayerPause(live)) {
+        io.to(roomId).emit('game_resumed');
+        const repaired = repairAfterResume(live, io, roomId);
+        console.log(`[solo] ${roomId} resumed on reconnect` +
+          (repaired.length ? ` — repaired: ${repaired.join('; ')}` : ''));
+      }
+    }
+
     // If the room is still in team selection, drop the player back onto the select screen with the
     // current picks restored; otherwise restore the live game state ([268] reconnect support).
     const sel = getTeamSelect(roomId);
@@ -211,7 +230,7 @@ export function registerRoomHandlers(io, socket) {
       // left it. Reconnecting resumes it; the ordinary expiry still tears it down if they do not.
       const soloState = getGame(roomId);
       if (isSoloRoom(soloState) && !isPlayerPaused(soloState)) {
-        beginPlayerPause(soloState, 0);
+        beginPlayerPause(soloState, slot, { automatic: true });
         console.log(`[solo] ${roomId} held — the human dropped, so the computer stops playing`);
       }
 

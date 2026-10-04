@@ -43,9 +43,24 @@ export function repairAfterResume(state, io, roomId) {
   // state after it, nobody is left holding the unlock and the offense can never snap. Re-sending
   // the current count costs nothing and is the only way that news can arrive twice.
   if (state.phase === PHASE.COUNTDOWN) {
-    const pending = (state.countdownTimers ?? []).length > 0
+    // ⚠️ ASKED OF THE CLOCK, NOT OF THE HANDLES. This used to test whether `countdownTimers` was
+    // non-empty -- and nothing ever removes a FIRED handle from that array; it is only emptied when the
+    // next countdown is scheduled. So `pending` was ALWAYS true, the branch below never ran, and the
+    // repair written for exactly this case had never once fired in its life.
+    //
+    // Which is the whole bug: the ticks are REAL-TIME timers and a pause is not, so pausing through a
+    // countdown burns every one of them -- the zero that unlocks the snap included -- while the game is
+    // frozen and nobody can act on it. On resume nothing is left to fire, and the game sits in COUNTDOWN
+    // with no clock, no timer and no way out.
+    // ⚠️ AND AN UNKNOWN DUE TIME MEANS "STILL COUNTING", NEVER "EXPIRED". Guessing the other way
+    // re-sends the unlock, and the unlock SNAPS THE BALL -- so a missing field would snap early rather
+    // than fail safe. Any countdown scheduled by the live path carries one.
+    const due = state.countdownDueAt
+    const pending = due == null
+      ? (state.countdownTimers ?? []).length > 0
+      : due > Date.now()
     const count = pending ? Math.max(0, Math.ceil(state.playClock ?? 0)) : 0
-    io.to(roomId).emit('hike_countdown', { count: pending ? count : 0 })
+    io.to(roomId).emit('hike_countdown', { count })
     if (!pending) fixed.push('countdown had already expired — re-sent the snap unlock')
   }
 

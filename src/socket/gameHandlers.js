@@ -209,6 +209,18 @@ export function registerGameHandlers(io, socket) {
     // game's emits, they piled up far faster than they expired, and the solver died of it —
     // "Ineffective mark-compacts near heap limit" after about 200,000 plays.
     for (const h of state.countdownTimers ?? []) clearTimeout(h)
+    // ⚠️ WHEN THE UNLOCK IS DUE, IN WALL-CLOCK TIME, because the handles cannot answer that question.
+    //
+    // `repairAfterResume` asks "has the zero already fired?" by testing whether `countdownTimers` is
+    // non-empty -- and nothing ever removes a FIRED handle from that array. It is only emptied when the
+    // NEXT countdown is scheduled. So the answer was always "still pending", and the repair written for
+    // precisely this case could never fire.
+    //
+    // It matters because these are REAL-TIME timers and a pause is not: pause during a countdown and
+    // every tick, including the zero that unlocks the snap, goes off while the game is frozen and
+    // nobody can act on it. On resume there is nothing left to fire and the game sits in COUNTDOWN with
+    // no clock, no timer and no way back. Reported as the game freezing after unpausing.
+    state.countdownDueAt = Date.now() + start * 1000
     state.countdownTimers = Array.from({ length: start + 1 }, (_, i) => start - i).map((count, i) =>
       setTimeout(() => {
         const s = getGame(roomId)

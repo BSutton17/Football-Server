@@ -69,12 +69,23 @@ export function isPlayerPaused(state) {
 // Freezes the game until resumePlayerPause. Any stoppage already running is set aside rather than
 // discarded: pausing during a timeout, or while a manual-mode play is frozen with the GO button up,
 // must not silently cancel it — the play would resume moving with nobody holding anything.
-export function beginPlayerPause(state, bySlot) {
+export function beginPlayerPause(state, bySlot, { automatic = false } = {}) {
   if (isPlayerPaused(state)) return false
   state.pauseInterrupted = state.stoppage ?? null
   state.pausedBy = bySlot
+  // ⚠️ A PAUSE THE SERVER CALLED IS NOT A PAUSE THE PLAYER CALLED, and the difference decides who may
+  // lift it. The disconnect handler pauses a solo game so the computer does not play on to an empty
+  // stadium -- its own comment promises "Reconnecting resumes it", and nothing did. A deliberate pause
+  // must survive a reconnect; an automatic one must not, or the player comes back to a dead game.
+  state.pauseWasAutomatic = automatic
   beginStoppage(state, STOPPAGE.PLAYER_PAUSE, null)
   return true
+}
+
+// True while the pause standing is one the SERVER called on a disconnect, rather than one a player
+// asked for. Only this kind is lifted automatically.
+export function isAutoPaused(state) {
+  return isPlayerPaused(state) && state.pauseWasAutomatic === true
 }
 
 // Lifts the pause and restores whatever it interrupted.
@@ -83,5 +94,6 @@ export function resumePlayerPause(state) {
   state.stoppage = state.pauseInterrupted ?? null
   state.pauseInterrupted = null
   state.pausedBy = null
+  state.pauseWasAutomatic = false
   return true
 }

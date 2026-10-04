@@ -104,6 +104,35 @@ describe('⚠️ A COUNTDOWN WHOSE UNLOCK ALREADY FIRED', () => {
     expect(fixed.join(' ')).not.toMatch(/snap unlock/)
     expect(lastOf('hike_countdown').count).toBeGreaterThan(0)
   })
+
+  // ⚠️ THE CHECK THAT HAD NEVER ONCE FIRED. It asked whether `countdownTimers` was non-empty — and
+  // nothing removes a FIRED handle from that array; it is only emptied when the next countdown is
+  // scheduled. So `pending` was always true and this repair was dead code, in exactly the case it was
+  // written for: the ticks are REAL-TIME timers and a pause is not, so pausing through a countdown
+  // burns every one of them, the zero that unlocks the snap included, while nobody can act on it.
+  // Reported as the game freezing after unpausing.
+  it('⚠️ FIRES WHEN THE DUE TIME HAS PASSED, EVEN WITH HANDLES STILL IN THE ARRAY', () => {
+    const st = getGame(ROOM)
+    st.phase = PHASE.COUNTDOWN
+    st.countdownTimers = [1, 2, 3]             // handles still in the array, all of them already fired
+    st.playClock = 6
+    st.countdownDueAt = Date.now() - 1000      // the zero went off while the game was frozen
+    const fixed = repairAfterResume(st, g.io, ROOM)
+    expect(fixed.join(' ')).toMatch(/snap unlock/)
+    expect(lastOf('hike_countdown').count).toBe(0)
+  })
+
+  // ⚠️ AND AN UNKNOWN DUE TIME MEANS "STILL COUNTING", because the unlock SNAPS THE BALL — guessing
+  // the other way would snap early rather than fail safe.
+  it('treats a missing due time as still counting', () => {
+    const st = getGame(ROOM)
+    st.phase = PHASE.COUNTDOWN
+    st.countdownTimers = [1, 2, 3]
+    st.playClock = 6
+    delete st.countdownDueAt
+    const fixed = repairAfterResume(st, g.io, ROOM)
+    expect(fixed.join(' ')).not.toMatch(/snap unlock/)
+  })
 })
 
 describe('⚠️ A DEAD BALL WITH NO TIMER LEFT', () => {
