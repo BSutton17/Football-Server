@@ -73,7 +73,7 @@ export function createKnowledge(slot) {
     // Live play.
     live: new Map(),        // id -> { id, x, y, team, openness?, ready?, carrier?, qb? }
     manualPlay: false,      // this play is driven by the GO button (manual room, pass call)
-    // [pressure] The server has offered the throwaway (2.25s of live play on a pass). Until this
+    // [pressure] The server has offered the throwaway (2.25s of live play, 2s in manual on a pass). Until this
     // arrives, bailing out is refused — so the AI has to know, exactly as a human sees the button.
     throwawayReady: false,
     offenseSet: false,      // the offense has locked its formation

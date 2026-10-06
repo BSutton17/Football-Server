@@ -29,12 +29,13 @@ import { GAME_MODE } from '../../constants.js'
 //   four-man rush, manual, medium:  man 30% -> 24% sacks,  zone 24% -> 16%,  six-man 60% -> 46%
 //
 // ⚠️ AND THEN IT WAS TOO EASY. With the bail-out live at 1.6s the AI quarterback gave up on plays
-// that were still developing — reported as "the AI qb can throw the ball away way too easily". The
-// call is a flat 2.25s in both modes: a throwaway is for a play that has actually died, and the
-// sacks the shorter window saved are the price of the quarterback having to hang in there.
+// that were still developing — reported as "the AI qb can throw the ball away way too easily". A
+// throwaway is for a play that has actually died: 2.25s in automatic, 2s in manual (by request —
+// manual's board-time plays end sooner). The sacks the shorter window saved are the price of the
+// quarterback having to hang in there.
 const THROWAWAY_AFTER_SECONDS = {
   [GAME_MODE.AUTOMATIC]: 2.25,
-  [GAME_MODE.MANUAL]:    2.25,
+  [GAME_MODE.MANUAL]:    2,
 }
 
 // Resets the window for a new play. Called from initLivePhase at the snap.

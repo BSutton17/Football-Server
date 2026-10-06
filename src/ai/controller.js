@@ -1119,7 +1119,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // now decides every tick on the same code path and would show the same thing.
     //
     // ⚠️ BELOW THE BAIL-OUT ON PURPOSE. Throwing it away is not "letting it go early" -- it is
-    // already gated far harder, at 2.25s of live play by the server's throwaway window, and putting
+    // already gated far harder, at 2-2.25s of live play by the server's throwaway window, and putting
     // this above it stopped a quarterback with a defender in his lap from saving the down.
     if (elapsed < minHold()) return false
 

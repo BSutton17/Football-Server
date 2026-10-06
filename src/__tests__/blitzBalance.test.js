@@ -125,7 +125,7 @@ describe('the quarterback has an answer to pressure', () => {
   })
 
   it('does NOT throw it away before the server has offered it', () => {
-    // Bailing out is refused until 2.25s of live play, so firing early just earns a rejection.
+    // Bailing out is refused until 2.25s of live play (2s in manual), so firing early just earns a rejection.
     const { c, fired, frame } = pressuredQb({ throwawayReady: false })
     for (let i = 0; i < 6; i++) c.onEvent('positions_update', frame)
     expect(fired.some(f => f.event === 'throwaway')).toBe(false)

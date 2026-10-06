@@ -59,10 +59,10 @@ describe('the window opens on simulated time', () => {
   })
 
   // ⚠️ MANUAL USED TO BE SHORTER (1.6s) so the bail-out opened before manual sacks landed. That
-  // made the AI quarterback throw it away far too easily, and the window is now a flat 2.25s in
-  // both modes by request: the option exists only once the play has really had time to die.
-  it('opens at 2.25 seconds of live play in both modes', () => {
-    expect(THROWAWAY_AFTER_SECONDS[GAME_MODE.MANUAL]).toBe(2.25)
+  // made the AI quarterback throw it away far too easily. By request the window is now 2.25s in
+  // automatic and 2s in manual: the option exists only once the play has really had time to die.
+  it('opens at 2.25s of live play in automatic and 2s in manual', () => {
+    expect(THROWAWAY_AFTER_SECONDS[GAME_MODE.MANUAL]).toBe(2)
     expect(THROWAWAY_AFTER_SECONDS[GAME_MODE.AUTOMATIC]).toBe(2.25)
   })
 
