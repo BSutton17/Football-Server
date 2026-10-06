@@ -1,6 +1,6 @@
 import { createRoom, joinRoom, leaveRoomBySlot, updateSocketId, getRoom } from '../game/roomManager.js';
 import { updatePlayer } from '../game/playerRegistry.js';
-import { createSession, markDisconnected, reconnect, getTokenBySocketId, invalidateSession, getTokensByRoomId, setSessionRole } from '../game/sessionManager.js';
+import { createSession, markDisconnected, reconnect, getTokenBySocketId, getSlotByToken, invalidateSession, getTokensByRoomId, setSessionRole } from '../game/sessionManager.js';
 import { getGame, deleteGame } from '../game/gameState.js';
 import { isPlayerPaused, beginPlayerPause, isAutoPaused, resumePlayerPause } from '../game/pause.js';
 import { isSoloRoom } from '../ai/timing.js';
@@ -228,9 +228,12 @@ export function registerRoomHandlers(io, socket) {
       // for the whole 30-second reconnect window after their phone dropped. Worse than wasteful:
       // you could come back to a changed score. Hold the game instead, so it is waiting where they
       // left it. Reconnecting resumes it; the ordinary expiry still tears it down if they do not.
+      // ⚠️ `slot` IS NOT IN SCOPE HERE — it is the expiry callback's parameter above. Naming it bare
+      // threw a ReferenceError on every solo disconnect, and an uncaught throw in a socket handler
+      // takes down the whole process: every room on the server, not just this one.
       const soloState = getGame(roomId);
       if (isSoloRoom(soloState) && !isPlayerPaused(soloState)) {
-        beginPlayerPause(soloState, slot, { automatic: true });
+        beginPlayerPause(soloState, getSlotByToken(token), { automatic: true });
         console.log(`[solo] ${roomId} held — the human dropped, so the computer stops playing`);
       }
 

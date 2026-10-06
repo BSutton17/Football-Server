@@ -79,6 +79,11 @@ export function setSessionRole(token, role) {
   return true;
 }
 
+// Which seat a session holds — 0 or 1 — or null for an unknown token.
+export function getSlotByToken(token) {
+  return sessions.get(token)?.slot ?? null;
+}
+
 export function getTokenBySocketId(socketId) {
   for (const [token, session] of sessions) {
     if (session.socketId === socketId) return token;

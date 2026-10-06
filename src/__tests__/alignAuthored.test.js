@@ -665,3 +665,56 @@ describe('⚠️ A ZONE IS A SHARE OF THE FIELD, NOT AN OFFSET FROM THE BALL', (
     expect(Math.abs(cb1.zoneCenterX - (MID - 20))).toBeLessThanOrEqual(MAX_UNDER_LEAN)
   })
 })
+
+// Cover 1 and Cover 3 are drawn out of two-high formations, so the lone deep safety's BODY used to
+// stay on the S1 spot eight yards left of the ball while only his zone was in the middle.
+describe('⚠️ A SINGLE-HIGH SAFETY LINES UP IN THE MIDDLE', () => {
+  const FIELD_CENTER = 53.33 / 2
+
+  it.each([
+    ['ball in the middle', BALL_X],
+    ['left hash', BALL_X - 8],
+    ['right hash', BALL_X + 8],
+  ])('in man (Cover 1), %s', (_, ballX) => {
+    const shifted = receivers.map(r => ({ ...r, x: r.x - BALL_X + ballX }))
+    const rows = alignAuthored({ formation, shell: manShell(), receivers: shifted, ballX, losY: LOS })
+    const s1 = rows.find(r => r.slot === 'S1')
+    // The deep structure may shade toward the strength by its usual two yards, and no further.
+    expect(Math.abs(s1.x - FIELD_CENTER)).toBeLessThanOrEqual(2 + 1e-9)
+  })
+
+  it('in zone (Cover 3)', () => {
+    const shell = {
+      assignments: {
+        ...rush(['DL1', 'DL2', 'DL3', 'DL4']),
+        CB1: { job: 'zone', zone: 'deep', center: { dx: -17.8, depth: 15 } },
+        CB2: { job: 'zone', zone: 'deep', center: { dx: 17.8, depth: 15 } },
+        S1: { job: 'zone', zone: 'deep', center: { dx: 0, depth: 16 } },
+        S2: { job: 'zone', zone: 'hook', center: { dx: 9, depth: 7 } },
+        LB1: { job: 'zone', zone: 'hook', center: { dx: -9, depth: 7 } },
+        LB2: { job: 'zone', zone: 'curl', center: { dx: 0, depth: 8 } },
+        LB3: { job: 'zone', zone: 'curl', center: { dx: 4, depth: 8 } },
+      },
+    }
+    const rows = alignAuthored({ formation, shell, receivers, ballX: BALL_X - 8, losY: LOS })
+    const s1 = rows.find(r => r.slot === 'S1')
+    expect(Math.abs(s1.x - FIELD_CENTER)).toBeLessThanOrEqual(2 + 1e-9)
+    // The middle curl underneath him is not shoved aside by him: they are in different tiers.
+    const lb2 = rows.find(r => r.slot === 'LB2')
+    expect(Math.abs(lb2.x - (FIELD_CENTER + lb2.zoneCenter.dx))).toBeLessThanOrEqual(4 + 1e-9)
+  })
+
+  it('two-high is left alone', () => {
+    const shell = {
+      assignments: {
+        ...rush(['DL1', 'DL2', 'DL3', 'DL4']),
+        CB1: { job: 'man' }, CB2: { job: 'man' }, LB1: { job: 'man' }, LB2: { job: 'man' }, LB3: { job: 'man' },
+        S1: { job: 'zone', zone: 'deep', center: { dx: -13.3, depth: 15 } },
+        S2: { job: 'zone', zone: 'deep', center: { dx: 13.3, depth: 15 } },
+      },
+    }
+    const rows = alignAuthored({ formation, shell, receivers, ballX: BALL_X, losY: LOS })
+    expect(rows.find(r => r.slot === 'S1').x).toBeLessThan(FIELD_CENTER - 5)
+    expect(rows.find(r => r.slot === 'S2').x).toBeGreaterThan(FIELD_CENTER + 5)
+  })
+})

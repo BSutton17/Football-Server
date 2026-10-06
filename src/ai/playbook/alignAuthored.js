@@ -87,6 +87,11 @@ const MAX_ZONE_SLIDE = 4
 // be more to the middle".
 const MAX_DEEP_SLIDE = 2
 
+// How close to the middle a lone deep safety's landmark has to be for him to count as single-high.
+// The authored middle-of-the-field landmarks are 0 (one is drawn at 0.3); an inverted two-deep with
+// one safety sits at ±10 or more, and he is guarding a half, not the middle.
+const SINGLE_HIGH_REACH = 4
+
 // How far a deep-zone CORNER may walk from his landmark to stand over a receiver. Far enough to
 // look like man coverage, short enough that he is still in the quarter he is responsible for.
 const DISGUISE_TRAVEL = 7
@@ -545,7 +550,9 @@ export function enforceSpacing(rows, losY, ballX = null, frontSize = null) {
 }
 
 export function enforceNoCrossing(rows) {
-  const zones = rows.filter(r => r.job === 'zone')
+  // A single-high safety is alone in his tier, so there is nobody for him to cross — and a hook
+  // sitting underneath him in the middle is the shape of the call, not a collision.
+  const zones = rows.filter(r => r.job === 'zone' && !r.singleHigh)
   if (zones.length < 2) return rows
 
   let floor = -Infinity
@@ -592,7 +599,7 @@ function deepStructureSlide(rows, receivers, losY, ballX) {
   let total = 0
   let n = 0
   for (const d of deeps) {
-    const side = split.filter(r => (d.dx < 0 ? r.x < ballX : r.x >= ballX))
+    const side = d.singleHigh ? split : split.filter(r => (d.dx < 0 ? r.x < ballX : r.x >= ballX))
     if (!side.length) continue
     const mean = side.reduce((a, r) => a + r.x, 0) / side.length
     total += mean - (FIELD_CENTER_X + d.zoneCenter.dx)
@@ -628,6 +635,24 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
 
   // ⚠️ Not ready is not a failure — it is the normal state while the offense is still setting.
   if (!ready || !receivers?.length) return base
+
+  // ⚠️ A SINGLE-HIGH SAFETY STANDS IN THE MIDDLE, NOT WHERE THE FORMATION DREW HIM.
+  //
+  // Cover 1 and Cover 3 are authored out of two-high formations, so the one safety left deep is
+  // drawn at the S1 spot — eight yards left of the ball — while his landmark is the middle of the
+  // field. "The body moves with the landmark" (below) then kept him on the left every snap, and the
+  // middle of the field showed open before the ball was even snapped. Reported as "a single high
+  // safety ... is always on the left side when it should be in the middle".
+  //
+  // So his body starts ON his landmark. Flagged, because every side-of-the-ball rule in this file
+  // reads `dx < 0` and a defender in the middle belongs to neither side.
+  const deepSafeties = base.filter(d => d.label === 'S' && d.job === 'zone' && d.zone === 'deep' && d.zoneCenter)
+  if (deepSafeties.length === 1 && Math.abs(deepSafeties[0].zoneCenter.dx) <= SINGLE_HIGH_REACH) {
+    const s = deepSafeties[0]
+    s.singleHigh = true
+    s.dx = s.zoneCenter.dx
+    s.x = ballX + s.dx
+  }
 
   const blitzing = isBlitz(shell)
   const forced = shell?.forcedLeverage ?? null
@@ -724,7 +749,7 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
       // but is not part of the distribution a zone should sit over — counting him dragged a
       // flat-zone corner four yards inside, away from the receiver he was out there for.
       const side = receivers.filter(r =>
-        splitOut(r, losY) && (d.dx < 0 ? r.x < ballX : r.x >= ballX))
+        splitOut(r, losY) && (d.singleHigh || (d.dx < 0 ? r.x < ballX : r.x >= ballX)))
       // ⚠️ NOBODY ON HIS SIDE STILL MEANS HIS QUARTER NEEDS COVERING. Returning the drawn row
       // untouched left a deep zone on the ball-relative spot, so the boundary quarter stayed
       // bunched exactly when there was nothing over there to justify it.
