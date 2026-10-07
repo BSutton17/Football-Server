@@ -314,15 +314,15 @@ describe('[48] field goal block zones', () => {
     expect(fgBlockRegion(0.95)).toBe('red')
   })
 
-  it('the bar splits ~3% green / 60% yellow / 37% red', () => {
-    expect(FG_BLOCK.GREEN_HALF * 2).toBeCloseTo(0.03)
-    expect((FG_BLOCK.YELLOW_HALF - FG_BLOCK.GREEN_HALF) * 2).toBeCloseTo(0.60)
+  it('the bar splits 2% green / 61% yellow / 37% red', () => {
+    expect(FG_BLOCK.GREEN_HALF * 2).toBeCloseTo(0.02)
+    expect((FG_BLOCK.YELLOW_HALF - FG_BLOCK.GREEN_HALF) * 2).toBeCloseTo(0.61)
     expect((0.5 - FG_BLOCK.YELLOW_HALF) * 2).toBeCloseTo(0.37)
   })
 
-  it('probabilities: green guaranteed, yellow 5%, red none', () => {
+  it('probabilities: green guaranteed, yellow 2.5%, red none', () => {
     expect(fgBlockProbability('green')).toBe(1)
-    expect(fgBlockProbability('yellow')).toBe(0.05)
+    expect(fgBlockProbability('yellow')).toBe(0.025)
     expect(fgBlockProbability('red')).toBe(0)
   })
 })

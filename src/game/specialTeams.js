@@ -330,12 +330,14 @@ function clamp(v, lo, hi) {
 //   green  — 3% of the bar (a tiny center band) → guaranteed block
 //   yellow — 60% (30% either side of green)     → 5% chance
 //   red    — 37% (the outer ~18.5% on each end) → no chance
-// Half-widths from center: green |pos−0.5| ≤ 0.015; green+yellow ≤ 0.315; beyond = red.
+// Half-widths from center: green |pos−0.5| ≤ 0.01; green+yellow ≤ 0.315; beyond = red.
+// ⚠️ TIGHTENED BY REQUEST (2026-10-07): green was 3% of the bar and yellow blocked 5% of the time;
+// now green is 2% — a thinner window to hit — and yellow 2.5%. The yellow/red edge is unchanged.
 export const FG_BLOCK = {
-  GREEN_HALF:  0.015,   // 3% total band
-  YELLOW_HALF: 0.315,   // green+yellow span (yellow = 0.315−0.015 each side = 0.60 total)
+  GREEN_HALF:  0.01,    // 2% total band
+  YELLOW_HALF: 0.315,   // green+yellow span (yellow = 0.315−0.01 each side = 0.61 total)
   GREEN_PROB:  1.0,     // guaranteed
-  YELLOW_PROB: 0.05,    // 5%
+  YELLOW_PROB: 0.025,   // 2.5%
   RED_PROB:    0,       // no chance
 }
 
