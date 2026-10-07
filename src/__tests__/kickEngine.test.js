@@ -499,3 +499,23 @@ describe('[19] hang time — from power and distance', () => {
     expect(punt(1, 99).hangTime).toBeLessThanOrEqual(4.6)
   })
 })
+
+// Requested: "the angle of the arrow should affect distance. An arrow straight ahead at full power
+// should go further than an angled one." A field goal used to ignore the arrow for distance entirely.
+describe('⚠️ AN ANGLED KICK HAS FURTHER TO GO', () => {
+  const kick = (angle, requiredDistance) => calculateKickResult({
+    kickType: 'field_goal', power: 1, angle, kickerPower: 99, kickerAccuracy: 99,
+    requiredDistance, ballX: 26.665, uprightsX: 26.665,
+  }, () => 0.5)
+
+  it('straight carries further toward the posts than full angle', () => {
+    expect(kick(0, 0).downfieldDistance).toBeGreaterThan(kick(1, 0).downfieldDistance)
+    expect(kick(1, 0).downfieldDistance).toBeCloseTo(kick(0, 0).downfieldDistance * Math.cos(Math.PI / 6), 5)
+  })
+
+  it('a kick with just enough leg straight falls short when angled', () => {
+    const straight = kick(0, 0).downfieldDistance
+    expect(kick(0, straight - 1).hasDistance).toBe(true)
+    expect(kick(1, straight - 1).hasDistance).toBe(false)
+  })
+})

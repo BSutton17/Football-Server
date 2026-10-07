@@ -82,8 +82,10 @@ export const POWER_REFILL_PER_TAP   = 0.02  // [10] every valid directional inpu
 // ⚠️ AND 25% SLOWER AGAIN, BY REQUEST. 4/3 is exact rather than approximate: the rate is
 // 0.9 / (3.5 * 4/3), which is precisely three quarters of what it was at 1.0. An untouched meter
 // now drains 67.5% over the timer instead of 90%.
+// ⚠️ AND 15% FASTER, BY REQUEST (2026-10-07): an untouched meter now drains 77.6% over the timer.
 export const POWER_DRAIN_SLOWDOWN   = 4 / 3
-export const POWER_DRAIN_PER_SEC    = (FULL_POWER / KICK_TIMER_SECONDS) * 0.9 / POWER_DRAIN_SLOWDOWN
+export const POWER_DRAIN_SPEEDUP    = 1.15
+export const POWER_DRAIN_PER_SEC    = (FULL_POWER / KICK_TIMER_SECONDS) * 0.9 / POWER_DRAIN_SLOWDOWN * POWER_DRAIN_SPEEDUP
 // [13] The aiming arrow is capped at ±30° from straight ahead. Angle is normalized −1..1 (±1 = ±30°).
 export const AIM_MAX_DEGREES        = 30
 // [12] Each left/right input nudges the arrow this much (normalized); ~10 presses reach the ±30° cap.

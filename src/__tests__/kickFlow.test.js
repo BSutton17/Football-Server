@@ -77,11 +77,12 @@ describe('[9][10] power meter drains continuously once started, refilled by taps
   // ⚠️ FOUR SETTINGS NOW, AND THE NUMBER IS THE POINT RATHER THAN THE SHAPE. 1.3*1.3 made a full
   // meter the DEFAULT outcome and every punt came out at its ceiling; 1.3 still let a half-full bar
   // send the ball 40 yards; 1.0 was right for distance but combined with the punt curve it left the
-  // meter feeling frantic. 4/3 is exactly three quarters of that drain, by request.
-  it('an untouched meter drains about two thirds over the timer', () => {
+  // meter feeling frantic. 4/3 is exactly three quarters of that drain, by request — and then 15%
+  // faster again, also by request.
+  it('an untouched meter drains about three quarters over the timer', () => {
     expect(POWER_DRAIN_SLOWDOWN).toBeCloseTo(4 / 3, 6)
-    expect(POWER_DRAIN_PER_SEC).toBeCloseTo((1 / KICK_TIMER_SECONDS) * 0.9 / (4 / 3), 6)
-    expect(POWER_DRAIN_PER_SEC * KICK_TIMER_SECONDS).toBeCloseTo(0.675, 3)
+    expect(POWER_DRAIN_PER_SEC).toBeCloseTo((1 / KICK_TIMER_SECONDS) * 0.9 / (4 / 3) * 1.15, 6)
+    expect(POWER_DRAIN_PER_SEC * KICK_TIMER_SECONDS).toBeCloseTo(0.776, 3)
   })
 
   it('a directional tap fights the drain back up (+2%)', () => {

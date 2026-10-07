@@ -132,6 +132,8 @@ export const PUNT_BACKSPIN_MAX = 8
 // [23] A full deflection (|finalAngle| = 1) launches the punt at this angle off straight; the punt's
 // total distance then splits into a downfield (cos) and lateral (sin) component.
 const PUNT_MAX_ANGLE_RAD = (30 * Math.PI) / 180
+// …and the same ±30° arrow for a field goal or extra point (AIM_MAX_DEGREES in specialTeams.js).
+const KICK_MAX_ANGLE_RAD = PUNT_MAX_ANGLE_RAD
 
 // [18] ballX / uprightsX are absolute field-X positions: the hash the ball is spotted on and the
 // (centered) goalposts. fieldWidth (sideline-to-sideline) enables out-of-bounds punt detection ([24]).
@@ -217,7 +219,14 @@ export function calculateKickResult(
     //   hasDistance   — the leg cleared the crossbar (distance ≥ the required distance).
     //   lateralAtGoal — where the ball crosses the uprights plane relative to their CENTER: the
     //                   realized push minus the offset it had to cover. 0 = dead center, ± = right/left.
-    const hasDistance    = distance >= requiredDistance
+    // ⚠️ AN ANGLED KICK HAS FURTHER TO GO. Requested: "the angle of the arrow should affect distance —
+    // an arrow straight ahead at full power should go further than one angled off." A punt has always
+    // split its carry by the launch angle (cos downfield, sin lateral, above); a field goal ignored the
+    // arrow entirely, so a kick hooked thirty degrees cleared the bar exactly as if struck straight.
+    // The ball travels along the arrow, so its progress toward the posts is distance × cos(angle).
+    const towardPosts    = distance * Math.cos(finalAngle * KICK_MAX_ANGLE_RAD)
+    result.downfieldDistance = towardPosts
+    const hasDistance    = towardPosts >= requiredDistance
     const lateralAtGoal  = pushYards - lateralOffset
     const splitsUprights = Math.abs(lateralAtGoal) <= UPRIGHT_HALF_WIDTH
 
