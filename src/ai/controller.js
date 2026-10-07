@@ -54,6 +54,10 @@ import { DL_SPACING } from './playbook/front.js'
 
 const TICK_SECONDS = 0.05
 
+// How many times a REFUSED set_offense is retried within one play before the controller gives up
+// and leaves it to the delay-of-game health check. Retries come one per play-clock second.
+const MAX_SET_RETRIES = 4
+
 // ⚠️ READ ONCE, NOT EVERY SNAP. The playbook is a file on disk and placeOffense runs on every
 // play; re-reading and re-parsing 126 plays each time would be pure waste. It is reloaded only
 // when the sandbox has written to it, which a dev session does and a game never does.
@@ -168,6 +172,9 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
           // line that catches a refused coverage assignment.
           const expected = self.expectMissingRemoval && /Player not found/i.test(payload?.message ?? '')
           if (!expected) console.warn(`[ai:${slot}] ACTION REFUSED: ${payload?.message ?? '(no reason)'}`)
+          // The virtual socket is synchronous, so a refusal of the set arrives INSIDE the fire call
+          // in lockOffense — which is what lets it tell "sent" from "accepted". See there.
+          if (self.settingOffense) self.setRefused = payload?.message ?? 'refused'
           return undefined
         }
 
@@ -196,6 +203,30 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     },
   }
 
+  // ── [health] Starting over from the server's word ─────────────────────────
+  //
+  // Called by game/healthCheck.js when this seat's offense took a delay of game. The computer never
+  // means to — its tempo stops at three seconds — so a delay is proof that its picture of the game
+  // has come apart from the server's: a missed game_state, a stoppage it thinks is still running, a
+  // set it believes was accepted. Patching any one of those is guessing, so the picture is rebuilt
+  // from nothing and fed the CURRENT situation and field, exactly as a fresh seat would see them.
+  //
+  // `setNow` makes the offense lock as soon as it has lined up rather than waiting for its chosen
+  // moment — it has just been docked five yards for not setting, and waiting again is how it got
+  // there. Not charged as hurried time: nobody hurried it.
+  self.recover = function recover({ gameState, placements = [] } = {}) {
+    const keepRecent = self.recentPlays
+    Object.assign(k, createKnowledge(slot))
+    k.newPlay = false
+    resetPlay()
+    self.recentPlays = keepRecent   // …and `frontOnField` survives too, for the reason resetPlay gives
+    for (const pos of placements) applyEvent(k, 'player_placed', pos)
+    if (gameState) applyEvent(k, 'game_state', gameState)
+    k.newPlay = false
+    self.setNow = true
+    return onSituation()
+  }
+
   function resetPlay() {
     self.done = { personnel: false, formation: false, coverage: false, set: false, snapped: false, timeout: false, runAdjust: false }
     self.lastCall = null
@@ -217,6 +248,8 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     self.reads = new Map()
     self.liveFor = 0     // a fresh moment to set, chosen next time the offense thinks
     self.forceSet = false
+    self.setNow = false          // [health] set at once, without charging it as hurried time
+    self.setRetries = 0
     self.alignedAgainst = null   // [twitch] the opponent formation this defense last answered
     self.placedAt = new Map()    // …and where each defender was actually put
     // ⚠️ `frontOnField` IS DELIBERATELY NOT CLEARED HERE. It is the only record of which linemen
@@ -375,7 +408,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
         : setTimeFor(self.tempo, rng)
       if (self.tempo !== TEMPO.NORMAL) say(`tempo: ${self.tempo} (set at :${self.setAt.toFixed(0)})`)
     }
-    if (!self.forceSet && !shouldSetNow(k.playClock ?? 0, self.setAt)) return
+    if (!self.forceSet && !self.setNow && !shouldSetNow(k.playClock ?? 0, self.setAt)) return
 
     // ⚠️ BEING HURRIED MUST NOT SAVE THE OFFENSE TIME ON THE GAME CLOCK.
     //
@@ -394,6 +427,8 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     const ballX = k.ballX            // the line and the quarterback pivot on the hash, like the client's
     // The line and the quarterback are not dragged by anyone — they are auto-placed, and they
     // travel in the set_offense payload rather than as place_player events.
+    self.settingOffense = true
+    self.setRefused = null
     socket.fire('set_offense', {
         hurriedSeconds: self.hurriedSeconds ?? 0,
       playSerial: k.playSerial,
@@ -409,6 +444,19 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
         ...autoOffense(losY, ballX),
       ],
     })
+    self.settingOffense = false
+
+    // ⚠️ SENT IS NOT ACCEPTED. This marked the set done unconditionally, so one refusal — a stale
+    // play serial, a stoppage that had not quite cleared, a menu still open — left the computer
+    // believing it had set while the server sat in PRE_SNAP waiting for it. Nothing ever tried
+    // again, the play clock ran out, and the delay of game that followed was the first sign of it.
+    // A refused set stays undone, so the next play-clock tick tries again; a few tries per play is
+    // plenty, and the delay-of-game health check (game/healthCheck.js) catches anything past that.
+    if (self.setRefused) {
+      self.setRetries = (self.setRetries ?? 0) + 1
+      say(`set refused (${self.setRefused}) — try ${self.setRetries}`)
+      if (self.setRetries < MAX_SET_RETRIES) return
+    }
     self.done.set = true
   }
 

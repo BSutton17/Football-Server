@@ -6,6 +6,7 @@ import {
 } from './stats.js'
 import { observePlay, adjustmentsFor, describeAdjustments } from '../ai/playcall/tendencies.js'
 import { isSoloRoom } from '../ai/timing.js'
+import { checkGameHealth } from './healthCheck.js'
 import { RULES, FIELD, FIELD_CENTER_X } from '../constants.js'
 import { getGame, advanceDown, changePossession, yardLineFromAbsY, getLosY, clampToHash, clearPerPlayDeclarations } from './gameState.js'
 import {
@@ -1293,6 +1294,11 @@ export function applyDelayOfGame(state, io) {
     })
   }
   console.log(`[game] ${state.roomId} DELAY OF GAME (−${back}) → ${state.down} & ${state.distance} at ${state.yardLine}`)
+
+  // [health] A delay of game is the symptom every softlock shares — the offense could not snap. So
+  // the moment one is called, check that the server, the game and the offense's ability to set are
+  // all still sound, and repair what is not. See healthCheck.js.
+  checkGameHealth(state, io, { offenseSlot: state.possession })
 }
 
 // [Special Teams][1] Push the viewer-relative special-teams state to both players.

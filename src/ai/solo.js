@@ -68,6 +68,7 @@ export function createSoloRoom(io, humanSocket, { roomId, mode, difficulty, seed
     role: 'defense',                       // provisional; the join below settles it
     onEvent: (e, p) => brain.current?.onEvent(e, p),
   })
+  ai.brain = brain                       // [health] so a delay-of-game check can reach the controller
   registerAiSeat(ai)
 
   // The AI plays through the SAME handlers a phone does. Registering them here is what makes
