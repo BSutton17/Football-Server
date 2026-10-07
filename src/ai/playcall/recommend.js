@@ -294,6 +294,9 @@ export function layoutPlayForClient(book, playId, { losY, ballX, mirror = false 
       // as "is running it", so an empty array would send him nowhere at full speed.
       route: routeFor(play, sp.slot, { mirror }) ?? null,
       blocking: play.assignments?.[sp.slot]?.kind === 'block',
+      // [route colours] The authored marking (red = the primary read, blue = the back's route, by
+      // the author's convention). Pure art: the engine never reads it.
+      color: play.assignments?.[sp.slot]?.kind === 'route' ? (play.assignments[sp.slot].color ?? null) : null,
     })),
   }
 }
