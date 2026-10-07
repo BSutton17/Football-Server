@@ -1,4 +1,4 @@
-import { ratingOf, drainFromStaminaRating } from '../../data/ratings.js'
+import { ratingOf, drainFromStaminaRating, recoveryFromStaminaRating } from '../../data/ratings.js'
 
 // Linemen can't be subbed, so they don't accumulate fatigue.
 const LINEMAN = new Set(['OL', 'C', 'G', 'T', 'DL'])
@@ -9,18 +9,38 @@ function isLineman(label) {
 
 // slot — which team (0 | 1) this player belongs to, so fatigue can be reported to the right viewer
 // even after the per-play offense/defense maps are wiped at a play boundary ([fatigue]).
-function getOrInit(state, playerId, label, slot) {
+function getOrInit(state, playerId, label, slot, staminaRating = null) {
   if (!state.playerFatigue.has(playerId)) {
     state.playerFatigue.set(playerId, { stamina: 100, label: label ?? '', slot })
   }
   const f = state.playerFatigue.get(playerId)
+  if (f.staminaRating == null && staminaRating != null) f.staminaRating = staminaRating
   if (!f.label && label) f.label = label
   if (f.slot == null && slot != null) f.slot = slot
   return f
 }
 
-// Global drain scale — players tire more slowly ([fatigue feedback]: drain lowered 35%).
-const DRAIN_SCALE = 0.65
+// ── The fatigue model, tuned against whole games ([fatigue]) ─────────────────
+//
+// Reported as "fatigue has been a non-factor — players gain it back too fast, and the ones who run
+// further should lose more." Measured over full headless games (both sides the computer), the old
+// model had full-game players FRESHER at the end of the game than at halftime — median stamina 68 at
+// the half and 74 at the end, 77% still green — because every change of possession handed everyone
+// back half of whatever they had lost.
+//
+// The targets given: around 60-65 at halftime, and almost every full-game player in the yellow or red
+// late in the fourth. Recovery now comes only from SITTING (off the field, proportional to what has
+// been lost) and from halftime; drain is lower per tick but nothing gives it back for free, and
+// sprinting and contact cost more. Measured over 8 games, ~180 full-game players:
+//
+//   halftime      median 61   green 55%  yellow 40%  red  5%
+//   end of game   median 46   green 19%  yellow 59%  red 21%
+//
+// ⚠️ THE SHAPE MATTERS AS MUCH AS THE LEVEL. Fast drain with fast recovery reaches its balance point by
+// halftime and then sits there, so the fourth quarter looked exactly like the second. Slow drain with
+// slow, proportional recovery is still sliding when the fourth quarter comes — which is what "tired
+// late in the game" means.
+const DRAIN_SCALE = 0.38
 
 // ── Effort model ([fatigue effort]) ─────────────────────────────────────────────
 // Drain scales with how hard a player is working THIS tick, so stamina tracks effort. Movement speed
@@ -30,14 +50,18 @@ const DRAIN_SCALE = 0.65
 // slant (which settles early) or a blocking TE — without any per-route bookkeeping.
 const EFFORT_REF_SPEED = 8      // yd/s treated as "full sprint" for the effort ramp (top speed ≈ 9.5)
 const IDLE_EFFORT      = 0.3    // multiplier when standing still (matches the old settled-receiver rate)
-const SPRINT_EFFORT    = 1.35   // multiplier at full sprint
+const SPRINT_EFFORT    = 1.5    // multiplier at full sprint
 const CARRIER_EFFORT   = 1.3    // extra exertion for the ball carrier
 const BLOCK_EFFORT     = 0.5    // blocking caps effort low — costs less than running
+const EFFORT_CURVE     = 1.3    // >1: sprinting costs disproportionately more than jogging
 
 function effortMultiplier(p, isCarrier) {
   const speed     = Math.hypot(p.vx ?? 0, p.vy ?? 0)
   const speedFrac = Math.min(1, speed / EFFORT_REF_SPEED)
-  let effort      = IDLE_EFFORT + speedFrac * (SPRINT_EFFORT - IDLE_EFFORT)
+  // Convex, so the yards run at full speed cost more than the jog: a go route or a long carry tires a
+  // player out of proportion to a short route that settles ("players who run longer distances should
+  // lose more").
+  let effort      = IDLE_EFFORT + Math.pow(speedFrac, EFFORT_CURVE) * (SPRINT_EFFORT - IDLE_EFFORT)
   if (p.route === 'block') effort = Math.min(effort, BLOCK_EFFORT)   // a blocker isn't sprinting
   if (isCarrier)           effort *= CARRIER_EFFORT                   // the ball carrier works hardest
   return effort
@@ -61,7 +85,7 @@ export function drainStamina(state, _io, dt) {
   const carrierId   = ballCarrierId(state)
   const drainOne = (p, slot) => {
     if (isLineman(p.label)) return
-    const f    = getOrInit(state, p.id, p.label, slot)
+    const f    = getOrInit(state, p.id, p.label, slot, ratingOf(p, 'stamina'))
     const rate = drainFromStaminaRating(ratingOf(p, 'stamina'))
     f.stamina  = Math.max(0, f.stamina - rate * effortMultiplier(p, p.id === carrierId) * DRAIN_SCALE * dt)
   }
@@ -71,8 +95,8 @@ export function drainStamina(state, _io, dt) {
 
 // ── One-time contact costs ([fatigue effort]) ───────────────────────────────────
 // A collision is a burst of effort on top of the continuous drain, so a tackle tires both players.
-const TACKLE_COST_CARRIER = 6   // the ball carrier absorbing the hit / fighting through it
-const TACKLE_COST_TACKLER = 5   // the defender who makes the tackle
+const TACKLE_COST_CARRIER = 6.5  // the ball carrier absorbing the hit / fighting through it
+const TACKLE_COST_TACKLER = 7    // the defender who makes the tackle
 
 // Subtract a one-time stamina hit from a tracked player (linemen aren't tracked → no-op). Clamped ≥0.
 export function applyStaminaHit(state, playerId, amount) {
@@ -94,8 +118,9 @@ export function applyTackleStamina(state, carrierId, x, y) {
   if (bestId) applyStaminaHit(state, bestId, TACKLE_COST_TACKLER)
 }
 
-// Recovers (fractionOfLost * lost stamina) for every non-lineman.
-// Called on possession change (0.5) and at the start of Q3 (0.8).
+// Recovers (fractionOfLost * lost stamina) for every non-lineman. Called at the start of Q3
+// (HALFTIME_RECOVERY). ⚠️ NOT on a change of possession any more — that handed everyone half of what
+// they had lost every drive, which is why fatigue never mattered; resting is recoverOffField's job.
 export function recoverStamina(state, fractionOfLost) {
   for (const f of state.playerFatigue.values()) {
     if (isLineman(f.label)) continue
@@ -111,3 +136,20 @@ export function getFatigueMult(state, playerId) {
   if (!f || !Number.isFinite(f.stamina)) return 1.0
   return 0.7 + 0.3 * (f.stamina / 100)
 }
+
+// Per-snap recovery for everyone who was NOT on the field for the play that just ended — a unit
+// resting while the other side of the ball plays, a backup on the bench. PROPORTIONAL to what he has
+// lost (a share of the gap to 100, scaled by his stamina rating), which is how rest works: a gassed
+// player gets a lot back in a series off, a fresh one has little to get back.
+export const OFF_FIELD_RECOVERY_SCALE = 0.55
+export function recoverOffField(state, onFieldIds) {
+  for (const [id, f] of state.playerFatigue ?? []) {
+    if (isLineman(f.label) || onFieldIds.has(id)) continue
+    const frac = (recoveryFromStaminaRating(f.staminaRating ?? 70) / 100) * OFF_FIELD_RECOVERY_SCALE
+    f.stamina = Math.min(100, f.stamina + (100 - f.stamina) * frac)
+  }
+}
+
+// Share of the lost stamina given back at halftime. Small on purpose: a big refill resets the game to
+// the first quarter, and the fourth quarter has to be where the legs go.
+export const HALFTIME_RECOVERY = 0.15

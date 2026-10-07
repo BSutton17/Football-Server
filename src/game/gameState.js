@@ -433,6 +433,6 @@ export function changePossession(state, newYardLine = null) {
   state.yardLine   = newYardLine ?? (100 - state.yardLine)
   state.down       = 1
   state.distance   = firstDownDistance(state.yardLine)
-  // Both teams switch roles — non-linemen recover 50% of lost stamina next play.
-  state.pendingStaminaRecovery = Math.max(state.pendingStaminaRecovery, 0.5)
+  // [fatigue] No stamina comes back for the change of possession itself — the side that sat down
+  // recovers play by play while it is off the field (recoverOffField).
 }

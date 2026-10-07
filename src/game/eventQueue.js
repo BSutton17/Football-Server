@@ -20,7 +20,7 @@ import { calculateKickResult, computePuntReturn, resolvePuntBounce, DEFAULT_KICK
 import { getSpecialist } from '../data/specialists.js'
 import { getRoom } from './roomManager.js'
 import { serializeClock, serializeScore, serializeGameState, serializeGameOver, serializePlayResult, isReceiverReady, laneContext } from './serialization.js'
-import { recoverStamina, applyTackleStamina } from './systems/stamina.js'
+import { recoverStamina, applyTackleStamina, recoverOffField, HALFTIME_RECOVERY } from './systems/stamina.js'
 import { CATCH_MOMENTUM_TIME, DEEP_CATCH_YARDS, CATCH_SLOW_TIME } from './systems/movement.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { isManualPlay, beginPassSuspense } from './manual.js'
@@ -737,7 +737,7 @@ function enterKickoff(state, io, kickingSlot) {
   state.interceptionReturn = false
   state.ballCarrierId      = null
   state.clockStopped       = true   // a score stops the clock
-  state.pendingStaminaRecovery = Math.max(state.pendingStaminaRecovery, 0.5)
+  // [fatigue] A kickoff is a change of possession too — no free stamina (see recoverOffField).
 
   // Automatic kick — straight to KICKING (no aim/power window), cleared by beginNextPlay.
   beginSpecialTeams(state, KICK.KICKOFF, { kickingSlot })
@@ -1556,7 +1556,7 @@ function advanceQuarter(state, io) {
     // kickoff. The team that started the game on DEFENSE now receives — possession flips to the
     // opening-defense slot (regardless of who had the ball when the half ended), the ball is spotted
     // on that offense's own 30, and it's a fresh 1st & 10 drive.
-    state.pendingStaminaRecovery = Math.max(state.pendingStaminaRecovery, 0.8)
+    state.pendingStaminaRecovery = Math.max(state.pendingStaminaRecovery, HALFTIME_RECOVERY)
     state.timeouts = [RULES.TIMEOUTS_PER_HALF, RULES.TIMEOUTS_PER_HALF]   // [70] fresh 3 timeouts each for the second half
     state.possession = 1 - state.openingPossession
     state.direction  = state.possession === 0 ? 1 : -1
@@ -1710,11 +1710,14 @@ export function startNextPlay(roomId, io, { quiet = false } = {}) {
     return
   }
 
-  // Apply any pending stamina recovery (possession change = 0.5, Q3 = 0.8).
+  // Apply any pending stamina recovery (halftime — HALFTIME_RECOVERY).
   if (state.pendingStaminaRecovery > 0) {
     recoverStamina(state, state.pendingStaminaRecovery)
     state.pendingStaminaRecovery = 0
   }
+
+  // [fatigue] Everybody who sat that play out gets a little back.
+  recoverOffField(state, new Set([...(state.offensePlayers?.keys() ?? []), ...(state.defensePlayers?.keys() ?? [])]))
 
   // Wipe everything that was specific to the play that just ended
   state.offensePlayers        = new Map()
