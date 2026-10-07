@@ -7,9 +7,9 @@ import {
 import { observePlay, adjustmentsFor, describeAdjustments } from '../ai/playcall/tendencies.js'
 import { isSoloRoom } from '../ai/timing.js'
 import { checkGameHealth } from './healthCheck.js'
-import { maybeSpotlight } from './statSpotlight.js'
+import { maybeSpotlight, releaseSpotlight } from './statSpotlight.js'
 import { RULES, FIELD, FIELD_CENTER_X } from '../constants.js'
-import { getGame, advanceDown, changePossession, yardLineFromAbsY, getLosY, clampToHash, clearPerPlayDeclarations } from './gameState.js'
+import { getGame, advanceDown, changePossession, yardLineFromAbsY, getLosY, clampToHash, clearPerPlayDeclarations, firstDownDistance } from './gameState.js'
 import {
   DECISION, DECISION_SECONDS, decisionRequired, isDecisionLegal, decisionDefault, fieldGoalDistance,
   KICK, ST_PHASE, beginSpecialTeams, advanceSTPhase, endSpecialTeams, serializeSpecialTeams,
@@ -1099,7 +1099,19 @@ const DEFAULT_RETURNER_RATING = 75
 //   [33] Let It Bounce → the ball rolls 0–10 yds toward the receiving goal; [34] backspin checks it
 //                        back 1–5; a roll into the end zone is a touchback.
 // Server-authoritative — an invalid choice falls back to the default. `rng` is injectable for tests.
-export function resolvePuntReturn(state, io, choice, rng = null) {
+// [muff] Returning a punt is a risk; a fair catch is not. Without one, Return was strictly better and
+// nobody ever called a fair catch. On a return the ball is muffed MUFF_CHANCE of the time, and the
+// kicking team falls on it MUFF_KICKING_RECOVERY of those — at the spot, keeping the ball. When the
+// returner's own team falls on it the play is still called a muff; they just keep it at the catch.
+export const MUFF_CHANCE = 0.03
+export const MUFF_KICKING_RECOVERY = 2 / 3
+
+// ⚠️ `muffRng` IS ITS OWN ROLL. A caller that scripts the return's dice (`rng` — the tests do, e.g.
+// `() => 0` to force the touchdown roll) would otherwise have its first number spent on the muff, which
+// changes what it is testing. So a scripted `rng` with no `muffRng` means no muff; a real game passes
+// neither, and both rolls come from the game's own stream.
+export function resolvePuntReturn(state, io, choice, rng = null, muffRng = null) {
+  const muffRoll = muffRng ?? (rng ? null : rngOf(state))
   rng = rngOf(state, rng)
   const st = state.specialTeams
   if (!st || !st.returnPending) return
@@ -1120,6 +1132,12 @@ export function resolvePuntReturn(state, io, choice, rng = null) {
       spot = clampSpot(airLanding); detail = 'fair_catch'; ballX = landingX; break
 
     case PUNT_RETURN.RETURN: {
+      // [muff] It can go wrong at the catch, before anybody runs anywhere.
+      if (muffRoll && muffRoll() < MUFF_CHANCE) {
+        const kickingRecovers = muffRoll() < MUFF_KICKING_RECOVERY
+        if (kickingRecovers) { applyMuffedPuntLost(state, io, clampSpot(airLanding), landingX); return }
+        spot = clampSpot(airLanding); detail = 'muffed_recovered'; ballX = landingX; break
+      }
       // [31][32] Run it back. A breakaway takes it all the way — score it as a return touchdown.
       const { yards, touchdown } = computePuntReturn({
         hangTime:       r.hangTime,
@@ -1145,6 +1163,29 @@ export function resolvePuntReturn(state, io, choice, rng = null) {
     }
   }
   applyPuntReturnOutcome(state, io, spot, detail, choice, ballX)
+}
+
+// [muff] The kicking team fell on a muffed punt: THEY keep it, first down at the spot. The spot comes in
+// the receiving team's frame (where the ball was caught) and is turned round into the kicking team's —
+// no change of possession, so no role swap, and the clock stops as on any change of hands.
+function applyMuffedPuntLost(state, io, spotReceivingFrame, ballX) {
+  state.prevPlayIncompletePass = false
+  state.clockStopped = true
+  state.ballX        = ballX
+  transition(state, PHASE.DEAD)
+
+  state.yardLine = Math.max(1, Math.min(99, 100 - spotReceivingFrame))
+  state.down     = 1
+  state.distance = firstDownDistance(state.yardLine)
+
+  const room = getRoom(state.roomId)
+  if (room) {
+    room.players.forEach((socketId, slot) => {
+      if (socketId) io.to(socketId).emit('play_result', serializePlayResult(state, 'punt', 0, null, slot, false, 'muffed_lost'))
+    })
+  }
+  console.log(`[game] ${state.roomId} PUNT MUFFED — kicking team (slot ${state.possession}) recovers at ${state.yardLine}`)
+  beginNextPlay(state.roomId, io)
 }
 
 // Shared spotter for a decided in-field punt: hand the ball to the receiving team at `spotYardLine`,
@@ -1750,6 +1791,8 @@ export function startNextPlay(roomId, io, { quiet = false } = {}) {
         io.to(socketId).emit('game_state', serializeGameState(state, slot))
       }
     })
+    // [spotlight] The ball is spotted — now the last play's graphic, if it earned one.
+    releaseSpotlight(state, io)
   }
 
   console.log(`[game] ${roomId} Q${state.quarter} — ready for next snap (${state.down}&${state.distance} at ${state.yardLine})`)

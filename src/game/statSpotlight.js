@@ -7,6 +7,7 @@
 //   • a RUN of more than 5 yards:  50% chance — then 75% the runner, 25% the tackler
 //   • a PASS of more than 8 yards: 60% chance — then 45% the receiver, 45% the passer, 10% the tackler
 //   • a SACK:                      always — the man who got it
+//   • a TACKLE FOR LOSS:           50% — the tackler (a run, or a catch dropped behind the line)
 //
 // The server decides and sends the line itself, so both screens show the same player with the same
 // numbers. Where it appears and how long it stays (four seconds) are the client's business (StatSpotlight.tsx).
@@ -26,6 +27,7 @@ export const SPOTLIGHT = {
   PASS_CHANCE: 0.6,
   PASS_RECEIVER_SHARE: 0.45,
   PASS_PASSER_SHARE: 0.45,
+  LOSS_CHANCE: 0.5,
 }
 
 // Called at every snap: this team has now had the ball.
@@ -53,6 +55,13 @@ function spotlightRng(state) {
 // play earned a graphic.
 export function chooseSpotlight({ kind, yards = 0, carrier = null, passer = null, tackler = null, sacker = null }, rng = Math.random) {
   if (kind === 'sack') return sacker ? { who: sacker, role: 'sacker' } : null
+
+  // A tackle for loss is the defender's play, whatever was called. No tackler (he stepped out behind
+  // the line) means nobody made it, so there is nothing to show.
+  if ((kind === 'run' || kind === 'pass') && yards < 0) {
+    if (!tackler) return null
+    return rng() < SPOTLIGHT.LOSS_CHANCE ? { who: tackler, role: 'tackler' } : null
+  }
 
   if (kind === 'run') {
     if (!(yards > SPOTLIGHT.RUN_MIN_YARDS)) return null
@@ -88,7 +97,10 @@ function publicLine(line) {
   }
 }
 
-// Decide, and if it lands, tell both players. Call AFTER the play's numbers are recorded, so the
+// Decide at the whistle, SHOW at the next line-up. Requested: "the stats shouldn't happen until the
+// ball is set for the next play, not immediately." So the decision is made here — while the play that
+// earned it, and its numbers, are known — and parked on the state; `releaseSpotlight` sends it once
+// the next play has been set up (startNextPlay). Call AFTER the play's numbers are recorded, so the
 // line includes the play that earned it. Never throws: a graphic must not be able to stop a play.
 export function maybeSpotlight(state, io, play) {
   try {
@@ -105,10 +117,27 @@ export function maybeSpotlight(state, io, play) {
       yardLine: state.yardLine,
       line: publicLine(line),
     }
-    io.to(state.roomId).emit('stat_spotlight', payload)
+    state.pendingSpotlight = payload
     return payload
   } catch (err) {
     console.warn(`[spotlight] ${state?.roomId} skipped: ${err?.message ?? err}`)
+    return null
+  }
+}
+
+// Sends the parked graphic, if there is one, now that the ball is spotted for the next play. The
+// yard line is refreshed to the line the ball now sits on, because that — not where the last play
+// ended — is what a portrait phone places the card against.
+export function releaseSpotlight(state, io) {
+  const payload = state?.pendingSpotlight
+  if (!payload) return null
+  state.pendingSpotlight = null
+  try {
+    const out = { ...payload, yardLine: state.yardLine }
+    io?.to(state.roomId).emit('stat_spotlight', out)
+    return out
+  } catch (err) {
+    console.warn(`[spotlight] ${state?.roomId} not sent: ${err?.message ?? err}`)
     return null
   }
 }

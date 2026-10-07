@@ -366,7 +366,7 @@ export function clearPerPlayDeclarations(state) {
 // Distance for a fresh set of downs: normally 10, but goal-to-go once the 10-yard marker would
 // land in/past the end zone — there the goal line IS the marker, so the distance is the yards left
 // to the goal ([1st & Goal]).
-function firstDownDistance(yardLine) {
+export function firstDownDistance(yardLine) {
   return Math.min(RULES.FIRST_DOWN_YARDS, 100 - yardLine)
 }
 

@@ -1,5 +1,5 @@
 import { describe, it, expect } from '@jest/globals'
-import { chooseSpotlight, maybeSpotlight, noteHadBall, bothTeamsHaveHadBall } from '../game/statSpotlight.js'
+import { chooseSpotlight, maybeSpotlight, releaseSpotlight, noteHadBall, bothTeamsHaveHadBall } from '../game/statSpotlight.js'
 import { createStats, recordRush, recordSack } from '../game/stats.js'
 import { makeRng } from '../game/utils/rng.js'
 
@@ -52,6 +52,18 @@ describe('the odds', () => {
     expect(s.tackler).toBeCloseTo(0.06, 1)
   })
 
+  it('tackle for loss: 50%, and it is the tackler — on a run or a catch behind the line', () => {
+    const run = shares({ kind: 'run', yards: -3, carrier: rb, tackler: lb })
+    expect(run.tackler).toBeCloseTo(0.5, 1)
+    expect(run.rusher ?? 0).toBe(0)
+    const pass = shares({ kind: 'pass', yards: -2, carrier: wr, passer: qb, tackler: lb })
+    expect(pass.tackler).toBeCloseTo(0.5, 1)
+    // Out of bounds behind the line: nobody made the play.
+    expect(chooseSpotlight({ kind: 'run', yards: -2, carrier: rb, tackler: null }, () => 0)).toBeNull()
+    // No gain is not a loss.
+    expect(chooseSpotlight({ kind: 'run', yards: 0, carrier: rb, tackler: lb }, () => 0)).toBeNull()
+  })
+
   it('sack: always, and it is the sacker', () => {
     const s = shares({ kind: 'sack', sacker: lb }, 500)
     expect(s.sacker).toBe(1)
@@ -80,10 +92,17 @@ describe('nothing until both teams have had the ball', () => {
     expect(out.sent).toEqual([])
 
     state.possession = 1; noteHadBall(state)              // team 1 has had it now
-    const shown = maybeSpotlight(state, out, { kind: 'sack', sacker: lb })
-    expect(shown).toMatchObject({ id: 'lb1', slot: 1, role: 'sacker', yardLine: 40 })
-    expect(shown.line.sacks).toBe(1)
-    expect(out.sent[0].e).toBe('stat_spotlight')
+    const decided = maybeSpotlight(state, out, { kind: 'sack', sacker: lb })
+    expect(decided).toMatchObject({ id: 'lb1', slot: 1, role: 'sacker' })
+    expect(decided.line.sacks).toBe(1)
+    // ⚠️ NOT YET: "the stats shouldn't happen until the ball is set for the next play".
+    expect(out.sent).toEqual([])
+
+    state.yardLine = 34                                   // the next play is spotted
+    const shown = releaseSpotlight(state, out)
+    expect(out.sent[0]).toMatchObject({ e: 'stat_spotlight', p: { id: 'lb1', yardLine: 34 } })
+    expect(shown.yardLine).toBe(34)
+    expect(releaseSpotlight(state, out)).toBeNull()       // sent once, not on every line-up after
   })
 
   it('never throws into the play, whatever it is handed', () => {

@@ -4,7 +4,7 @@ import { beginSpecialTeams, applyKickInput, serializeSpecialTeams, KICK, ST_PHAS
 import { runKickClock } from '../game/systems/kickClock.js'
 import { runConversionClock } from '../game/systems/decisionClock.js'
 import { runClock } from '../game/systems/clock.js'
-import { enqueue, processQueue, EVENT, resolvePuntReturn, resolveFieldGoalBlock, resolveConversion } from '../game/eventQueue.js'
+import { enqueue, processQueue, EVENT, resolvePuntReturn, resolveFieldGoalBlock, resolveConversion, MUFF_CHANCE, MUFF_KICKING_RECOVERY } from '../game/eventQueue.js'
 import { createRoom, joinRoom } from '../game/roomManager.js'
 import { PHASE } from '../game/stateMachine.js'
 
@@ -488,5 +488,79 @@ describe('[51][52] extra point & two-point conversion outcomes', () => {
     runConversionClock(state, mockIo(), 0.05)
     expect(state.conversionPending).toBe(false)
     expect(state.specialTeams.kickType).toBe(KICK.EXTRA_POINT)   // auto-picked the XP
+  })
+})
+
+// [muff] Requested: "Returning a punt has no risk, so fair catches never get used. If you return a
+// punt there is a 3% chance it is muffed; then 2/3 the kicking team gets it back at that spot, 1/3 the
+// returning team recovers — and even then, say it was muffed."
+describe('⚠️ A RETURNED PUNT CAN BE MUFFED', () => {
+  function punt(roomId) {
+    const state = kickState(roomId, KICK.PUNT, { yardLine: 30 }); room(roomId)
+    beginSpecialTeams(state, KICK.PUNT, { kickingSlot: 0 })
+    state.specialTeams.angle = 0; state.specialTeams.power = 0.7
+    const realRandom = Math.random
+    Math.random = () => 0.5
+    try { fireKick(state) } finally { Math.random = realRandom }
+    return state
+  }
+  const seq = (...xs) => { let i = 0; return () => xs[i++ % xs.length] }
+  const results = (io) => io.sent.filter(m => m.e === 'play_result').map(m => m.p)
+  const recIo = () => { const sent = []; return { sent, to: () => ({ emit: (e, p) => sent.push({ e, p }) }) } }
+
+  it('the kicking team falls on it: they keep the ball, first down at the spot', () => {
+    const state = punt('muff-lost')
+    const catchSpot = state.specialTeams.result.previewLandingYardLine   // receiving team's frame
+    const io = recIo()
+    resolvePuntReturn(state, io, PUNT_RETURN.RETURN, () => 0.5, seq(0, 0))   // muffed, kicking recovers
+    expect(state.possession).toBe(0)                                          // never changed hands
+    expect(state.yardLine).toBe(100 - Math.round(catchSpot))
+    expect(state.down).toBe(1)
+    expect(results(io)[0]).toMatchObject({ outcome: 'punt', detail: 'muffed_lost' })
+  })
+
+  it('the returning team falls on it: theirs at the catch, and it is still called a muff', () => {
+    const state = punt('muff-kept')
+    const fc = punt('muff-kept-fc'); resolvePuntReturn(fc, recIo(), PUNT_RETURN.FAIR_CATCH)
+    const io = recIo()
+    resolvePuntReturn(state, io, PUNT_RETURN.RETURN, () => 0.5, seq(0, 0.9))
+    expect(state.possession).toBe(1)
+    expect(state.yardLine).toBe(fc.yardLine)                                  // the catch spot, no return
+    expect(results(io)[0]).toMatchObject({ outcome: 'punt', detail: 'muffed_recovered' })
+  })
+
+  it('no muff is an ordinary return', () => {
+    const state = punt('muff-none')
+    const io = recIo()
+    resolvePuntReturn(state, io, PUNT_RETURN.RETURN, () => 0.5, () => 0.5)
+    expect(results(io)[0].detail).toBe('return')
+  })
+
+  it('a fair catch is never muffed — that is the point of calling one', () => {
+    const state = punt('muff-fc')
+    const io = recIo()
+    resolvePuntReturn(state, io, PUNT_RETURN.FAIR_CATCH, null, () => 0)
+    expect(results(io)[0].detail).toBe('fair_catch')
+    expect(state.possession).toBe(1)
+  })
+
+  it('the odds are 3%, and 2/3 of those go to the kicking team', () => {
+    expect(MUFF_CHANCE).toBe(0.03)
+    expect(MUFF_KICKING_RECOVERY).toBeCloseTo(2 / 3)
+    let muffs = 0, lost = 0
+    let x = 12345
+    const lcg = () => { x = (x * 1103515245 + 12345) % 2147483648; return x / 2147483648 }
+    for (let i = 0; i < 2000; i++) {
+      const state = punt('muff-rate')
+      const io = recIo()
+      resolvePuntReturn(state, io, PUNT_RETURN.RETURN, () => 0.5, lcg)
+      const d = results(io)[0]?.detail
+      if (d === 'muffed_lost' || d === 'muffed_recovered') muffs++
+      if (d === 'muffed_lost') lost++
+    }
+    expect(muffs / 2000).toBeGreaterThan(0.02)
+    expect(muffs / 2000).toBeLessThan(0.04)
+    expect(lost / muffs).toBeGreaterThan(0.5)
+    expect(lost / muffs).toBeLessThan(0.8)
   })
 })
