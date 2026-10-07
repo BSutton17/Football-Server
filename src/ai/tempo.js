@@ -148,6 +148,17 @@ export function chooseTempo(k) {
   return desperate ? TEMPO.HURRY : TEMPO.NORMAL
 }
 
+// ⚠️ HOW FAST TO GET TO THE LINE IS A DIFFERENT QUESTION FROM HOW TO CALL THE PLAY. Requested: "the AI
+// offense should not feel rushed to hurry the ball up if the clock is stopped due to a timeout or an
+// incomplete pass." The point of hurrying is the game clock running between snaps; with it stopped,
+// the seconds spent lining up cost nothing, so a hurry there only throws away the time to set up
+// properly. The play CALL still reads the situation (chooseTempo, through tempoRunLean) — trailing
+// late is still a reason to throw — only the snap timing relaxes.
+export function snapTempo(k) {
+  const tempo = chooseTempo(k)
+  return tempo === TEMPO.HURRY && k?.clockStopped ? TEMPO.NORMAL : tempo
+}
+
 // The play-clock reading to set the formation at, given the tempo. Random inside the band so the
 // rhythm cannot be timed.
 export function setTimeFor(tempo, rng = Math.random) {

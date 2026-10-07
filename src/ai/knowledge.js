@@ -130,6 +130,13 @@ export function applyEvent(k, event, payload) {
       return k
     }
 
+    // A timeout stops the game clock (call_timeout sets it), and the next game_state may not come
+    // until the following play — so the picture learns it here. Without it the computer's own
+    // timeout left it believing the clock was still running, and it hurried the next snap.
+    case 'timeout_started':
+      k.clockStopped = true
+      return k
+
     case 'offense_set':
       k.offenseSet = true
       k.countdown = payload?.playClockRemaining ?? null

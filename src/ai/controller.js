@@ -31,7 +31,7 @@ import { specialTeamsAction, fourthDownChoice } from './specialTeams.js'
 import { shouldCallTimeout } from './clockManagement.js'
 import { makeRng } from '../game/utils/rng.js'
 import { shouldSetNow } from './timing.js'
-import { chooseTempo, setTimeFor, hurrySetTime, tempoRunLean, TEMPO } from './tempo.js'
+import { chooseTempo, snapTempo, setTimeFor, hurrySetTime, tempoRunLean, TEMPO } from './tempo.js'
 
 // [run adjust] How late the offense takes its one look at the front, in seconds of hike countdown.
 // One beat before the snap: late enough that the defense has finished moving, early enough to be a
@@ -196,7 +196,10 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
         // when the timeout expires; a harness driving downs directly just spins. Found by
         // scripts/tempoCheck.mjs on the first run after timeouts were added.
         case 'timeout_started': self.stopped = true; return undefined
-        case 'timeout_ended': self.stopped = false; return onSituation()
+        case 'timeout_ended':
+          self.stopped = false
+          if (self.setGaveUp) { self.done.set = false; self.setRetries = 0; self.setGaveUp = false }
+          return onSituation()
         case 'positions_update': return onLive()
         default: return undefined
       }
@@ -250,6 +253,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     self.forceSet = false
     self.setNow = false          // [health] set at once, without charging it as hurried time
     self.setRetries = 0
+    self.setGaveUp = false
     self.alignedAgainst = null   // [twitch] the opponent formation this defense last answered
     self.placedAt = new Map()    // …and where each defender was actually put
     // ⚠️ `frontOnField` IS DELIBERATELY NOT CLEARED HERE. It is the only record of which linemen
@@ -399,7 +403,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // [tempo] When to snap is a clock decision, not a coin toss — see ai/tempo.js. Fixed once per
     // play so the offense does not change its mind mid-walk-up.
     if (self.setAt == null) {
-      self.tempo = chooseTempo(k)
+      self.tempo = snapTempo(k)   // no hurry with the clock stopped — see snapTempo
       // [tempo] A hurry is measured from NOW -- the moment the formation is ready -- rather than from a
       // fixed play-clock reading, which on a new drive's 45-second clock meant a 25-second wait. See
       // hurrySetTime.
@@ -453,9 +457,16 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
     // A refused set stays undone, so the next play-clock tick tries again; a few tries per play is
     // plenty, and the delay-of-game health check (game/healthCheck.js) catches anything past that.
     if (self.setRefused) {
+      // ⚠️ A STOPPAGE IS NOT A FAILED SET. Refused because the other team called a timeout (or a
+      // pause), the set is simply early — counting it spent all four tries inside the stoppage and
+      // left the computer believing it had given up for good once play resumed. It just waits.
+      if (/paused|stoppage/i.test(self.setRefused)) { say(`set waits: ${self.setRefused}`); return }
       self.setRetries = (self.setRetries ?? 0) + 1
       say(`set refused (${self.setRefused}) — try ${self.setRetries}`)
       if (self.setRetries < MAX_SET_RETRIES) return
+      // Out of tries for now. Marked so the next resumption of play (timeout_ended) tries again
+      // rather than leaving it to the delay-of-game check.
+      self.setGaveUp = true
     }
     self.done.set = true
   }

@@ -182,3 +182,23 @@ describe('how many snaps there really are', () => {
     expect(snapsLeft(120, TEMPO.BURN)).toBeLessThan(snapsLeft(120, TEMPO.HURRY))
   })
 })
+
+// Requested: "the AI offense should not feel rushed to hurry the ball up if the clock is stopped due
+// to a timeout or incomplete pass."
+describe('⚠️ NO HURRY WITH THE CLOCK STOPPED', () => {
+  const desperate = { quarter: 4, clock: 20, quarterSeconds: 300, score: { offense: 0, defense: 7 } }
+  it('hurries with the clock running, not with it stopped', async () => {
+    const { snapTempo } = await import('../ai/tempo.js')
+    expect(snapTempo({ ...desperate, clockStopped: false })).toBe(TEMPO.HURRY)
+    expect(snapTempo({ ...desperate, clockStopped: true })).toBe(TEMPO.NORMAL)
+  })
+  it('the play call still reads the situation as a hurry', () => {
+    expect(chooseTempo({ ...desperate, clockStopped: true })).toBe(TEMPO.HURRY)
+  })
+  it('a timeout tells the computer the clock has stopped', async () => {
+    const { createKnowledge, applyEvent } = await import('../ai/knowledge.js')
+    const k = createKnowledge(1); k.clockStopped = false
+    applyEvent(k, 'timeout_started', { byYou: true })
+    expect(k.clockStopped).toBe(true)
+  })
+})

@@ -148,11 +148,14 @@ describe('⚠️ THE COMPUTER SETS AFTER ITS OWN LATE TIMEOUT (the hurry-up)', (
     const realError = console.error
     console.error = (...a) => { errors.push(a.join(' ')); }
     try {
-      for (let t = 0; t < 20 * 12 && state.phase === PHASE.PRE_SNAP; t++) tick(ROOM, g.io)
+      // The timeout (6 s) plus a whole play clock: it must set before that runs out.
+      for (let t = 0; t < 20 * 50 && state.phase === PHASE.PRE_SNAP; t++) tick(ROOM, g.io)
     } finally { console.error = realError }
 
     expect(errors.filter(e => /failed handling/.test(e))).toEqual([])
-    expect(state.phase).toBe(PHASE.COUNTDOWN)                 // …and set well inside the play clock
+    expect(state.phase).toBe(PHASE.COUNTDOWN)                 // …and set inside the play clock
     expect(state.timeouts[1]).toBe(2)
+    expect(state.down).toBe(1)                                // no delay of game on the way
+    expect(state.distance).toBe(10)
   })
 })
