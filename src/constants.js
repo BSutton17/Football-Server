@@ -197,6 +197,11 @@ export const ZONE_TYPES     = new Set(['flat', 'deep', 'curl', 'hook'])
 
 export const PLAYER = {
   RADIUS:         0.75,  // yards — collision detection hitbox and visual size
+  // [out of bounds] How close to the sideline the BALL CARRIER's centre may get before he is out.
+  // Every other body is held fully inside the field (centre a RADIUS from the line); the carrier
+  // alone may step past that, so a little overlap with the white is still in play, while a body
+  // two-thirds over the line — on the border — is out.
+  OOB_INSET:      0.25,
   CONTACT_RADIUS: 1.5,   // yards center-to-center — bodies are touching (RADIUS * 2)
   MAX_SPEED:      8.0,   // yards per second (~16 mph, tuned for gameplay pace)
 }

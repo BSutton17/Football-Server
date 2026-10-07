@@ -22,7 +22,11 @@ const CONTACT_DRAG = 0.82
 const SEPARATION_ITERATIONS = 10
 const SEPARATION_RELAX      = 0.7   // fraction of each overlap resolved per pass
 
-const clampX = (x) => Math.max(PLAYER.RADIUS, Math.min(FIELD.WIDTH  - PLAYER.RADIUS, x))
+// [out of bounds] Same rule as advance(): only the ball carrier may be pushed onto the line.
+const clampX = (x, p = null) => {
+  const minX = p?.sidelineFree ? 0 : PLAYER.RADIUS
+  return Math.max(minX, Math.min(FIELD.WIDTH - minX, x))
+}
 const clampY = (y) => Math.max(PLAYER.RADIUS, Math.min(FIELD.LENGTH - PLAYER.RADIUS, y))
 
 export function runCollisionResponse(state, _io, _dt) {
@@ -90,9 +94,9 @@ export function runCollisionResponse(state, _io, _dt) {
         const total = ma + mb
         const push  = ov.depth * SEPARATION_RELAX
 
-        a.x = clampX(a.x + ov.nx * push * (mb / total))
+        a.x = clampX(a.x + ov.nx * push * (mb / total), a)
         a.y = clampY(a.y + ov.ny * push * (mb / total))
-        b.x = clampX(b.x - ov.nx * push * (ma / total))
+        b.x = clampX(b.x - ov.nx * push * (ma / total), b)
         b.y = clampY(b.y - ov.ny * push * (ma / total))
         resolved++
       }

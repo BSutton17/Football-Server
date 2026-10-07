@@ -23,8 +23,12 @@ export function steer(player, tx, ty, maxSpeed, dt, accel = 15) {
 }
 
 // Advances a player's position by their current velocity and clamps to field bounds.
+// [out of bounds] The ball carrier alone is allowed onto the line — `sidelineFree` is set each tick
+// by runMovement — because a carrier who can never reach the sideline can never step out of bounds,
+// and he used to run up the paint indefinitely. Everyone else stays fully inside the field.
 export function advance(player, dt) {
-  player.x = Math.max(PLAYER.RADIUS, Math.min(FIELD.WIDTH  - PLAYER.RADIUS, player.x + player.vx * dt))
+  const minX = player.sidelineFree ? 0 : PLAYER.RADIUS
+  player.x = Math.max(minX, Math.min(FIELD.WIDTH - minX, player.x + player.vx * dt))
   player.y = Math.max(PLAYER.RADIUS, Math.min(FIELD.LENGTH - PLAYER.RADIUS, player.y + player.vy * dt))
 }
 

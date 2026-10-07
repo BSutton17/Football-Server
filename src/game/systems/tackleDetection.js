@@ -1,5 +1,5 @@
 import { enqueue, EVENT } from '../eventQueue.js'
-import { PLAYER }         from '../../constants.js'
+import { PLAYER, FIELD }  from '../../constants.js'
 import { rngOf }           from '../utils/rng.js'
 import { findBallCarrier } from './movement.js'
 import { ratingOf }        from '../../data/ratings.js'
@@ -64,6 +64,17 @@ export function runTackleDetection(state, io, dt, rng = null) {
 
   const isReturn = state.interceptionReturn === true
   const tacklers = isReturn ? state.offensePlayers : state.defensePlayers
+
+  // [out of bounds] On the border is out. The carrier is downed where he crossed, exactly like a
+  // tackle — same spot, same chains — so it rides the TACKLE event with a flag rather than growing a
+  // second copy of the spotting logic. onTackle decides the clock.
+  if (carrier.x <= PLAYER.OOB_INSET || carrier.x >= FIELD.WIDTH - PLAYER.OOB_INSET) {
+    state.tackleEnqueued = true
+    enqueue(state.roomId, EVENT.TACKLE, {
+      carrierId: carrier.id, x: carrier.x, y: carrier.y, interceptionReturn: isReturn, outOfBounds: true,
+    })
+    return
+  }
 
   for (const d of tacklers.values()) {
     // [pancake] A flattened defender cannot make a tackle — the carrier runs straight through him.

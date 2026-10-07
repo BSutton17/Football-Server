@@ -2398,6 +2398,13 @@ function moveInterceptionReturn(state, dt) {
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 export function runMovement(state, _io, dt) {
+  // [out of bounds] Only the ball carrier may reach the sideline (see advance()). Marked fresh every
+  // tick, because who has the ball changes mid-play — a handoff, a catch, an interception.
+  const carrier = findBallCarrier(state)
+  for (const map of [state.offensePlayers, state.defensePlayers]) {
+    for (const p of map?.values() ?? []) p.sidelineFree = p === carrier
+  }
+
   if (state.interceptionReturn) {
     moveInterceptionReturn(state, dt)
     return

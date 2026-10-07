@@ -7,6 +7,7 @@ import {
 import { observePlay, adjustmentsFor, describeAdjustments } from '../ai/playcall/tendencies.js'
 import { isSoloRoom } from '../ai/timing.js'
 import { checkGameHealth } from './healthCheck.js'
+import { maybeSpotlight } from './statSpotlight.js'
 import { RULES, FIELD, FIELD_CENTER_X } from '../constants.js'
 import { getGame, advanceDown, changePossession, yardLineFromAbsY, getLosY, clampToHash, clearPerPlayDeclarations } from './gameState.js'
 import {
@@ -593,7 +594,15 @@ function forwardProgress(state, carrierId, x, y) {
   return (mark.y - y) * dir > 0 ? { x: mark.x, y: mark.y } : { x, y }
 }
 
-function onTackle({ carrierId, x, y, interceptionReturn }, state, io) {
+// [out of bounds] Inside the last minute of either half, stepping out stops the clock; otherwise it
+// keeps running like any in-bounds tackle.
+const OOB_CLOCK_STOP_SECONDS = 60
+function oobStopsClock(state) {
+  const endOfHalf = state.quarter === 2 || state.quarter >= 4
+  return endOfHalf && (state.clock ?? Infinity) < OOB_CLOCK_STOP_SECONDS
+}
+
+function onTackle({ carrierId, x, y, interceptionReturn, outOfBounds = false }, state, io) {
   // [190] Contact ends an interception return: the intercepting team takes over at the spot.
   if (interceptionReturn) { settleInterception(state, io, x, y); return }
 
@@ -643,8 +652,9 @@ function onTackle({ carrierId, x, y, interceptionReturn }, state, io) {
   // [stats] The play's yardage is settled HERE, so this is where it is credited — as a reception
   // or a carry depending on whether the ball was caught on this play. Passing yards include the
   // yards after the catch, which is how football counts them.
+  // Nobody tackled a man who stepped out — crediting the nearest defender would invent one.
+  const tackler = outOfBounds ? null : nearestTackler(state, x, y)
   {
-    const tackler = nearestTackler(state, x, y)
     if (tackler) recordTackle(state.stats, { tackler })
     const gained = Math.round(yardsGained)
     if (state.statsWasPass) {
@@ -672,8 +682,8 @@ function onTackle({ carrierId, x, y, interceptionReturn }, state, io) {
   }
 
   // [204] An in-bounds tackle keeps the clock running; a turnover on downs (change of
-  // possession) stops it.
-  state.clockStopped = result === 'turnover_on_downs'
+  // possession) stops it — and so does going out of bounds in the last minute of a half.
+  state.clockStopped = result === 'turnover_on_downs' || (outOfBounds && oobStopsClock(state))
 
   transition(state, PHASE.DEAD)
 
@@ -685,18 +695,28 @@ function onTackle({ carrierId, x, y, interceptionReturn }, state, io) {
       if (socketId) {
         io.to(socketId).emit('play_result', serializePlayResult(
           state, 'tackle', reportedYards, newPossessionSlot, slot, firstDown,
+          outOfBounds ? 'out_of_bounds' : null,
         ))
       }
     })
   }
 
-  console.log(`[game] ${state.roomId} TACKLE — ${reportedYards} yds (${state.down}&${state.distance} at ${state.yardLine})`)
+  // [spotlight] After the result is out and the line includes this play.
+  maybeSpotlight(state, io, {
+    kind: state.statsWasPass ? 'pass' : 'run',
+    yards: reportedYards,
+    carrier: carrierId ? statPlayer(state, carrierId, newPossessionSlot != null ? 1 - newPossessionSlot : state.possession) : null,
+    passer: state.statsWasPass ? state.statsPasser : null,
+    tackler,
+  })
+
+  console.log(`[game] ${state.roomId} ${outOfBounds ? 'OUT OF BOUNDS' : 'TACKLE'} — ${reportedYards} yds (${state.down}&${state.distance} at ${state.yardLine})${outOfBounds && state.clockStopped ? ' — clock stopped' : ''}`)
   beginNextPlay(state.roomId, io)
 }
 
-// payload: { carrierId, x, y }
-function onOutOfBounds({ carrierId }, _state, _io) {
-  // Same as tackle but clock stops.
+// payload: { carrierId, x, y } — out of bounds rides EVENT.TACKLE with `outOfBounds: true` instead.
+function onOutOfBounds(payload, state, io) {
+  onTackle({ ...payload, outOfBounds: true }, state, io)
 }
 
 // ── Kickoff ([Special Teams][5]) ───────────────────────────────────────────────
@@ -775,6 +795,14 @@ function onTouchdown({ scoringSlot, carrierId }, state, io) {
     } else if (carrierId) {
       recordRush(state.stats, { runner: offensePlayer(state, carrierId), yards: gained })
     }
+    // [spotlight] A scoring run or catch is a run or a pass like any other — nobody tackled him.
+    maybeSpotlight(state, io, {
+      kind: state.statsWasPass ? 'pass' : 'run',
+      yards: gained,
+      carrier: offensePlayer(state, carrierId),
+      passer: state.statsWasPass ? state.statsPasser : null,
+      tackler: null,
+    })
   }
 
   // [294] Credit X-Factor progress for a touchdown by the OFFENSE (not a defensive return).
@@ -1370,10 +1398,11 @@ function onSack({ qbY, losY, dir, qbX }, state, io) {
   if (qbX != null) state.ballX = clampToHash(qbX)   // [hash] spot the ball laterally where the QB was downed
 
   // [stats] The sack goes to the nearest rusher, and the lost yards against the passer.
+  const sacker = nearestTackler(state, qbX ?? state.ballX, qbY)
   {
     const lost = Math.round(yardLineFromAbsY(state, qbY) - state.yardLine)
     recordSack(state.stats, {
-      defender: nearestTackler(state, qbX ?? state.ballX, qbY),
+      defender: sacker,
       passer: currentPasser(state),
       yards: lost,
     })
@@ -1406,6 +1435,8 @@ function onSack({ qbY, losY, dir, qbX }, state, io) {
       }
     })
   }
+
+  maybeSpotlight(state, io, { kind: 'sack', sacker })   // [spotlight] always, for the man who got it
 
   console.log(`[game] ${state.roomId} SACK — ${yardsGained} yds (${state.down}&${state.distance} at ${state.yardLine})`)
   beginNextPlay(state.roomId, io)

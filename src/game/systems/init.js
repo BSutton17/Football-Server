@@ -1,3 +1,4 @@
+import { noteHadBall } from '../statSpotlight.js'
 import { FIELD } from '../../constants.js'
 import { sanitizeDrawnRoute, drawnRouteWaypoints, routeTraits } from '../utils/routeGeometry.js'
 import { buildWaypoints } from '../utils/routeEngine.js'
@@ -51,6 +52,9 @@ function resolvePressJams(state) {
 // so the movement system doesn't have to search playDesign every tick.
 export function initLivePhase(state) {
   if (!state.playDesign) return
+
+  // [spotlight] This team has now had the ball — the stat graphic waits until both have.
+  noteHadBall(state)
 
   // [187] Fresh play — the QB must hold the ball again before he may throw it away.
   resetThrowawayWindow(state)
