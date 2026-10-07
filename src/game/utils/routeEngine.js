@@ -111,14 +111,30 @@ export function getRouteTarget(player, losY, dir, dt, pivotX) {
       // the rest of the play. Out there he has nowhere left to go and no room to work back into, so
       // he stops and waits for the ball like any other settled route.
       player.routePhase = 'settled'
-    } else {
-      // Continuation route — extend target 20 yards in current velocity direction.
-      const spd = Math.sqrt(player.vx * player.vx + player.vy * player.vy) || 1
-      waypoints[idx] = {
-        x: Math.max(1, Math.min(FIELD.WIDTH - 1, player.x + (player.vx / spd) * 20)),
-        y: player.y + (player.vy / spd) * 20,
-      }
     }
+    // Otherwise a continuation route: nothing to do on arrival — see continuationTarget below, which
+    // has been steering him THROUGH this point all along.
+  }
+
+  // ⚠️ A ROUTE THAT KEEPS GOING MUST NOT AIM AT ITS OWN END.
+  //
+  // Reported as "on some routes the WR and TE hesitate where the route ends (the arrow) before
+  // continuing." `steer` arrives — speed is capped at `dist × 4`, so a runner brakes as he closes on
+  // his target — and the target was the arrowhead itself until he reached it. Only THEN was it pushed
+  // twenty yards on, so he slowed to about half speed on the arrow and re-accelerated (go, seam, wheel
+  // and every drawn route: 8.5 -> ~4 yd/s, measured). And because the new target was a fixed point
+  // twenty yards away, he braked AGAIN every twenty yards for the rest of the play.
+  //
+  // So on the final leg of a route that continues, the target is a point always CONTINUE_LOOKAHEAD
+  // ahead of him along the arrow's line: before the arrowhead it lies past it, after it it rides out in
+  // front of him. He runs through the end of the route at full speed and never "arrives" anywhere. The
+  // sideline still ends it, exactly as before.
+  if (player.routeWaypointIdx === waypoints.length - 1 && !player.routeTraits?.settles && player.routePhase !== 'settled') {
+    if (atSideline(player)) {
+      player.routePhase = 'settled'
+      return waypoints[player.routeWaypointIdx]
+    }
+    return continuationTarget(player, waypoints)
   }
 
   // [route draw] A drawn route is a CURVE described by a chain of waypoints, and steering straight
@@ -142,6 +158,33 @@ export function getRouteTarget(player, losY, dir, dt, pivotX) {
   }
 
   return waypoints[player.routeWaypointIdx]
+}
+
+// How far ahead of the runner a continuing route aims — comfortably past `steer`'s braking distance
+// (top speed / 4, a little over two yards), so he holds full speed through the end of the route.
+const CONTINUE_LOOKAHEAD = 8
+
+// A point on the line of the route's final leg, CONTINUE_LOOKAHEAD beyond whichever is further along
+// it: the arrowhead, or the runner. Fixed to the leg's direction, so he carries on along the arrow
+// as drawn rather than along whatever his heading happened to be at the last tick.
+function continuationTarget(player, waypoints) {
+  const last = waypoints.length - 1
+  const end  = waypoints[last]
+  const from = last > 0 ? waypoints[last - 1] : (player.routeStart ?? { x: player.x, y: player.y })
+  let dx = end.x - from.x, dy = end.y - from.y
+  let len = Math.hypot(dx, dy)
+  if (len < 1e-6) {
+    // A zero-length final leg (a route that begins where it ends): fall back to his heading.
+    dx = player.vx ?? 0; dy = player.vy ?? 0; len = Math.hypot(dx, dy)
+    if (len < 1e-6) return end
+  }
+  const ux = dx / len, uy = dy / len
+  const along = Math.max(0, (player.x - end.x) * ux + (player.y - end.y) * uy)
+  const reach = along + CONTINUE_LOOKAHEAD
+  return {
+    x: Math.max(1, Math.min(FIELD.WIDTH - 1, end.x + ux * reach)),
+    y: end.y + uy * reach,
+  }
 }
 
 // True once the receiver is beyond the plane through waypoint `idx` perpendicular to the leg that

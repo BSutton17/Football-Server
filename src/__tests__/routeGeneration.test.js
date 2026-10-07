@@ -290,21 +290,40 @@ describe('getRouteTarget — phase transitions', () => {
     expect(isSettled(p)).toBe(true)
   })
 
-  it('continuation route extends the final waypoint forward when player arrives', () => {
+  // ⚠️ THIS USED TO ASSERT THE FINAL WAYPOINT WAS REWRITTEN ON ARRIVAL, which was the bug. The target
+  // was the arrowhead until he reached it, `steer` brakes as it closes on a target, so every receiver
+  // slowed to about half speed on the arrow before carrying on — reported as receivers "hesitating
+  // where the route ends". A continuing route now aims past its own end the whole way.
+  it('a continuing route aims PAST its arrowhead, before and after he gets there', () => {
     const p = makePlayer('go', 26)
     getRouteTarget(p, 60, 1, 0)
-
     p.routeWaypointIdx = p.routeWaypoints.length - 1
-    const originalY = p.routeWaypoints.at(-1).y
-    p.x  = p.routeWaypoints.at(-1).x
-    p.y  = originalY
-    p.vx = 0
-    p.vy = 5  // moving northward
+    const end = { ...p.routeWaypoints.at(-1) }
 
-    getRouteTarget(p, 60, 1, 0.05)
+    // Two yards short of the arrow: the target is beyond it, so there is nothing to brake for.
+    p.x = end.x; p.y = end.y - 2; p.vx = 0; p.vy = 8
+    const before = getRouteTarget(p, 60, 1, 0.05)
+    expect(before.y).toBeGreaterThan(end.y + 4)
 
-    expect(p.routeWaypoints.at(-1).y).toBeGreaterThan(originalY)
+    // On it, and well past it: still a good distance ahead of him, never a point he arrives at.
+    for (const y of [end.y, end.y + 15, end.y + 30]) {
+      p.y = y
+      const t = getRouteTarget(p, 60, 1, 0.05)
+      expect(t.y - p.y).toBeGreaterThan(4)
+    }
     expect(p.routePhase).toBe('running')
+    expect(p.routeWaypoints.at(-1)).toEqual(end)     // the route as drawn is left alone
+  })
+
+  it('it carries on along the line of the final leg, not wherever he drifted', () => {
+    const p = makePlayer('post', 26)
+    getRouteTarget(p, 60, 1, 0)
+    p.routeWaypointIdx = p.routeWaypoints.length - 1
+    const [a, b] = p.routeWaypoints.slice(-2)
+    p.x = b.x; p.y = b.y; p.vx = 3; p.vy = 3          // heading somewhere slightly different
+    const t = getRouteTarget(p, 60, 1, 0.05)
+    const cross = (b.x - a.x) * (t.y - b.y) - (b.y - a.y) * (t.x - b.x)
+    expect(Math.abs(cross)).toBeLessThan(1e-6)       // collinear with the post's break
   })
 
   it('block route is a stop route (player settles at position)', () => {
