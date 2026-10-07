@@ -9,7 +9,7 @@
 //   • a SACK:                      always — the man who got it
 //
 // The server decides and sends the line itself, so both screens show the same player with the same
-// numbers. Where it appears and how long it stays are the client's business (StatSpotlight.tsx).
+// numbers. Where it appears and how long it stays (four seconds) are the client's business (StatSpotlight.tsx).
 //
 // ⚠️ ITS OWN RANDOM STREAM. A seeded game is replayable tick for tick, and every engine roll is drawn
 // from `state.rng`; drawing the spotlight's coin flips from that same stream would shift every roll
