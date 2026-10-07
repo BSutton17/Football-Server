@@ -14,6 +14,8 @@
 // situational prior means it is sensible immediately and gets better as buckets are solved. The
 // two are never blended — a half-solved bucket that quietly leaned on a prior would be impossible
 // to reason about later.
+//
+// ⚠️ ONE EXCEPTION, ON THE DEFENSE: NO SHELL TAKES MORE THAN TWO-THIRDS OF A SOLVED MIX (capShare).
 
 import { situationKey, runLean, runShare, depthLean } from './situation.js'
 import { withMixingFloor } from './nash.js'
@@ -28,6 +30,23 @@ const PRIOR_TEMPERATURE = 0.8
 // Deliberately small. It exists so no call is ever literally impossible, which is what stops a
 // human from ruling one out after a handful of snaps.
 const FLOOR = 0.04
+
+// ⚠️ THE MOST OF A SOLVED DEFENSIVE MIX ANY ONE SHELL MAY TAKE.
+//
+// The solve tests each shell against the AUTHORED plays, routes exactly as drawn. A human is not
+// bound by that: they load the same formation and redraw a route. So a shell the solve likes 90% of
+// the time is only safe against an offense that never changes anything — and against one that does,
+// it is a free read. Reported against Dagger Sit, where the table called GRIZZLY BLITZ on 90-97% of
+// snaps: "the AI defense always runs the same play ... changing the wr route to a go immediately gives
+// up a free touchdown or large gain." The solve could not see that, because the go was never in it.
+//
+// It has a price, measured paired (1st & 10, 400 snaps, defense calling freely, after the Cover 0
+// shading fix): against Dagger Sit as drawn and with the outside receiver on a go, a cap of 0.65
+// costs 0.35 / 0.61 yds a play against the computer quarterback, and 0.5 costs 0.70 / 0.90. That is
+// the cost against an offense that cannot read the call; the benefit is against one that can, which
+// no lab here measures. Two-thirds keeps a strong lean toward the solve while making sure at least
+// one snap in three shows something else.
+export const MAX_SHELL_SHARE = 0.65
 
 function normalize(weights) {
   const total = weights.reduce((a, b) => a + b, 0)
@@ -171,27 +190,53 @@ export function chooseDefensiveShell(shells, situation, offenseLook,
   // is not a reason to forget what the situation asks for.
   const fit = adjust ? shells.map(s => shellFit(s, adjust)) : shells.map(() => 1)
 
+  const prior = defensivePrior(shells, situation, offenseLook, fit)
+
   if (table) {
     const probs = normalize(shells.map((s, i) => (table[s.id] ?? 0) * fit[i]))
-    if (probs.some(p => p > 0)) return sample(shells, withMixingFloor(probs, { floor: FLOOR }), rng)
+    if (probs.some(p => p > 0)) {
+      return sample(shells, withMixingFloor(capShare(probs, prior), { floor: FLOOR }), rng)
+    }
   }
 
-  // ⚠️ THE PRIOR MATCHES PERSONNEL, WHICH IS THE ONE THING A DEFENSE MUST GET RIGHT WITHOUT
-  // EVIDENCE. Answering four receivers with a base defense is not an interesting gamble, it is
-  // simply wrong, and a coin-flip prior would do it a quarter of the time.
-  //
-  // ⚠️ AND IT MATCHES THE SITUATION TOO, which this did not do for as long as it existed.
-  // Personnel was the ONLY term, so the computer answered 3rd and 1 exactly as it answered 3rd and
-  // 15 — three or more deep on roughly a third of both, measured over real snaps. The player's
-  // shortlist had `situationalShellFit` from the start; the computer's own call never called it.
+  return sample(shells, withMixingFloor(normalize(prior), { floor: FLOOR }), rng)
+}
+
+// ⚠️ THE PRIOR MATCHES PERSONNEL, WHICH IS THE ONE THING A DEFENSE MUST GET RIGHT WITHOUT
+// EVIDENCE. Answering four receivers with a base defense is not an interesting gamble, it is
+// simply wrong, and a coin-flip prior would do it a quarter of the time.
+//
+// ⚠️ AND IT MATCHES THE SITUATION TOO, which this did not do for as long as it existed.
+// Personnel was the ONLY term, so the computer answered 3rd and 1 exactly as it answered 3rd and
+// 15 — three or more deep on roughly a third of both, measured over real snaps. The player's
+// shortlist had `situationalShellFit` from the start; the computer's own call never called it.
+function defensivePrior(shells, situation, offenseLook, fit) {
   const wr = offenseLook?.wr ?? 3
-  const weights = shells.map((s, i) => {
+  return shells.map((s, i) => {
     const backs = s.personnel ? (s.personnel.CB ?? 0) + (s.personnel.S ?? 0) : 4
     // The closer the defensive back count is to what the formation asks for, the better the fit.
     const want = wr >= 4 ? 6 : wr === 3 ? 5 : 4
     return fit[i] * situationalShellFit(s, situation) / (1 + Math.abs(backs - want))
   })
-  return sample(shells, withMixingFloor(normalize(weights), { floor: FLOOR }), rng)
+}
+
+// Caps every share at `cap` and hands what was cut to the shells still under it, in proportion to
+// `spread` — the situational prior, so the excess goes to calls that suit the down and the personnel
+// rather than to whatever the solve happened to leave a crumb on. A mix already under the cap comes
+// back unchanged.
+export function capShare(probs, spread, cap = MAX_SHELL_SHARE) {
+  let p = normalize(probs)
+  for (let pass = 0; pass < probs.length; pass++) {
+    if (!p.some(x => x > cap + 1e-12)) break
+    let excess = 0
+    const atCap = p.map(x => x >= cap - 1e-12)
+    p = p.map(x => { if (x > cap) { excess += x - cap; return cap } return x })
+    const room = spread.map((w, i) => (atCap[i] ? 0 : Math.max(0, w)))
+    const total = room.reduce((a, b) => a + b, 0)
+    if (total <= 0) return normalize(probs)   // nowhere to put it: leave the solve's answer alone
+    p = p.map((x, i) => x + excess * room[i] / total)
+  }
+  return normalize(p)
 }
 
 // What the defense is allowed to know about the offense's look: the formation, and the personnel

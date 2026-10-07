@@ -92,16 +92,22 @@ export function matchMen(defenders, receivers, ballX = FIELD_MID) {
 // Which single thing a man defender sells out to take away. The engine offers four, and each is
 // right in a different situation:
 //
-//   over  — help is over the top, so squeeze everything underneath. Only ever correct when there
-//           IS help; playing over the top with no safety is how a double move scores.
-//   under — no deep help, so stay on top of the route and concede the short catch.
+//   over  — keep a cushion OVER THE TOP of the route and concede the short catch.
+//   under — sit UNDERNEATH, toward the line, betting he does not go deep. The engine deliberately
+//           withholds the on-top rescue from this one (movement.js, getManTarget's caller), so a
+//           vertical route beats it outright.
 //   in    — he is outside the numbers with the sideline helping; take away the inside break.
 //   out   — he is inside; the sideline is far away, so take away the out.
+//
+// ⚠️ THESE TWO WERE DOCUMENTED BACKWARDS, AND THE NO-HELP RULE FOLLOWED THE DOCUMENT. "No deep help,
+// so stay on top" was written as `under` — which in the engine is the one shade guaranteed to lose
+// to a go. Every Cover 0 defender sat underneath with nobody behind him. See decideShade in
+// playbook/alignAuthored.js for the measurement (28.9% of Cover 0 snaps went for a touchdown).
 export function shadeFor(defender, receiver, { hasDeepHelp, ballX = FIELD_MID }) {
   const outsideness = Math.abs(receiver.x - ballX)
 
   if (receiver.label === 'RB') return SHADE.UNDER    // a back releasing is a short threat
-  if (!hasDeepHelp) return SHADE.UNDER               // nothing behind you: never get beaten deep
+  if (!hasDeepHelp) return SHADE.OVER                // nothing behind you: never get beaten deep
   if (outsideness > 14) return SHADE.IN              // wide: the sideline is your help outside
   if (outsideness < 6) return SHADE.OUT              // tight: the traffic inside is your help
   return SHADE.OVER
@@ -114,14 +120,14 @@ export function shadeFor(defender, receiver, { hasDeepHelp, ballX = FIELD_MID })
 // 1,024 variants of every shell), so the choice is made once for the whole call.
 //
 // ⚠️ LEVERAGE IS A PREFERENCE, AND THE SAFETY RULES OUTRANK IT. `shadeFor` refuses to play
-// anything but UNDER with no deep help — "nothing behind you: never get beaten deep" — and a back
+// anything but OVER with no deep help — "nothing behind you: never get beaten deep" — and a back
 // releasing is always a short threat. If a chosen leverage could override those, the AI would be
 // able to pick inside leverage with no safety behind it and concede touchdowns for it. This is
 // the same rule the trained action space used: repair the illegal choice, never score it badly.
 export function shadeWithLeverage(defender, receiver, ctx, leverage) {
   if (leverage !== 'in' && leverage !== 'out') return shadeFor(defender, receiver, ctx)
   if (receiver.label === 'RB') return SHADE.UNDER
-  if (!ctx?.hasDeepHelp) return SHADE.UNDER
+  if (!ctx?.hasDeepHelp) return SHADE.OVER
   return leverage === 'in' ? SHADE.IN : SHADE.OUT
 }
 

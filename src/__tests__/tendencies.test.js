@@ -173,11 +173,11 @@ describe('⚠️ IT IS A LEAN, NEVER A RULE', () => {
   })
 
   it('⚠️ NEVER OUTRANKS NOT GETTING BEATEN DEEP', () => {
-    // With nobody over the top it is UNDER regardless — but that is the safety rule doing it, and
+    // With nobody behind him it is OVER regardless — but that is the safety rule doing it, and
     // it holds whatever the halftime read says.
     const wide = { id: 'w', x: 44, y: 40, label: 'WR' }
-    expect(decideShade({}, wide, { hasDeepHelp: false, ballX: 26.665, preferUnderneath: false }))
-      .toBe('under')
+    expect(decideShade({}, wide, { hasDeepHelp: false, ballX: 26.665, preferUnderneath: true }))
+      .toBe('over')
   })
 })
 

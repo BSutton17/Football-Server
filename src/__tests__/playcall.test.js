@@ -4,6 +4,7 @@ import {
 } from '../ai/playcall/situation.js'
 import {
   chooseOffensivePlay, chooseDefensiveShell, priorWeights, playDepth, offenseLookOf,
+  capShare, MAX_SHELL_SHARE,
 } from '../ai/playcall/select.js'
 import {
   shouldFlip, crowding, keepInToBlock, applyKeepIn, adjustOffense, blockersFor,
@@ -258,5 +259,44 @@ describe('⚠️ KEEPING SOMEBODY IN TO BLOCK', () => {
     expect(out.mirror).toBe(true)
     expect(out.play.id).toBe('mesh')          // still the same play
     expect(out.keptIn).toBe('RB1')
+  })
+})
+
+// ⚠️ Reported against Dagger Sit, where the solved table called one shell on 90-97% of snaps: "the AI
+// defense always runs the same play". The solve only ever tested the authored routes; a human redraws
+// them, so a near-pure call is a free read.
+describe('⚠️ NO SHELL TAKES MORE THAN ITS CAP OF A SOLVED MIX', () => {
+  const shells = [
+    { id: 'zero', personnel: { CB: 2, S: 2, LB: 3 } },
+    { id: 'one', personnel: { CB: 3, S: 2, LB: 2 } },
+    { id: 'quarters', personnel: { CB: 3, S: 2, LB: 2 } },
+  ]
+  const sit = { down: 1, distance: 10, yardLine: 50 }
+  const look = { id: 'trips', wr: 3 }
+  const solved = { [`${situationKey(sit)}|trips`]: { zero: 0.95, one: 0.05 } }
+
+  it('caps a near-pure mix and spreads the rest over the other shells', () => {
+    let zero = 0, quarters = 0
+    const n = 6000
+    for (let i = 0; i < n; i++) {
+      const id = chooseDefensiveShell(shells, sit, look, { solved }).id
+      if (id === 'zero') zero++
+      if (id === 'quarters') quarters++
+    }
+    expect(zero / n).toBeLessThan(MAX_SHELL_SHARE + 0.03)
+    expect(zero / n).toBeGreaterThan(MAX_SHELL_SHARE - 0.06)   // still the clear favourite
+    // …and a shell the solve gave nothing to is now called sometimes, via the prior.
+    expect(quarters / n).toBeGreaterThan(0.05)
+  })
+
+  it('leaves a mix that is already under the cap exactly as it was', () => {
+    expect(capShare([0.4, 0.35, 0.25], [1, 1, 1])).toEqual([0.4, 0.35, 0.25])
+  })
+
+  it('hands the excess out by the prior, not evenly', () => {
+    const out = capShare([0.9, 0.1, 0], [1, 1, 3])
+    expect(out[0]).toBeCloseTo(MAX_SHELL_SHARE)
+    expect(out[2]).toBeGreaterThan(out[1] - 0.1)
+    expect(out.reduce((a, b) => a + b, 0)).toBeCloseTo(1)
   })
 })

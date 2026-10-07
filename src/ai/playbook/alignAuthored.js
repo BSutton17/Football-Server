@@ -297,7 +297,20 @@ export function decideShade(defender, receiver,
   { hasDeepHelp, ballX, forced = null, preferUnderneath = false, adjust = null }) {
   if (!receiver) return 'none'
   if (receiver.label === 'RB') return 'under'   // a back releasing is a short threat
-  if (!hasDeepHelp) return 'under'              // nothing behind you: never get beaten deep
+  // ⚠️ NOTHING BEHIND YOU MEANS OVER THE TOP — THIS SAID `under`, WHICH MEANS THE OPPOSITE.
+  //
+  // In the engine `under` is a bet that he will NOT go deep: the defender sits in front of the route
+  // and is deliberately denied the on-top rescue, "so when he does, the defender has to lose". So in
+  // Cover 0 every man defender was told to lose to any vertical route, and the corners pressed on top
+  // of it. Reported as "the AI defense always has two cb pressing the wr. Changing the wr route to a
+  // go immediately gives up a free touchdown or large gain." It was not only the go: measured over
+  // 960 paired snaps of ordinary authored plays against the two Cover 0 blitzes, `under` gave up a
+  // TOUCHDOWN on 28.9% of them (19.7 yds/play); `over` gave up none (3.5 yds/play, 2.5% of 20+).
+  // Against Dagger Sit with the outside receiver on a go: 6.3 -> 2.6 yds/play, 20+ gains 7.7% -> 0.
+  //
+  // The same collision of meanings the press rule below was already fixed for once. Pressing on a
+  // blitz was measured too and left alone: taking it away as well changed nothing (within noise).
+  if (!hasDeepHelp) return 'over'
 
   // [halftime shapes] What the opponent has actually been throwing decides leverage before any
   // default does. These sit BELOW the two safety rules above — nothing outranks not getting beaten

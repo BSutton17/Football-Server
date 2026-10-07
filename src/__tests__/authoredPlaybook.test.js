@@ -383,13 +383,13 @@ describe('leverage — the one thing the AI decides for itself', () => {
   })
 
   it('⚠️ NEVER lets a chosen leverage override the deep-help safety rule', () => {
-    // shadeFor refuses anything but UNDER with no help behind — "never get beaten deep". If a
+    // shadeFor refuses anything but OVER with no help behind — "never get beaten deep". If a
     // leverage could override that, the AI could pick inside leverage with no safety and concede
     // touchdowns for it. Repair the illegal choice; never merely score it badly.
     const cb = { label: 'CB' }
     const wr = { label: 'WR', x: 45 }
-    expect(shadeWithLeverage(cb, wr, { hasDeepHelp: false, ballX: 26.65 }, 'in')).toBe(SHADE.UNDER)
-    expect(shadeWithLeverage(cb, wr, { hasDeepHelp: false, ballX: 26.65 }, 'out')).toBe(SHADE.UNDER)
+    expect(shadeWithLeverage(cb, wr, { hasDeepHelp: false, ballX: 26.65 }, 'in')).toBe(SHADE.OVER)
+    expect(shadeWithLeverage(cb, wr, { hasDeepHelp: false, ballX: 26.65 }, 'out')).toBe(SHADE.OVER)
     // A back releasing is a short threat whatever the call says.
     expect(shadeWithLeverage({ label: 'LB' }, { label: 'RB', x: 30 }, { hasDeepHelp: true, ballX: 26.65 }, 'in'))
       .toBe(SHADE.UNDER)

@@ -334,15 +334,19 @@ describe('⚠️ SHADING IS DECIDED PER DEFENDER', () => {
     expect(decideShade({}, back, ctx)).toBe('under')
   })
 
-  it('⚠️ REFUSES ANYTHING BUT UNDER WITH NOBODY OVER THE TOP', () => {
-    for (const r of [wide, tight, back]) {
-      expect(decideShade({}, r, { ...ctx, hasDeepHelp: false })).toBe('under')
+  // ⚠️ THIS ASSERTED `under`, WHICH IN THE ENGINE IS THE SHADE THAT LOSES TO A GO — sitting in
+  // front of the route with the on-top rescue withheld. With nobody behind him a man defender keeps
+  // a cushion OVER the top. A back is still played underneath: he is a short threat either way.
+  it('⚠️ PLAYS OVER THE TOP WITH NOBODY BEHIND HIM', () => {
+    for (const r of [wide, tight]) {
+      expect(decideShade({}, r, { ...ctx, hasDeepHelp: false })).toBe('over')
     }
+    expect(decideShade({}, back, { ...ctx, hasDeepHelp: false })).toBe('under')
   })
 
   it('honours a shell that pins its leverage — but not over the safety rule', () => {
     expect(decideShade({}, wide, { ...ctx, forced: 'out' })).toBe('out')
-    expect(decideShade({}, wide, { ...ctx, forced: 'out', hasDeepHelp: false })).toBe('under')
+    expect(decideShade({}, wide, { ...ctx, forced: 'out', hasDeepHelp: false })).toBe('over')
   })
 
   it('stands NEAR his receiver, never nose to nose', () => {
