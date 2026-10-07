@@ -31,7 +31,7 @@ import { specialTeamsAction, fourthDownChoice } from './specialTeams.js'
 import { shouldCallTimeout } from './clockManagement.js'
 import { makeRng } from '../game/utils/rng.js'
 import { shouldSetNow } from './timing.js'
-import { chooseTempo, setTimeFor, tempoRunLean, TEMPO } from './tempo.js'
+import { chooseTempo, setTimeFor, hurrySetTime, tempoRunLean, TEMPO } from './tempo.js'
 
 // [run adjust] How late the offense takes its one look at the front, in seconds of hike countdown.
 // One beat before the snap: late enough that the defense has finished moving, early enough to be a

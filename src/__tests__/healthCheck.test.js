@@ -6,7 +6,7 @@ import { getRoom, leaveRoomBySlot } from '../game/roomManager.js'
 import { getGame, deleteGame } from '../game/gameState.js'
 import { clearTeamSelect } from '../game/teamSelect.js'
 import { getTokensByRoomId, invalidateSession } from '../game/sessionManager.js'
-import { stopGameLoop } from '../game/simulation.js'
+import { stopGameLoop, tick } from '../game/simulation.js'
 import { startNextPlay, applyDelayOfGame } from '../game/eventQueue.js'
 import { beginSpecialTeams, KICK } from '../game/specialTeams.js'
 import { beginStoppage, endStoppage, STOPPAGE } from '../game/pause.js'
@@ -121,5 +121,38 @@ describe('a refused set is tried again', () => {
     endStoppage(state)
     g.brain.onEvent('play_clock_update', { playClock: state.playClock })
     expect(state.phase).toBe(PHASE.COUNTDOWN)
+  })
+})
+
+// ⚠️ THE SOFTLOCK THAT ACTUALLY HAPPENED: "the softlock usually comes after a timeout, especially an AI
+// timeout." Late in a half, behind, the computer calls a timeout and switches to the HURRY tempo — and
+// the hurry branch of lockOffense called `hurrySetTime`, which controller.js never imported. Every set
+// threw a ReferenceError, the virtual socket swallowed it, and the computer simply never set again:
+// delay of game, and then the health check's own recovery threw the same error. tempo.test.js tested
+// hurrySetTime itself, so nothing ever ran the controller down that branch.
+describe('⚠️ THE COMPUTER SETS AFTER ITS OWN LATE TIMEOUT (the hurry-up)', () => {
+  it('calls the timeout, waits it out, and sets — through the real tick loop', () => {
+    stopGameLoop(ROOM)                       // drive the loop by hand, deterministically
+    const state = getGame(ROOM)
+    state.possession = 1
+    state.quarter = 2
+    state.clock = 45
+    state.score = [7, 0]                     // the computer is behind, so it hurries
+    state.phase = PHASE.DEAD
+    startNextPlay(ROOM, g.io, { quiet: true })
+    state.clockStopped = false
+    g.brain.onEvent('game_state', serializeGameState(state, 1))
+
+    expect(state.stoppage?.reason).toBe(STOPPAGE.TIMEOUT)     // it called one
+    const errors = []
+    const realError = console.error
+    console.error = (...a) => { errors.push(a.join(' ')); }
+    try {
+      for (let t = 0; t < 20 * 12 && state.phase === PHASE.PRE_SNAP; t++) tick(ROOM, g.io)
+    } finally { console.error = realError }
+
+    expect(errors.filter(e => /failed handling/.test(e))).toEqual([])
+    expect(state.phase).toBe(PHASE.COUNTDOWN)                 // …and set well inside the play clock
+    expect(state.timeouts[1]).toBe(2)
   })
 })
