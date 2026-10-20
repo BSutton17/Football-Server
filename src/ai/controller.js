@@ -31,7 +31,7 @@ import { specialTeamsAction, fourthDownChoice } from './specialTeams.js'
 import { shouldCallTimeout } from './clockManagement.js'
 import { makeRng } from '../game/utils/rng.js'
 import { shouldSetNow } from './timing.js'
-import { chooseTempo, snapTempo, setTimeFor, hurrySetTime, tempoRunLean, TEMPO } from './tempo.js'
+import { snapTempo, setTimeFor, hurrySetTime, playCallRunLean, TEMPO } from './tempo.js'
 
 // [run adjust] How late the offense takes its one look at the front, in seconds of hike countdown.
 // One beat before the snap: late enough that the defense has finished moving, early enough to be a
@@ -322,7 +322,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
           // play-caller because the SITUATION buckets the solve is keyed on carry no score and no
           // clock — adding them would multiply the buckets and thin every one of them out. So the
           // solved equilibrium stands and the clock bends it.
-          runLeanMult: tempoRunLean(chooseTempo(k)),
+          runLeanMult: playCallRunLean(k),   // zero when a run would waste the clock (mustThrow)
           ...brains(),
         }))
       : null
@@ -444,6 +444,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
           route: p.route, routeDepthScale: p.routeDepthScale ?? 1,
           ratings: p.ratings, xFactor: p.xFactor,
           ...(p.drawnRoute ? { drawnRoute: p.drawnRoute } : {}),
+          ...(p.checkRelease ? { checkRelease: true } : {}),   // [check release] blue TE route
         })),
         ...autoOffense(losY, ballX),
       ],

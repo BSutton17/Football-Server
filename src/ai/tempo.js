@@ -187,6 +187,26 @@ export function snapsLeft(clock, tempo) {
 const BURN_RUN_LEAN = 1.8
 const HURRY_RUN_LEAN = 0.35
 
+// ⚠️ SOMETIMES A RUN IS NOT A LEAN, IT IS A MISTAKE. Reported: "if there is 37 seconds left and they
+// are down by 3 with no time outs they shouldn't be running the ball." The hurry-up only scaled the run
+// odds (x0.35), so a 40% base still ran on ~15% of snaps inside the last two minutes while behind —
+// measured over 8 full games. When the offense must hurry AND either there is almost no clock left or
+// no timeout to stop it, a run spends the very thing it is short of: the clock keeps going and the
+// snaps run out. So the run share is zero there, not merely lower.
+export function mustThrow(k) {
+  if (chooseTempo(k) !== TEMPO.HURRY) return false
+  const quarterSeconds = k?.quarterSeconds ?? DEFAULT_QUARTER_SECONDS
+  const clock = k?.clock ?? quarterSeconds
+  const outs = k?.timeouts?.own ?? 0
+  return clock <= DESPERATE_FRACTION * quarterSeconds || outs === 0
+}
+
+// The run-share multiplier for the play call: zero when a run would be a mistake (mustThrow),
+// otherwise the tempo's lean.
+export function playCallRunLean(k) {
+  return mustThrow(k) ? 0 : tempoRunLean(chooseTempo(k))
+}
+
 export function tempoRunLean(tempo) {
   if (tempo === TEMPO.BURN) return BURN_RUN_LEAN
   if (tempo === TEMPO.HURRY) return HURRY_RUN_LEAN

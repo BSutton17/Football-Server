@@ -202,3 +202,36 @@ describe('⚠️ NO HURRY WITH THE CLOCK STOPPED', () => {
     expect(k.clockStopped).toBe(true)
   })
 })
+
+// Reported: "if there is 37 seconds left and they are down by 3 with no time outs they shouldn't be
+// running the ball. They shouldn't be calling timeouts when they want the clock to run, like when
+// they are up and the opponent has the ball."
+describe('⚠️ CLOCK, SCORE AND POSSESSION DECIDE THE CALL', () => {
+  const base = { quarterSeconds: 300, clockStopped: false, phase: 'pre_snap' }
+  it('down 3, 37 seconds, no timeouts: no runs at all', async () => {
+    const { mustThrow, playCallRunLean } = await import('../ai/tempo.js')
+    const k = { ...base, quarter: 4, clock: 37, timeouts: { own: 0 }, score: { offense: 17, defense: 20 } }
+    expect(mustThrow(k)).toBe(true)
+    expect(playCallRunLean(k)).toBe(0)
+  })
+  it('no timeouts left in the last two minutes while behind: still no runs', async () => {
+    const { mustThrow } = await import('../ai/tempo.js')
+    expect(mustThrow({ ...base, quarter: 4, clock: 90, timeouts: { own: 0 }, score: { offense: 17, defense: 20 } })).toBe(true)
+  })
+  it('ahead late: runs are welcome (the clock is the friend)', async () => {
+    const { mustThrow, playCallRunLean } = await import('../ai/tempo.js')
+    const k = { ...base, quarter: 4, clock: 37, timeouts: { own: 0 }, score: { offense: 24, defense: 20 } }
+    expect(mustThrow(k)).toBe(false)
+    expect(playCallRunLean(k)).toBeGreaterThan(1)
+  })
+  it('a leading team never calls a timeout — with the ball in the 4th, or on defense in either half', async () => {
+    const { shouldCallTimeout } = await import('../ai/clockManagement.js')
+    const lead = { ...base, timeouts: { own: 3, opp: 3 }, score: { offense: 24, defense: 17 } }
+    for (const [quarter, clock] of [[2, 30], [4, 100], [4, 37]]) {
+      expect(shouldCallTimeout({ ...lead, role: 'defense', quarter, clock })).toBe(false)
+    }
+    expect(shouldCallTimeout({ ...lead, role: 'offense', quarter: 4, clock: 100 })).toBe(false)
+    // …while a trailing defense does want the time back
+    expect(shouldCallTimeout({ ...lead, role: 'defense', quarter: 4, clock: 100, score: { offense: 17, defense: 24 } })).toBe(true)
+  })
+})
