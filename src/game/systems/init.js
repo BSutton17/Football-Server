@@ -50,6 +50,22 @@ function resolvePressJams(state) {
 // Populates offensePlayers with any auto-placed players (OL, QB) that were never
 // sent via place_player, and annotates all offense players with label/route data
 // so the movement system doesn't have to search playDesign every tick.
+// [check release] Is a defender blitzing on this player's side of the ball? A blitzer is a non-lineman
+// the defense has sent after the quarterback (coverage type 'blitz' — the linemen rush on every play
+// and the line has them). "His side" is the same side of the ball as the TE; a man lined up right over
+// the ball counts for both.
+export function blitzOnSide(state, te) {
+  const ballX = state.ballX ?? FIELD.WIDTH / 2
+  const side = Math.sign(te.x - ballX)
+  for (const d of state.defensePlayers?.values() ?? []) {
+    if (d.label === 'DL') continue
+    if (state.defenseCoverage?.get(d.id)?.type !== 'blitz') continue
+    const dside = Math.abs(d.x - ballX) < 1 ? 0 : Math.sign(d.x - ballX)
+    if (dside === 0 || side === 0 || dside === side) return true
+  }
+  return false
+}
+
 export function initLivePhase(state) {
   if (!state.playDesign) return
 
@@ -128,6 +144,19 @@ export function initLivePhase(state) {
       fp.routePhase       = 'running'
       fp.routeTraits      = routeTraits(fp.routeWaypoints, fp.y, losY, dir, fp.x, state.ballX)
       fp.routeStart       = { x: fp.x, y: fp.y }
+    }
+
+    // [check release] A TE whose route is marked BLUE reads the blitz at the snap. Requested: "if a TE
+    // is on a route that is blue, it should be treated as a check and release route — if a player is
+    // blitzing on the TE side he should block, otherwise run the route." See blitzOnSide below.
+    fp.checkRelease = !!p.checkRelease && fp.label === 'TE'
+    if (fp.checkRelease && fp.route && fp.route !== 'block' && blitzOnSide(state, fp)) {
+      fp.route = 'block'
+      fp.routeDrawn = false
+      fp.drawnRoute = null
+      fp.routeWaypoints = null
+      fp.routeTraits = null
+      fp.checkReleaseStayedIn = true
     }
 
     // [293] Carry the player's per-team ratings onto the field entity so the sim uses them.

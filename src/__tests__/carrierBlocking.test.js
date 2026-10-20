@@ -31,7 +31,10 @@ function makeState({ offense = [], defense = [], playType = 'run', ballCarrierId
   }
 }
 
-const wr  = (id, x, y) => ({ id, label: 'WR', x, y, vx: 0, vy: 0, isEngaged: false })
+// ⚠️ A SECOND BACK, NOT A WIDE RECEIVER. On a run a WR now stalk-blocks the man over him (see
+// blockingAssignments.test.js) instead of hunting whoever is nearest the carrier, so the carrier-
+// blocking rules below are exercised with a non-carrying back, who still blocks for the runner.
+const wr  = (id, x, y) => ({ id, label: 'RB', x, y, vx: 0, vy: 0, isEngaged: false })
 const te  = (id, x, y) => ({ id, label: 'TE', x, y, vx: 0, vy: 0, isEngaged: false })
 const rb  = (id, x, y) => ({ id, label: 'RB', x, y, vx: 0, vy: 6, isEngaged: false })
 const ol  = (id, x, y = 35) => ({ id, label: 'OL', x, y, vx: 0, vy: 0, isEngaged: false, passBlockAnchorX: null, passBlockAnchorY: null })

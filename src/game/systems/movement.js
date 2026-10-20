@@ -508,9 +508,12 @@ function carrierDriveTarget(def, carrier, dir) {
 // like assignRunBlockers, so no two blockers can pick the same man on the same tick.
 function assignCarrierBlockers(state, carrier) {
   const blockers = []
+  const playType = state.playDesign?.playType ?? 'pass'
+  const rpoOpen = rpoReadOpen(state)
   for (const o of state.offensePlayers.values()) {
     if (o.id === carrier.id) continue
     if (!RECEIVER_LABELS.has(o.label ?? '')) continue
+    if (isStalkBlocker(o, state, playType, rpoOpen)) continue   // [wr block] he has his own man
     blockers.push(o)
   }
   if (blockers.length === 0) return
@@ -572,10 +575,121 @@ function getCarrierBlockTarget(blocker, state, dir, carrier) {
   }
 }
 
+// ── Receivers blocking downfield: the stalk block ([wr block]) ─────────────────
+//
+// ⚠️ A RECEIVER BLOCKS THE MAN OVER HIM, OUT THERE — HE DOES NOT COME BACK. Reported: "when WRs are
+// blocking during a pass or run play, they should be going up field and engaging CBs and defenders,
+// not dropping back." On a run every receiver was handed whichever defender was nearest the BALL
+// CARRIER — who at the snap is deep in the backfield — so a split end ran back inside toward him, or,
+// with nobody in range, to a lead spot in front of the carrier near the middle of the line. On a pass
+// a receiver set to block ran pass protection beside the quarterback.
+//
+// Now a blocking WR takes the nearest defender in FRONT of him who is not a lineman (the corner or
+// safety over him), goes to meet him and sets up between him and the ball. Getting within the
+// engagement radius holds the defender up exactly as a lineman's block does.
+const STALK_SCAN   = 15     // yd — beyond this nobody is "his" man
+const STALK_SET    = 0.8    // yd short of the defender, on the ball side
+const STALK_RELEASE_DEPTH = 6   // with nobody to block, get this far past the line
+
+function stalkBallRef(state, carrier) {
+  if (carrier) return carrier
+  for (const p of state.offensePlayers.values()) if (p.label === 'QB') return p
+  return null
+}
+
+export function getStalkBlockTarget(wr, state, losY, dir, carrier) {
+  let def = wr.stalkTargetId ? state.defensePlayers.get(wr.stalkTargetId) : null
+  if (def && Math.hypot(def.x - wr.x, def.y - wr.y) > STALK_SCAN * 1.4) def = null
+  if (!def) {
+    const taken = new Set()
+    for (const o of state.offensePlayers.values()) if (o.id !== wr.id && o.stalkTargetId) taken.add(o.stalkTargetId)
+    let best = null, bd = STALK_SCAN
+    for (const d of state.defensePlayers.values()) {
+      if (d.label === 'DL' || taken.has(d.id)) continue
+      if ((d.y - wr.y) * dir < -1.5) continue          // in front of him, or level — not behind
+      const dist = Math.hypot(d.x - wr.x, d.y - wr.y)
+      if (dist < bd) { bd = dist; best = d }
+    }
+    def = best
+    wr.stalkTargetId = def?.id ?? null
+  }
+
+  if (!def) {
+    // Nobody to block: release upfield rather than drifting back toward the play.
+    return { x: wr.x, y: (wr.y - losY) * dir >= STALK_RELEASE_DEPTH ? wr.y + dir * 2 : losY + dir * STALK_RELEASE_DEPTH }
+  }
+  // Square up on the ball side of him, so he has to go through the receiver to get to the play.
+  const ball = stalkBallRef(state, carrier)
+  const bx = (ball?.x ?? def.x) - def.x, by = (ball?.y ?? losY) - def.y
+  const len = Math.hypot(bx, by) || 1
+  return { x: def.x + (bx / len) * STALK_SET, y: def.y + (by / len) * STALK_SET }
+}
+
+// Is this receiver stalk-blocking right now? A WR set to block on any play, and every WR on a run
+// (or an RPO once the back has it) until somebody catches a pass — after the catch the ordinary
+// carrier blocking takes over, because then the play is wherever the catcher is.
+export function isStalkBlocker(p, state, playType, rpoOpen) {
+  if (p.label !== 'WR') return false
+  if (p.route === 'block') return true
+  if (state.catchSpot != null) return false
+  return playType === 'run' || (isRpo(state) && !rpoOpen)
+}
+
 // ── Blocker protection (RBs / TEs assigned route='block') — blitz pickup ─────────
 
 // Yards from the QB within which an unblocked rusher is the kept-in blocker's responsibility.
-const PROTECTION_SCAN_RADIUS = 12
+// ⚠️ WIDE ENOUGH FOR THE EDGE. At 12 an edge blitzer lined up wide and deep was not even considered on
+// the snap, while the man in the middle of the pile — closer as the crow flies — always was.
+const PROTECTION_SCAN_RADIUS = 16
+
+// [pickup] How the kept-in blocker ranks the free rushers. Lower = more urgent.
+//   distance to the QB, less how fast he is closing on him (an edge blitzer at full speed is closer
+//   than he looks), plus a penalty for each body between him and the QB (a man in the crowd has to
+//   get through it) and a large one if somebody is already blocking him.
+const PICKUP_CLOSING_WEIGHT = 0.6
+const PICKUP_CROWD_PENALTY  = 4      // per protector within CROWD_LANE of his path to the QB
+const PICKUP_ENGAGED_PENALTY = 8     // already engaged by another blocker
+const PICKUP_BLITZ_BONUS    = 1.5    // a blitzer is the man the protection did not otherwise have
+// yd either side of the rusher's line to the QB. Tight on purpose: an edge rusher's straight line
+// brushes past the tackle, who is busy with his own man and whom the rusher simply goes around.
+const CROWD_LANE            = 1.25
+// Switch to a different man only when he is clearly the bigger threat — a back that flips every tick
+// blocks nobody.
+const PICKUP_SWITCH_MARGIN  = 3
+
+function distToSegment(px, py, ax, ay, bx, by) {
+  const vx = bx - ax, vy = by - ay
+  const len2 = vx * vx + vy * vy || 1
+  const t = Math.max(0, Math.min(1, ((px - ax) * vx + (py - ay) * vy) / len2))
+  return Math.hypot(px - (ax + t * vx), py - (ay + t * vy))
+}
+
+// How urgent a rusher is for this blocker (lower = pick him up first).
+export function pickupThreat(blocker, rusher, qb, state) {
+  const dx = qb.x - rusher.x, dy = qb.y - rusher.y
+  const dist = Math.hypot(dx, dy) || 1
+  const closing = ((rusher.vx ?? 0) * dx + (rusher.vy ?? 0) * dy) / dist   // yd/s toward the QB
+  // The pile is BOTH teams — linemen locked up with linemen — so every body between him and the QB
+  // counts, not only the protectors.
+  let crowd = 0
+  const bodies = [...state.offensePlayers.values(), ...(state.defensePlayers?.values() ?? [])]
+  for (const o of bodies) {
+    if (o.id === blocker.id || o.id === rusher.id || o.label === 'QB') continue
+    const isTraffic = isPassProtector(o) || o.route === 'block' || o.label === 'DL'
+    if (!isTraffic) continue
+    // Bodies between him and the QB, not beside or behind him.
+    const along = ((o.x - rusher.x) * dx + (o.y - rusher.y) * dy) / dist
+    if (along <= 0.3 || along >= dist) continue
+    if (distToSegment(o.x, o.y, rusher.x, rusher.y, qb.x, qb.y) <= CROWD_LANE) crowd++
+  }
+  const engagedByOther = rusher.isEngaged && rusher.engagedWithId && rusher.engagedWithId !== blocker.id
+  const blitz = state.defenseCoverage.get(rusher.id)?.type === 'blitz'
+  return dist
+    - PICKUP_CLOSING_WEIGHT * Math.max(0, closing)
+    + PICKUP_CROWD_PENALTY * crowd
+    + (engagedByOther ? PICKUP_ENGAGED_PENALTY : 0)
+    - (blitz ? PICKUP_BLITZ_BONUS : 0)
+}
 
 // The rushers the rest of the protection has already accounted for — every other blocker's latched
 // man, plus the gap rusher each un-latched lineman is about to pick up (so the back doesn't double a
@@ -606,7 +720,7 @@ function claimedRushers(blocker, state, losY) {
 // — the blitzer the line didn't account for — and meets it, instead of drifting to whatever
 // defender is nearest the QB (which is usually a DL the line already has). Holds in front of the QB
 // when every rusher is already blocked.
-function getBlockerTarget(blocker, state, losY, dir) {
+export function getBlockerTarget(blocker, state, losY, dir) {
   let qb = null
   for (const p of state.offensePlayers.values()) {
     if (p.label === 'QB') { qb = p; break }
@@ -615,25 +729,32 @@ function getBlockerTarget(blocker, state, losY, dir) {
   const holdTarget = { x: blocker.x, y: losY - dir * 2 }
   if (!qb) return holdTarget
 
-  // Stay with a blitzer already picked up (latched for the play).
+  // Stay with the man already picked up (latched for the play)…
   let rusher = blocker.blockTargetId ? state.defensePlayers.get(blocker.blockTargetId) : null
   if (rusher && rusher.shedBlock) rusher = null   // it beat us clean — re-scan for the next threat
 
-  if (!rusher) {
+  // ⚠️ …BUT NOT IF HE IS NO LONGER THE THREAT. Reported: "RBs try to block a guy in the crowd in the
+  // middle and leave an edge blitzer completely unblocked." The back used to take the free rusher
+  // nearest the QB and never look again — the interior blitzer in the pile is nearer as the crow
+  // flies than the edge man with nothing in front of him. Now every free rusher is ranked by how
+  // urgent he really is (pickupThreat: distance, closing speed, bodies in his way, whether he is
+  // already blocked) and the back moves to a clearly bigger threat, or off a man somebody else has.
+  {
     const claimed = claimedRushers(blocker, state, losY)
-    // A blitzing defender is the back/TE's first responsibility — the line accounts for the DL, so a
-    // free blitzer is the man the protection didn't otherwise have. Pick the nearest unclaimed blitzer
-    // to the QB; only when none is free does the back fall back to the nearest unclaimed DL rusher.
-    let bestBlitz = null, bestBlitzDist = PROTECTION_SCAN_RADIUS
-    let best = null, bestDist = PROTECTION_SCAN_RADIUS
+    let best = null, bestScore = Infinity
     for (const d of state.defensePlayers.values()) {
-      if (!isRusher(state, d) || claimed.has(d.id)) continue
-      const dist = Math.hypot(d.x - qb.x, d.y - qb.y)
-      if (state.defenseCoverage.get(d.id)?.type === 'blitz') {
-        if (dist < bestBlitzDist) { bestBlitzDist = dist; bestBlitz = d }
-      } else if (dist < bestDist) { bestDist = dist; best = d }
+      if (!isRusher(state, d)) continue
+      if (claimed.has(d.id) && d.id !== rusher?.id) continue
+      if (Math.hypot(d.x - qb.x, d.y - qb.y) > PROTECTION_SCAN_RADIUS) continue
+      const score = pickupThreat(blocker, d, qb, state)
+      if (score < bestScore) { bestScore = score; best = d }
     }
-    rusher = bestBlitz ?? best
+    if (!rusher) rusher = best
+    else if (best && best.id !== rusher.id) {
+      const current = pickupThreat(blocker, rusher, qb, state)
+      const takenByOther = rusher.isEngaged && rusher.engagedWithId && rusher.engagedWithId !== blocker.id
+      if (takenByOther || bestScore < current - PICKUP_SWITCH_MARGIN) rusher = best
+    }
     blocker.blockTargetId = rusher?.id ?? null
   }
 
@@ -914,6 +1035,11 @@ function moveOffense(state, dt) {
       // protection on a running play.
       const target = getPassBlockTarget(p, state, losY, dir)
       steer(p, target.x, target.y, topSpd * 0.6, dt, accel)
+
+    } else if (isStalkBlocker(p, state, playType, rpoOpen)) {
+      // [wr block] Upfield to the man over him — see getStalkBlockTarget.
+      const target = getStalkBlockTarget(p, state, losY, dir, carrier)
+      steer(p, target.x, target.y, topSpd * 0.9, dt, accel)
 
     } else if (blockForCarrier && RECEIVER_LABELS.has(label)) {
       // [carrier blocking] Non-carrier skill players block for the runner — on a designed run, and

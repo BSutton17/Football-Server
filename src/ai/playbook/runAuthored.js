@@ -138,6 +138,8 @@ export function buildAuthoredOffense(call, { losY, ballX, roster }) {
       // route" as "is running it", so an empty array would send him nowhere at full speed.
       drawnRoute: assignment?.kind === 'route' ? routeFor(play, spot.slot, { mirror }) : undefined,
       route: assignment?.kind === 'block' ? 'block' : undefined,
+      // [check release] The author's blue marking on a TE's route means "block if they blitz my side".
+      checkRelease: assignment?.kind === 'route' && assignment.color === 'blue' && /^TE/.test(spot.slot) ? true : undefined,
       slot: spot.slot,
     })
   }

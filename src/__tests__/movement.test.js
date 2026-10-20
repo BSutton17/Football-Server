@@ -351,19 +351,32 @@ describe('blitz pickup — kept-in back', () => {
     expect(rb.vx).toBeGreaterThan(0)
   })
 
-  it('prioritizes a free blitzer over a closer unblocked DL', () => {
+  // ⚠️ THIS ASSERTED "A BLITZER ALWAYS BEATS A NEARER FREE RUSHER", and that rule is what sent the back
+  // into the pile while an edge blitzer came free. Reported: "RBs blocking should prioritize the most
+  // active threat and whoever has the clearest path to the QB." A blitzer now wins a CLOSE call — he is
+  // the man the protection did not otherwise account for — but a free rusher clearly nearer the QB,
+  // with just as clear a lane, is the bigger threat and comes first.
+  it('a free blitzer wins a close call over an unblocked DL', () => {
     const qb = { id: 'qb', label: 'QB', x: 26, y: 29, vx: 0, vy: 0 }
     const rb = { id: 'rb', label: 'RB', x: 26, y: 31, vx: 0, vy: 0, route: 'block' }
-    const dl_ = dl('dl', 24, 36)                                    // unblocked DL auto-rush (left)
-    const lb  = { id: 'lb', label: 'LB', x: 33, y: 36, vx: 0, vy: 0 } // free blitzer (right), farther from QB
+    const dl_ = dl('dl', 24, 36)                                    // unblocked DL (left), 7.3 yd
+    const lb  = { id: 'lb', label: 'LB', x: 30, y: 35, vx: 0, vy: 0 } // free blitzer (right), 7.2 yd
     const state = makeState({ offense: [qb, rb], defense: [dl_, lb], playType: 'pass', yardLine: 25 })
     state.defenseCoverage.set('lb', { type: 'blitz' })
-
     runMovement(state, null, DT)
-
-    // The back commits to the blitzer on the RIGHT even though the DL on the left is nearer the QB.
     expect(rb.blockTargetId).toBe('lb')
     expect(rb.vx).toBeGreaterThan(0)
+  })
+
+  it('a free rusher clearly nearer the QB comes before a distant blitzer', () => {
+    const qb = { id: 'qb', label: 'QB', x: 26, y: 29, vx: 0, vy: 0 }
+    const rb = { id: 'rb', label: 'RB', x: 26, y: 31, vx: 0, vy: 0, route: 'block' }
+    const dl_ = dl('dl', 24, 36)                                    // unblocked DL, 7.3 yd
+    const lb  = { id: 'lb', label: 'LB', x: 33, y: 36, vx: 0, vy: 0 } // blitzer, 9.9 yd
+    const state = makeState({ offense: [qb, rb], defense: [dl_, lb], playType: 'pass', yardLine: 25 })
+    state.defenseCoverage.set('lb', { type: 'blitz' })
+    runMovement(state, null, DT)
+    expect(rb.blockTargetId).toBe('dl')
   })
 
   it('holds in front of the QB when every rusher is already blocked', () => {
