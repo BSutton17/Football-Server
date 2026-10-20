@@ -1,0 +1,132 @@
+// ── Whole games, headless ([lab]) ────────────────────────────────────────────
+//
+//   NODE_ENV=test node scripts/fullGameLab.mjs [games] [--timeouts] [--fatigue] [--calls]
+//
+// Plays complete games with the computer on both sides, through the real engine, and reports on
+// what happened. Built because questions like "does fatigue matter by the fourth quarter" and "does
+// the computer call timeouts it should not" can only be answered over a whole game — a single down
+// never reaches them.
+//
+// It drives training/game.js's playDown, which was written for one down at a time, so three of its
+// shortcuts have to be patched for a game to run (each found the hard way):
+//   1. playDown snaps back-to-back: NO PRE-SNAP TIME passes, so the clock only burns during live
+//      plays (~2 s a snap) and a game never ends. The pre-snap time is charged here when the clock
+//      is running (22 s a snap at normal tempo, ai/tempo.js, less the live play itself).
+//   2. playDown always reports the play clock as 3, so a hurry-up set moment below 3 never arrives
+//      and the offense "never sets". A stuck pre-snap gets the play clock nudged to 0.
+//   3. The training seats do not hear timeout_started/ended from the fake io, so a stoppage is ended
+//      here and timeout_ended delivered to every brain directly.
+// Kicks are not driven by playDown, so 4th downs go for it and touchdowns go for two.
+//
+//   --timeouts  every timeout: who called it, who had the ball, the score from the caller's side
+//   --fatigue   stamina of full-game players at the end of the half and of the game
+//   --calls     the offense's run share by situation (quarter, clock, score from the offense's side)
+
+import { createTrainingGame, destroyTrainingGame, playDown } from '../src/training/game.js'
+import { startNextPlay, resolveDecision, resolveConversion } from '../src/game/eventQueue.js'
+import { PHASE } from '../src/game/stateMachine.js'
+import { endStoppage } from '../src/game/pause.js'
+
+const args = process.argv.slice(2)
+const GAMES = Number(args.find(a => /^\d+$/.test(a)) ?? 6)
+const WANT = { timeouts: args.includes('--timeouts'), fatigue: args.includes('--fatigue'), calls: args.includes('--calls') }
+const LINE = new Set(['OL', 'DL', 'QB', 'C', 'G', 'T'])
+const PRESNAP_SECONDS = 18
+
+const pct = (xs, p) => { const s = [...xs].sort((a, b) => a - b); return s.length ? s[Math.min(s.length - 1, Math.floor(p * s.length))] : NaN }
+const band = v => v > 60 ? 'green' : v > 30 ? 'yellow' : 'red'
+const fat = { half: [], late: [] }
+const calls = new Map()      // situation label -> { runs, plays }
+
+for (let g = 0; g < GAMES; g++) {
+  const ctx = createTrainingGame({ seed: 77000 + g, difficulty: 'medium' })
+  const snaps = new Map(), unitSnaps = new Map(), sideOf = new Map()
+  let half = null, late = null, plays = 0, lastTo = null
+  try {
+    for (let i = 0; i < 3000; i++) {
+      const st = ctx.state
+      if (st.phase === PHASE.GAME_OVER) break
+
+      // Only a DROP is a timeout; the counts going back up is the halftime reset.
+      if (WANT.timeouts && st.timeouts && lastTo && (st.timeouts[0] < lastTo[0] || st.timeouts[1] < lastTo[1])) {
+        const caller = st.timeouts[0] < lastTo[0] ? 0 : 1
+        const margin = st.score[caller] - st.score[1 - caller]
+        console.log(`TIMEOUT game ${g} | caller ${st.possession === caller ? 'HAS BALL ' : 'ON DEFENSE'} | caller margin ${String(margin).padStart(3)} | Q${st.quarter} ${String(Math.round(st.clock)).padStart(3)}s`)
+      }
+      lastTo = st.timeouts ? [...st.timeouts] : null
+
+      if (st.stoppage) {
+        const reason = st.stoppage.reason
+        endStoppage(st)
+        if (reason === 'timeout') for (const b of ctx.brains) b.onEvent('timeout_ended')
+        continue
+      }
+      if (st.awaitingTransitionTap) { st.awaitingTransitionTap = false; startNextPlay(ctx.roomId, ctx.io, { quiet: true }); continue }
+      if (st.decisionPending) { resolveDecision(st, ctx.io, 'go_for_it', { quiet: true }); continue }
+      if (st.conversionPending) { resolveConversion(st, ctx.io, 'two_point'); if (st.phase === PHASE.DEAD) startNextPlay(ctx.roomId, ctx.io, { quiet: true }); continue }
+      if (st.phase === PHASE.DEAD) { startNextPlay(ctx.roomId, ctx.io, { quiet: true }); continue }
+
+      if (WANT.fatigue) {
+        const sample = () => {
+          const out = []
+          for (const [key, n] of snaps) {
+            const [slot] = key.split(':')
+            if (n < 0.75 * (unitSnaps.get(`${slot}:${sideOf.get(key)}`) ?? 1)) continue
+            const f = st.playerFatigue.get(key.slice(slot.length + 1))
+            if (f && !LINE.has(f.label)) out.push({ label: f.label, stamina: f.stamina })
+          }
+          return out
+        }
+        if (st.quarter === 2) half = sample()
+        if (st.quarter === 4) late = sample()
+      }
+
+      const possession = st.possession
+      const situation = { q: st.quarter, clock: st.clock, margin: st.score[possession] - st.score[1 - possession], outs: st.timeouts?.[possession] ?? 0 }
+      const r = playDown(ctx, {})
+      if (!r.ok) {
+        if (ctx.state.phase === PHASE.PRE_SNAP) ctx.brains[ctx.state.possession].onEvent('play_clock_update', { playClock: 0 })
+        if (ctx.state.phase === PHASE.DEAD) startNextPlay(ctx.roomId, ctx.io, { quiet: true })
+        continue
+      }
+      if (!ctx.state.clockStopped && ctx.state.phase === PHASE.DEAD) ctx.state.clock = Math.max(1, ctx.state.clock - PRESNAP_SECONDS)
+      plays++
+
+      if (WANT.calls) {
+        const late4 = situation.q === 4 && situation.clock <= 120
+        const label = !late4 ? 'normal'
+          : situation.margin < 0 ? `Q4 <=2:00, BEHIND by ${-situation.margin <= 8 ? '1-8' : '9+'}`
+          : situation.margin > 0 ? 'Q4 <=2:00, AHEAD' : 'Q4 <=2:00, TIED'
+        const c = calls.get(label) ?? { runs: 0, plays: 0 }
+        c.plays++; if (r.playType === 'run') c.runs++
+        calls.set(label, c)
+      }
+
+      const onField = [...ctx.state.offensePlayers.values()].map(p => [possession, 'o', p])
+        .concat([...ctx.state.defensePlayers.values()].map(p => [1 - possession, 'd', p]))
+      for (const [slot, side, p] of onField) {
+        if (LINE.has(p.label)) continue
+        const key = `${slot}:${p.id}`
+        snaps.set(key, (snaps.get(key) ?? 0) + 1); sideOf.set(key, side)
+      }
+      for (const slot of [possession, 1 - possession]) {
+        const side = slot === possession ? 'o' : 'd'
+        unitSnaps.set(`${slot}:${side}`, (unitSnaps.get(`${slot}:${side}`) ?? 0) + 1)
+      }
+    }
+  } finally { destroyTrainingGame(ctx) }
+  if (half) fat.half.push(...half)
+  if (late) fat.late.push(...late)
+  console.error(`game ${g}: ${plays} plays`)
+}
+
+if (WANT.fatigue) {
+  for (const [k, xs] of Object.entries(fat)) {
+    const st = xs.map(x => x.stamina), n = st.length || 1
+    const c = { green: 0, yellow: 0, red: 0 }; for (const v of st) c[band(v)]++
+    console.log(`${k.padEnd(5)} n=${st.length}  median ${pct(st, 0.5).toFixed(0)}   green ${(100 * c.green / n).toFixed(0)}%  yellow ${(100 * c.yellow / n).toFixed(0)}%  red ${(100 * c.red / n).toFixed(0)}%`)
+  }
+}
+if (WANT.calls) {
+  for (const [label, c] of calls) console.log(`${label.padEnd(26)} run ${(100 * c.runs / c.plays).toFixed(0).padStart(3)}%   (${c.plays} plays)`)
+}

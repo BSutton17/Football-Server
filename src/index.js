@@ -14,6 +14,14 @@ const app = express();
 
 app.get('/health', (_req, res) => res.json({ status: 'ok' }));
 
+// [keep awake] Heroku eco dynos sleep after 30 minutes with no HTTP request — an open game socket does
+// not count — which ended games mid-play. A client in a game hits this every 10 minutes
+// (Client/src/socket/keepAwake.ts). No body, never cached, so every ping really reaches the dyno.
+app.get('/ping', (_req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.status(204).end();
+});
+
 // [analytics] The play-by-play report of offline games. Read-only, and it resets on every deploy
 // because the dyno's disk does. See src/analytics/playLog.js.
 app.use('/analytics', createAnalyticsRouter());
