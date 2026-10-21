@@ -21,6 +21,9 @@
 //   --timeouts  every timeout: who called it, who had the ball, the score from the caller's side
 //   --fatigue   stamina of full-game players at the end of the half and of the game
 //   --calls     the offense's run share by situation (quarter, clock, score from the offense's side)
+//   --conversions  how often 3rd and 4th downs are converted, by yards to go. This lab goes for it on
+//                  every 4th down, so it is the game's own conversion curve — the number the 4th-down
+//                  decision in ai/specialTeams.js (CONVERSION_RATE) is meant to agree with.
 
 import { createTrainingGame, destroyTrainingGame, playDown } from '../src/training/game.js'
 import { startNextPlay, resolveDecision, resolveConversion } from '../src/game/eventQueue.js'
@@ -29,7 +32,7 @@ import { endStoppage } from '../src/game/pause.js'
 
 const args = process.argv.slice(2)
 const GAMES = Number(args.find(a => /^\d+$/.test(a)) ?? 6)
-const WANT = { timeouts: args.includes('--timeouts'), fatigue: args.includes('--fatigue'), calls: args.includes('--calls') }
+const WANT = { timeouts: args.includes('--timeouts'), fatigue: args.includes('--fatigue'), calls: args.includes('--calls'), conversions: args.includes('--conversions') }
 const LINE = new Set(['OL', 'DL', 'QB', 'C', 'G', 'T'])
 const PRESNAP_SECONDS = 18
 
@@ -37,6 +40,7 @@ const pct = (xs, p) => { const s = [...xs].sort((a, b) => a - b); return s.lengt
 const band = v => v > 60 ? 'green' : v > 30 ? 'yellow' : 'red'
 const fat = { half: [], late: [] }
 const calls = new Map()      // situation label -> { runs, plays }
+const conv = new Map()       // `${down}&${togo}` -> { made, tries }
 
 for (let g = 0; g < GAMES; g++) {
   const ctx = createTrainingGame({ seed: 77000 + g, difficulty: 'medium' })
@@ -83,7 +87,18 @@ for (let g = 0; g < GAMES; g++) {
 
       const possession = st.possession
       const situation = { q: st.quarter, clock: st.clock, margin: st.score[possession] - st.score[1 - possession], outs: st.timeouts?.[possession] ?? 0 }
+      const before = { down: st.down, togo: st.distance, points: st.score[possession] }
       const r = playDown(ctx, {})
+      // Converted = still our ball on a fresh 1st down, or six points on the board (a touchdown is
+      // followed by a conversion menu, not a 1st down, so the down alone would call it a failure).
+      if (WANT.conversions && r.ok && before.down >= 3) {
+        const s = ctx.state
+        const made = (s.score[possession] - before.points >= 6) || (s.possession === possession && s.down === 1)
+        const key = `${before.down}&${Math.min(Math.ceil(before.togo), 11)}`   // the spot is fractional
+        const c = conv.get(key) ?? { made: 0, tries: 0 }
+        c.tries++; if (made) c.made++
+        conv.set(key, c)
+      }
       if (!r.ok) {
         if (ctx.state.phase === PHASE.PRE_SNAP) ctx.brains[ctx.state.possession].onEvent('play_clock_update', { playClock: 0 })
         if (ctx.state.phase === PHASE.DEAD) startNextPlay(ctx.roomId, ctx.io, { quiet: true })
@@ -125,6 +140,14 @@ if (WANT.fatigue) {
     const st = xs.map(x => x.stamina), n = st.length || 1
     const c = { green: 0, yellow: 0, red: 0 }; for (const v of st) c[band(v)]++
     console.log(`${k.padEnd(5)} n=${st.length}  median ${pct(st, 0.5).toFixed(0)}   green ${(100 * c.green / n).toFixed(0)}%  yellow ${(100 * c.yellow / n).toFixed(0)}%  red ${(100 * c.red / n).toFixed(0)}%`)
+  }
+}
+if (WANT.conversions) {
+  for (const down of [3, 4]) {
+    for (let togo = 1; togo <= 11; togo++) {
+      const c = conv.get(`${down}&${togo}`)
+      if (c) console.log(`${down}${down === 3 ? 'rd' : 'th'} & ${togo === 11 ? '11+' : String(togo).padEnd(3)}  ${(100 * c.made / c.tries).toFixed(0).padStart(3)}%   (${c.made}/${c.tries})`)
+    }
   }
 }
 if (WANT.calls) {
