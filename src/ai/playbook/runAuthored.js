@@ -21,6 +21,7 @@ import { alignAuthored, clampFieldY } from './alignAuthored.js'
 import { adjustOffense } from './adjustOffense.js'
 import { chooseOffensivePlay, chooseDefensiveShell, offenseLookOf } from '../playcall/select.js'
 import { expectedRushers, adjustmentsFor } from '../playcall/tendencies.js'
+import { byDepth } from '../substitutions.js'
 
 // Who should cover this assignment, best first. A man defender has to run with the person in
 // front of him, so the body matters; a zone defender covers grass and can be anyone.
@@ -116,7 +117,7 @@ export function buildAuthoredOffense(call, { losY, ballX, roster }) {
   // Best available at each position, exactly as the hand-written path fills its spots.
   const byPos = {}
   for (const p of roster) (byPos[p.label ?? p.position] ??= []).push(p)
-  for (const group of Object.values(byPos)) group.sort((a, b) => (b.ovr ?? 0) - (a.ovr ?? 0))
+  for (const group of Object.values(byPos)) group.sort(byDepth)
 
   const used = new Set()
   const players = []
@@ -205,7 +206,7 @@ export function buildAuthoredDefense(call, { losY, ballX, receivers, roster, adj
 
   const byPos = {}
   for (const p of roster) (byPos[p.label ?? p.position] ??= []).push(p)
-  for (const group of Object.values(byPos)) group.sort((a, b) => (b.ovr ?? 0) - (a.ovr ?? 0))
+  for (const group of Object.values(byPos)) group.sort(byDepth)
 
   const used = new Set()
   const out = []
@@ -227,8 +228,15 @@ export function buildAuthoredDefense(call, { losY, ballX, receivers, roster, adj
 
     const target = row.job === 'man' ? receivers.find(r => r.id === row.covers) : null
     let pick = null
-    for (const want of [...coverOrder(row.job, target?.label, row.label), row.label]) {
-      pick = (byPos[want] ?? []).find(p => !used.has(p.id))
+    // [AI subs] Two passes: a fresh player at any acceptable position before a sitting one at the
+    // preferred position. One pass would put a benched corner back on the field ahead of a rested
+    // safety, which is the substitution undone by the matcher.
+    const wants = [...coverOrder(row.job, target?.label, row.label), row.label]
+    for (const allowBenched of [false, true]) {
+      for (const want of wants) {
+        pick = (byPos[want] ?? []).find(p => !used.has(p.id) && (allowBenched || !p.benched))
+        if (pick) break
+      }
       if (pick) break
     }
     // ⚠️ ELEVEN MEN, WHATEVER IT TAKES. A slot whose preferred positions are all already on the
@@ -243,7 +251,7 @@ export function buildAuthoredDefense(call, { losY, ballX, receivers, roster, adj
       // fortunate: a solve run against a defense with receivers in it would have been days of
       // sampling a game nobody plays. A bad matchup means a linebacker covering a slot, not a
       // wideout playing defense.
-      pick = roster.find(p => !used.has(p.id) && DEFENSIVE_POSITIONS.has(p.label ?? p.position))
+      pick = [...roster].sort(byDepth).find(p => !used.has(p.id) && DEFENSIVE_POSITIONS.has(p.label ?? p.position))
       if (pick) warnOnce(`${row.slot} wanted ${coverOrder(row.job, target?.label, row.label).join('/')}` +
         `, took a ${pick.label ?? pick.position} — the preferred positions are all out there already`)
     }

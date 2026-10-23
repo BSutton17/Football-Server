@@ -259,6 +259,44 @@ function situational(values, k, toGoal) {
   return v
 }
 
+// ── Two-point conversions ──────────────────────────────────────────────────────
+//
+// "The AI should always go for two if it would tie the game or make a difference. For example if
+// the AI scores a touchdown and goes up 1 they should go for two because if they get it, they go up
+// by three."
+//
+// ⚠️ IT USED TO GO FOR TWO ONLY IN THE 4TH QUARTER, AND ONLY BEHIND BY 1, 2, 5 OR 10 — and it read
+// the score from fields the engine never sends, so in a real game it never went for two at all.
+//
+// The margin is AFTER the touchdown (the six are on the board when the menu opens). Two points are
+// worth chasing when they reach a margin one point does not — a tie, or a lead the other side needs
+// one more kind of score to answer. Worked through one margin at a time:
+//
+//   ahead 1  →  3 instead of 2: a field goal only ties
+//   ahead 4  →  6 instead of 5: a touchdown alone only ties
+//   ahead 5  →  7 instead of 6: a touchdown and the extra point only tie
+//   ahead 12 → 14 instead of 13: two touchdowns and two extra points only tie
+//   ahead 15 → 17 instead of 16: three scores, not two
+//   behind 2  →  tied
+//   behind 5  →  3 down: a field goal ties
+//   behind 9  →  7 down instead of 8: a touchdown and the extra point tie
+//   behind 10 →  8 down instead of 9: one score instead of two
+//   behind 12 → 10 down instead of 11: a touchdown and a field goal tie
+//   behind 16 → 14 down instead of 15: two touchdowns and two extra points tie
+//
+// Everywhere else the extra point reaches a margin that is just as good, and it is near-certain.
+// Behind by ONE the kick already ties, so two is a gamble for the lead — taken only in the 4th
+// quarter, where the tie might not get another chance to become a win.
+//
+// Every quarter, as asked ("always"). This game converts from the 2 about seven times in ten
+// (fullGameLab --conversions), so two points are worth more on average than one anyway.
+const GO_FOR_TWO_MARGINS = new Set([1, 4, 5, 12, 15, -2, -5, -9, -10, -12, -16])
+
+export function wantsTwoPoint(margin, quarter = 1) {
+  if (GO_FOR_TWO_MARGINS.has(margin)) return true
+  return margin === -1 && quarter >= 4
+}
+
 // [4th and inches] A yard or less. Past the own 40 a punt is never the answer — the user's rule, and
 // the model agrees well before that line; it is kept as a guarantee rather than left to the numbers.
 const INCHES_YARDS = 1
@@ -282,13 +320,7 @@ export function fourthDownChoice(k, rng = Math.random) {
   const choose = (id) => ({ event: 'special_teams_choice', payload: { option: id } })
 
   // A conversion menu after a touchdown comes through the same channel.
-  if (d.context === 'conversion') {
-    // Two points only when the scoreboard actually calls for it; otherwise take the near-certain
-    // point. Chasing two when it does not change the arithmetic is how you lose by one.
-    const diff = -margin
-    const wantsTwo = diff === 1 || diff === 2 || diff === 5 || diff === 10
-    return choose(wantsTwo && k.quarter >= 4 ? 'two_point' : 'extra_point')
-  }
+  if (d.context === 'conversion') return choose(wantsTwoPoint(margin, k.quarter) ? 'two_point' : 'extra_point')
 
   // ⚠️ ASKED ON AN EARLY DOWN, THE ANSWER IS USUALLY "PLAY ON". The menu now opens on any down
   // inside the last thirty seconds of a half, and everything below this point reasons as though it

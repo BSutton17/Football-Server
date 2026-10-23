@@ -117,6 +117,13 @@ export const DIFFICULTY = {
 // not import from `game/` (aiBoundary.test.js). Knowing the published rules of the game is not the same
 // as reading the game state, but it DOES have to be one definition: a quarterback optimising a
 // threshold that has drifted from the one the ball is settled on is optimising nothing.
+// [fatigue] The stamina bands the client paints the bar in (Client/src/game/fatigueAlerts.ts): green
+// above 60, yellow down to 30, red at or below it. Here rather than in game/systems/stamina.js so the
+// computer's substitutions (ai/substitutions.js) can use the same yellow and red a human is looking
+// at without reaching into the game — ai/ may not import game/ (aiBoundary.test.js).
+export const STAMINA_YELLOW_AT = 60
+export const STAMINA_RED_AT = 30
+
 export const OPENNESS_OPEN = 0.66   // ≥ this → open (green)
 export const OPENNESS_RED  = 0.33   // < this → smothered (red); in between → covered (yellow)
 

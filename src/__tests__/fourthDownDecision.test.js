@@ -295,10 +295,26 @@ describe('the conversion after a touchdown reads the real score', () => {
     decision: { context: 'conversion', options: [{ id: 'extra_point', legal: true }, { id: 'two_point', legal: true }] },
   }).payload.option
 
-  it('goes for two down two in the 4th quarter, kicks otherwise', () => {
+  it('⚠️ GOES UP 3 RATHER THAN 2 — the example that was asked for', () => {
+    expect(conversion(1)).toBe('two_point')
+    expect(conversion(1, 1)).toBe('two_point')      // in any quarter
+  })
+
+  it('goes for the tie, in any quarter', () => {
     expect(conversion(-2)).toBe('two_point')
-    expect(conversion(-1)).toBe('two_point')
-    expect(conversion(-3)).toBe('extra_point')
-    expect(conversion(-2, 2)).toBe('extra_point')
+    expect(conversion(-2, 2)).toBe('two_point')
+  })
+
+  it('goes for two whenever two reaches a margin one point does not', () => {
+    for (const m of [4, 5, 12, 15, -5, -9, -10, -12, -16]) expect(conversion(m)).toBe('two_point')
+  })
+
+  it('kicks when the extra point is just as good', () => {
+    for (const m of [0, 2, 3, 6, 7, 8, 9, 10, 11, 13, 14, -3, -4, -6, -7, -8, -11]) expect(conversion(m)).toBe('extra_point')
+  })
+
+  it('behind by one, the kick ties — it gambles on two for the lead only in the 4th quarter', () => {
+    expect(conversion(-1, 4)).toBe('two_point')
+    expect(conversion(-1, 2)).toBe('extra_point')
   })
 })

@@ -1,5 +1,9 @@
 import { ratingOf, drainFromStaminaRating, recoveryFromStaminaRating } from '../../data/ratings.js'
 
+// The stamina bands the client paints the bar in — defined in constants.js, re-exported here for the
+// game side.
+export { STAMINA_YELLOW_AT as YELLOW_AT, STAMINA_RED_AT as RED_AT } from '../../constants.js'
+
 // Linemen can't be subbed, so they don't accumulate fatigue.
 const LINEMAN = new Set(['OL', 'C', 'G', 'T', 'DL'])
 

@@ -17,6 +17,7 @@
 import { SHELLS, extraRushers } from './playbook/coverages.js'
 import { oppPersonnel, oppSkill, oppInBox, yardsToGoal, isGoalToGo, FIELD_MID } from './knowledge.js'
 import { skillFor, allowedShells } from './difficulty.js'
+import { byDepth } from './substitutions.js'
 
 // This seat's coverage pool is 4 CB, 3 S, 4 LB, and seven of them go on the field (the four down
 // linemen are placed automatically). So a personnel call is a choice of three numbers summing to 7.
@@ -174,13 +175,14 @@ function describe(k, ballX) {
 }
 
 // Which of this seat's roster players to put on the field for a given personnel call. Best
-// available by overall at each position — the AI has no reason to hold anyone back.
+// available by overall at each position, with anyone the sub system has sat down at the back of the
+// line (substitutions.js, byDepth).
 export function selectPlayers(roster, personnel) {
   const out = []
   for (const [label, n] of Object.entries(personnel)) {
     const group = roster
       .filter(p => p.position === label)
-      .sort((a, b) => (b.ovr ?? 0) - (a.ovr ?? 0))
+      .sort(byDepth)
     out.push(...group.slice(0, n))
   }
   return out

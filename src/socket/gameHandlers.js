@@ -40,6 +40,7 @@ import {
   recommendOffense, recommendDefense, layoutPlayForClient, layoutShellForClient,
 } from '../ai/playcall/recommend.js'
 import { solvedTable } from '../ai/playcall/table.js'
+import { coolingPlays, noteRecommended, noteSelected } from '../ai/playcall/cooldown.js'
 import { loadPlaybook } from '../playbook/store.js'
 import {
   beginSpecialTeams, applyKickInput, isSpecialTeamsActive, isValidKickType, canAttemptBlock,
@@ -585,12 +586,35 @@ export function registerGameHandlers(io, socket) {
     const situation = { down: state.down, distance: state.distance, yardLine: state.yardLine }
     const losY = state.yardLine
     const ballX = state.ballX
+    const slot = roleSlot(socket, state)
 
-    const plays = recommendOffense(book, situation, { solved: solvedTable().offense })
+    // [play cooldown] Asked twice before the same snap, the answer is the same three plays — a
+    // second ask must not put the first three on cooldown and deal three more.
+    if (!state.offeredPlays) state.offeredPlays = [null, null]
+    const cached = state.offeredPlays[slot]
+    if (cached && cached.serial === state.playSerial) {
+      socket.emit('plays_offered', { situation, plays: cached.plays })
+      return
+    }
+
+    const plays = recommendOffense(book, situation, { solved: solvedTable().offense, exclude: coolingPlays(state, slot) })
       .map(rec => ({ ...rec, layout: layoutPlayForClient(book, rec.id, { losY, ballX }) }))
       .filter(rec => rec.layout)
 
+    noteRecommended(state, slot, plays.map(p => p.id))
+    state.offeredPlays[slot] = { serial: state.playSerial, plays }
     socket.emit('plays_offered', { situation, plays })
+  })
+
+  // [play cooldown] The player put one of the offered plays on the field. It sits out of the
+  // shortlist for SELECTED_COOLDOWN snaps — longer than merely having been shown.
+  socket.on('play_picked', (payload) => {
+    const state = resolveRoom(socket)
+    if (!state) return
+    if (roleOf(socket) !== 'offense') return
+    const playId = payload?.playId
+    if (typeof playId !== 'string' || !playbook()?.plays?.[playId]) return
+    noteSelected(state, roleSlot(socket, state), playId)
   })
 
   socket.on('request_shells', () => {

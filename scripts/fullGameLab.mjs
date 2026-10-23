@@ -24,6 +24,10 @@
 //   --conversions  how often 3rd and 4th downs are converted, by yards to go. This lab goes for it on
 //                  every 4th down, so it is the game's own conversion curve — the number the 4th-down
 //                  decision in ai/specialTeams.js (CONVERSION_RATE) is meant to agree with.
+//   --subs      the computer's substitutions (ai/substitutions.js): each seat's plan per position,
+//               and for every snap, which stamina band each on-field skill player was in — by tier,
+//               and by half — so "Grind it out" playing into the red and "Keep 'em fresh" never
+//               leaving the green can be seen rather than assumed.
 
 import { createTrainingGame, destroyTrainingGame, playDown } from '../src/training/game.js'
 import { startNextPlay, resolveDecision, resolveConversion } from '../src/game/eventQueue.js'
@@ -32,7 +36,7 @@ import { endStoppage } from '../src/game/pause.js'
 
 const args = process.argv.slice(2)
 const GAMES = Number(args.find(a => /^\d+$/.test(a)) ?? 6)
-const WANT = { timeouts: args.includes('--timeouts'), fatigue: args.includes('--fatigue'), calls: args.includes('--calls'), conversions: args.includes('--conversions') }
+const WANT = { timeouts: args.includes('--timeouts'), fatigue: args.includes('--fatigue'), calls: args.includes('--calls'), conversions: args.includes('--conversions'), subs: args.includes('--subs') }
 const LINE = new Set(['OL', 'DL', 'QB', 'C', 'G', 'T'])
 const PRESNAP_SECONDS = 18
 
@@ -41,6 +45,9 @@ const band = v => v > 60 ? 'green' : v > 30 ? 'yellow' : 'red'
 const fat = { half: [], late: [] }
 const calls = new Map()      // situation label -> { runs, plays }
 const conv = new Map()       // `${down}&${togo}` -> { made, tries }
+const subBands = new Map()   // `${tier}|${half}` -> { green, yellow, red }
+const subPlayers = new Map() // `${tier}` -> Set of `${game}:${slot}:${id}` who took a snap
+const plansSeen = []
 
 for (let g = 0; g < GAMES; g++) {
   const ctx = createTrainingGame({ seed: 77000 + g, difficulty: 'medium' })
@@ -119,6 +126,24 @@ for (let g = 0; g < GAMES; g++) {
 
       const onField = [...ctx.state.offensePlayers.values()].map(p => [possession, 'o', p])
         .concat([...ctx.state.defensePlayers.values()].map(p => [1 - possession, 'd', p]))
+
+      // Stamina as the play STARTED — the fatigue map has already drained this snap, so this reads
+      // a little low; the comparison between tiers is what it is for.
+      if (WANT.subs) {
+        if (plays === 1) plansSeen.push(...ctx.brains.map(b => b.subs?.plans).filter(Boolean))
+        for (const [slot, , p] of onField) {
+          if (LINE.has(p.label)) continue
+          const tier = ctx.brains[slot]?.subs?.plans?.[p.label]
+          const f = ctx.state.playerFatigue.get(p.id)
+          if (!tier || !f) continue
+          const key = `${tier}|${situation.q <= 2 ? '1st half' : '2nd half'}`
+          const b = subBands.get(key) ?? { green: 0, yellow: 0, red: 0 }
+          b[band(f.stamina)]++
+          subBands.set(key, b)
+          if (!subPlayers.has(tier)) subPlayers.set(tier, new Set())
+          subPlayers.get(tier).add(`${g}:${slot}:${p.id}`)
+        }
+      }
       for (const [slot, side, p] of onField) {
         if (LINE.has(p.label)) continue
         const key = `${slot}:${p.id}`
@@ -140,6 +165,21 @@ if (WANT.fatigue) {
     const st = xs.map(x => x.stamina), n = st.length || 1
     const c = { green: 0, yellow: 0, red: 0 }; for (const v of st) c[band(v)]++
     console.log(`${k.padEnd(5)} n=${st.length}  median ${pct(st, 0.5).toFixed(0)}   green ${(100 * c.green / n).toFixed(0)}%  yellow ${(100 * c.yellow / n).toFixed(0)}%  red ${(100 * c.red / n).toFixed(0)}%`)
+  }
+}
+if (WANT.subs) {
+  const tiers = ['keep_em_fresh', 'have_a_break', 'grind_it_out']
+  const count = {}
+  for (const plan of plansSeen) for (const [pos, tier] of Object.entries(plan)) (count[pos] ??= {})[tier] = ((count[pos] ??= {})[tier] ?? 0) + 1
+  console.log('plans drawn (seats):', JSON.stringify(count))
+  for (const tier of tiers) {
+    for (const half of ['1st half', '2nd half']) {
+      const b = subBands.get(`${tier}|${half}`)
+      if (!b) continue
+      const n = b.green + b.yellow + b.red
+      console.log(`${tier.padEnd(14)} ${half}  snaps ${String(n).padStart(5)}   green ${(100 * b.green / n).toFixed(0).padStart(3)}%  yellow ${(100 * b.yellow / n).toFixed(0).padStart(3)}%  red ${(100 * b.red / n).toFixed(0).padStart(3)}%`)
+    }
+    console.log(`${tier.padEnd(14)} players who took a snap: ${subPlayers.get(tier)?.size ?? 0}`)
   }
 }
 if (WANT.conversions) {

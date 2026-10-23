@@ -93,6 +93,17 @@ export function initGame(roomId, offenseSlot, { mode, difficulty, quarterSeconds
     // and refused instead of being applied to a field that has since moved underneath it.
     playSerial: 0,
 
+    // [play cooldown] Snaps taken this game, both teams — the clock the PLAYS panel's cooldowns
+    // run on (ai/playcall/cooldown.js). Counted at the snap rather than off playSerial, which a
+    // delay-of-game re-spot also bumps without a play being run.
+    snapCount: 0,
+    // Per seat: playId → the snapCount at which it may be recommended again.
+    playCooldown: [{}, {}],
+    // Per seat: the shortlist already shown for this pre-snap ({ serial, plays }), so opening the
+    // panel twice on one snap shows the same three plays rather than putting them on cooldown and
+    // drawing three more.
+    offeredPlays: [null, null],
+
     // [69] Active gameplay stoppage ({ reason, remaining }) or null. While set, the sim tick freezes
     // every clock and holds play (see game/pause.js). Timeouts are the first consumer.
     stoppage: null,

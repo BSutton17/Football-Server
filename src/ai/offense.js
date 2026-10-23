@@ -17,6 +17,7 @@
 import { CONCEPTS, assignRoutes } from './playbook/concepts.js'
 import { FORMATIONS, layout, personnelFor } from './playbook/formations.js'
 import { yardsToGoal, isGoalToGo, FIELD_MID } from './knowledge.js'
+import { byDepth } from './substitutions.js'
 
 // ── Run or pass ───────────────────────────────────────────────────────────────
 
@@ -203,10 +204,11 @@ export function buildFormation(call, k, { losY, ballX, roster, rng = Math.random
   const mirror = rng() < 0.5
   const spots = layout(call.formationId, { losY, ballX, mirror })
 
-  // Fill the spots from the roster, best available at each position.
+  // Fill the spots from the roster, best available at each position — and a player the sub system
+  // has sat down only when nobody fresh is left (substitutions.js, byDepth).
   const byPos = {}
   for (const p of roster) (byPos[p.position] ??= []).push(p)
-  for (const group of Object.values(byPos)) group.sort((a, b) => (b.ovr ?? 0) - (a.ovr ?? 0))
+  for (const group of Object.values(byPos)) group.sort(byDepth)
 
   const used = new Set()
   const players = []

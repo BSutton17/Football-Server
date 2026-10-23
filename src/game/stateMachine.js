@@ -61,7 +61,10 @@ export function transition(state, newPhase) {
   // that reached LIVE another way, and there are a dozen separate `transition(state, PHASE.DEAD)`
   // sites -- a play that ended down a path nobody remembered to instrument is exactly the play
   // worth having in the report.
-  if (newPhase === PHASE.LIVE) beginPlay(state)
+  if (newPhase === PHASE.LIVE) {
+    state.snapCount = (state.snapCount ?? 0) + 1   // [play cooldown] one more play run, either side
+    beginPlay(state)
+  }
   if (was === PHASE.LIVE && newPhase === PHASE.DEAD) endPlay(state)
   return state
 }

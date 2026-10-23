@@ -56,6 +56,10 @@ export function createKnowledge(slot) {
     quarter: 1,
     score: { own: 0, opp: 0 },
     timeouts: { own: 3, opp: 3 },
+    // [AI subs] This seat's own players' stamina, id → 0–100, exactly the bars a human sees. The
+    // server has always sent it in every game_state; nothing on this side kept it, so the computer
+    // could not tell a gassed player from a fresh one.
+    fatigue: {},
     mode: 'automatic',
     difficulty: 'easy',
     specialTeams: null,
@@ -248,6 +252,7 @@ function onGameState(k, gs) {
   k.quarter = gs.quarter
   k.score = gs.score ?? k.score
   k.timeouts = gs.timeouts ?? k.timeouts
+  k.fatigue = gs.fatigue ?? k.fatigue
   k.mode = gs.mode ?? k.mode
   k.difficulty = gs.difficulty ?? k.difficulty
   k.specialTeams = gs.specialTeams ?? null

@@ -120,6 +120,47 @@ describe('the offense asks for plays', () => {
   })
 })
 
+describe('[play cooldown] the shortlist does not repeat itself', () => {
+  const ids = () => g.you.last('plays_offered').plays.map(p => p.id)
+  // Another play has been run — by either team — and the next pre-snap has begun.
+  const nextPlay = () => {
+    const state = getGame(ROOM)
+    state.snapCount = (state.snapCount ?? 0) + 1
+    state.playSerial = (state.playSerial ?? 0) + 1
+  }
+
+  it('asked twice before the same snap, it shows the same plays', () => {
+    giveBallTo(HUMAN)
+    g.you.fire('request_plays')
+    const first = ids()
+    g.you.fire('request_plays')
+    expect(ids()).toEqual(first)
+  })
+
+  it('a recommended play is not recommended again for the next five plays', () => {
+    giveBallTo(HUMAN)
+    g.you.fire('request_plays')
+    const shown = new Set(ids())
+    for (let i = 0; i < 5; i++) {
+      nextPlay()
+      g.you.fire('request_plays')
+      for (const id of ids()) expect(shown.has(id)).toBe(false)
+    }
+  })
+
+  it('a picked play sits out seven', () => {
+    giveBallTo(HUMAN)
+    g.you.fire('request_plays')
+    const picked = ids()[0]
+    g.you.fire('play_picked', { playId: picked })
+    for (let i = 0; i < 7; i++) {
+      nextPlay()
+      g.you.fire('request_plays')
+      expect(ids()).not.toContain(picked)
+    }
+  })
+})
+
 describe('the defense asks for shells', () => {
   // Put a full offense on the field so there is a formation to read.
   function lineUpOffense() {

@@ -79,9 +79,13 @@ function sampleWeighted(items, weights, count, rng) {
 // Pass plays only, from ANY formation — which is what makes this worth opening. The player is not
 // being asked to pick a formation first and then live with what is behind it; the shortlist is
 // drawn across the whole playbook and brings its formation with it.
-export function recommendOffense(book, situation, { solved = null, count = 3, rng = Math.random } = {}) {
+export function recommendOffense(book, situation, { solved = null, count = 3, rng = Math.random, exclude = null } = {}) {
   const all = Object.entries(book?.plays ?? {}).map(([id, p]) => ({ ...p, id }))
-  const plays = all.filter(p => p.playType !== 'run')
+  const passes = all.filter(p => p.playType !== 'run')
+  // [play cooldown] Plays recently shown or picked (cooldown.js) sit out — unless that would leave
+  // nothing at all, when a repeat is better than an empty menu.
+  const fresh = exclude?.size ? passes.filter(p => !exclude.has(p.id)) : passes
+  const plays = fresh.length ? fresh : passes
   if (!plays.length) return []
 
   const table = solved?.[situationKey(situation)]

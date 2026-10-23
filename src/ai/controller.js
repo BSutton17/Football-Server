@@ -30,6 +30,7 @@ import { legalSpot } from './playbook/formations.js'
 import { specialTeamsAction, fourthDownChoice } from './specialTeams.js'
 import { shouldCallTimeout } from './clockManagement.js'
 import { makeRng } from '../game/utils/rng.js'
+import { createSubSystem } from './substitutions.js'
 import { shouldSetNow } from './timing.js'
 import { snapTempo, setTimeFor, hurrySetTime, playCallRunLean, TEMPO } from './tempo.js'
 
@@ -113,9 +114,22 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   const brains = () => callInputs(socket, slot)
   const k = createKnowledge(slot)
   const rng = makeRng(seed)
+  // [AI subs] The coaching staff's substitution plan for this seat — a tier per position, drawn
+  // once at game start — and who is sitting. Its own random stream, so turning substitutions on
+  // did not shift a single draw in the play-calling one: every seeded game replays as before.
+  const subs = createSubSystem(makeRng((seed * 7919 + 104729) >>> 0))
+  // The roster for THIS play, with the sitters marked. Built once per play and reused by every
+  // re-alignment inside it, so a man does not come off between two placements of the same snap.
+  let lineupFor = { serial: null, players: null }
+  const lineup = () => {
+    if (lineupFor.serial !== k.playSerial) lineupFor = { serial: k.playSerial, players: subs.lineup(roster, k) }
+    return lineupFor.players
+  }
 
   const self = {
     knowledge: k,
+    // [AI subs] Exposed for tests and the lab: the plan per position and the current bench.
+    subs,
     // [training] Set by createNetworkBrain to hand the coverage call to a network. Null means the
     // heuristic decides, which is the shipping behaviour.
     overrideDefensiveCall: null,
@@ -366,12 +380,12 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
         runAngle: chooseRunAngle(k, ballX, rng).angle,
         authored: authoredCall,
       }
-      self.players = buildAuthoredOffense(authoredCall, { losY, ballX, roster })
+      self.players = buildAuthoredOffense(authoredCall, { losY, ballX, roster: lineup() })
     } else {
       call = self.overrideOffensiveCall
         ? self.overrideOffensiveCall(k, rng, ballX)
         : callOffense(k, rng, ballX)
-      self.players = buildFormation(call, k, { losY, ballX, roster, rng })
+      self.players = buildFormation(call, k, { losY, ballX, roster: lineup(), rng })
     }
     self.lastCall = call
 
@@ -511,7 +525,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
   // Put an authored shell on the grass. Deliberately the same two events the heuristic path
   // fires — place_player and assign_coverage — so nothing downstream can tell them apart.
   function placeAuthoredDefense(call, { losY, ballX, receivers }) {
-    const rows = buildAuthoredDefense(call, { losY, ballX, receivers, roster })
+    const rows = buildAuthoredDefense(call, { losY, ballX, receivers, roster: lineup() })
 
     // ⚠️ ANYONE NOT IN THIS CALL COMES OFF, AND THE FIELD IS THE SOURCE OF TRUTH. Shells field
     // different numbers behind the line — seven behind a four-man front, eight behind a three —
@@ -655,7 +669,7 @@ export function createController({ socket, slot, roster, seed = 1, log = false }
       self.done.personnel = true
     }
     const call = self.lastCall
-    const onField = selectPlayers(roster, call.personnel)
+    const onField = selectPlayers(lineup(), call.personnel)
     const defenders = onField.map(p => ({ id: p.id, label: p.position }))
 
     let { assignments, warnings } = expandShell(call.shellId, { defenders, receivers, losY, ballX })
