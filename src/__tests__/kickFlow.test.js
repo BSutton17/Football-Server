@@ -68,10 +68,11 @@ describe('[9][10] power meter drains continuously once started, refilled by taps
     const half = KICK_TIMER_SECONDS / 2
     let elapsed = 0
     while (elapsed < half) { runKickClock(state, mockIo(), 0.05); elapsed += 0.05 }
-    // Drain is eased 10%, slowed by a further quarter, then sped up 15% and 10% more ([kick feel]):
-    // 0.854 of the meter over the full timer, so about 43% is gone by the halfway point. (This read
-    // 0.66 — two-thirds — and only passed after the 15% speed-up because the tolerance was ±0.05.)
-    expect(st.power).toBeCloseTo(1 - 0.854 / 2, 1)
+    // Drain is eased 10%, slowed by a further quarter, then sped up 15%, 10% and 10% more ([kick
+    // feel]): 0.939 of the meter over the full timer, so about 47% is gone by the halfway point.
+    // (This read 0.66 — two-thirds — and only passed after the 15% speed-up because the tolerance
+    // was ±0.05.)
+    expect(st.power).toBeCloseTo(1 - 0.939 / 2, 1)
     expect(st.phase).toBe(ST_PHASE.SETUP)   // not executed yet
   })
 
@@ -79,11 +80,12 @@ describe('[9][10] power meter drains continuously once started, refilled by taps
   // meter the DEFAULT outcome and every punt came out at its ceiling; 1.3 still let a half-full bar
   // send the ball 40 yards; 1.0 was right for distance but combined with the punt curve it left the
   // meter feeling frantic. 4/3 is exactly three quarters of that drain, by request — and then 15%
-  // faster again, also by request — and then a further 10% on top of that (2026-10-21).
-  it('an untouched meter drains about 85% over the timer', () => {
+  // faster again, also by request — and then a further 10% on top of that (2026-10-21), and another
+  // 10% (2026-10-24).
+  it('an untouched meter drains about 94% over the timer', () => {
     expect(POWER_DRAIN_SLOWDOWN).toBeCloseTo(4 / 3, 6)
-    expect(POWER_DRAIN_PER_SEC).toBeCloseTo((1 / KICK_TIMER_SECONDS) * 0.9 / (4 / 3) * 1.15 * 1.1, 6)
-    expect(POWER_DRAIN_PER_SEC * KICK_TIMER_SECONDS).toBeCloseTo(0.854, 3)
+    expect(POWER_DRAIN_PER_SEC).toBeCloseTo((1 / KICK_TIMER_SECONDS) * 0.9 / (4 / 3) * 1.15 * 1.1 * 1.1, 6)
+    expect(POWER_DRAIN_PER_SEC * KICK_TIMER_SECONDS).toBeCloseTo(0.939, 3)
   })
 
   it('a directional tap fights the drain back up (+2%)', () => {

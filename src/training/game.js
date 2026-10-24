@@ -371,9 +371,11 @@ function classify(io, ctx, offenseSlot, yards) {
     playType,
     // The ball was caught and the play carried on from there.
     completed: threw && (outcome === 'tackle' || outcome === 'touchdown'),
-    // A pass play that lost yards with the ball never thrown is a sack. The engine reports it as an
-    // ordinary tackle, so there is nothing else to key off.
-    sacked: isPassPlay && !threw && outcome === 'tackle' && yards < 0,
+    // ⚠️ THE ENGINE DOES REPORT A SACK — `play_result` with outcome 'sack' (onSack). This keyed only
+    // off "a tackle for a loss with no throw", which a real sack never is, so every lab built on it
+    // read a 0% sack rate for every shell, six-man blitzes included. The tackle form is kept for a
+    // scrambling QB brought down behind the line before that too was reported as a sack.
+    sacked: outcome === 'sack' || (isPassPlay && !threw && outcome === 'tackle' && yards < 0),
     firstDown: !!result?.firstDown,
   }
 }

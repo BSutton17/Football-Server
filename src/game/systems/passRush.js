@@ -41,6 +41,25 @@ const WIN_SENSITIVITY = 2.0
 // the shed without freezing it ([pass-rush feedback]).
 const LEVERAGE_WEIGHT = 0.3
 
+// ── A blitzer hits the gap with momentum ([blitz momentum]) ──────────────────────
+//
+// "Blitzing up the middle does almost nothing."
+//
+// A blitzing linebacker was scored like a defensive lineman who happened to be weaker: his pass-rush
+// rating (62 by default; a safety's is 38) against a lineman's strength (~88). That is a shed in
+// around four seconds after the lock-up, and the ball is out in about two — so once a guard or the
+// center picked him up he never got through. Measured over 76 interior blitzes in 120 CRASH BLITZ
+// snaps: closest approach to the quarterback a median 4.7 yards, inside two yards 3% of the time —
+// less often than the edge blitzers (7%) or the down linemen (5%).
+//
+// What a blitzer has that a lineman does not is a running start: he arrives at full speed, before
+// the blocker has set, and a picked-up blitz still collapses the pocket. So a non-lineman BLITZER:
+//   • locks up for a shorter beat — the blocker meets him rather than setting and catching him;
+//   • rushes with a momentum bonus on top of his rating.
+// Down linemen, who start in a stance on the ball, are unchanged.
+const BLITZ_ENGAGE_LOCK = 0.25
+export const BLITZ_MOMENTUM = 18
+
 // Meter value at which the rusher sheds the block.
 export const SHED_THRESHOLD = 1.0
 
@@ -97,9 +116,12 @@ export function runPassRush(state, _io, dt) {
 
     const blocker  = d.engagedWithId ? state.offensePlayers.get(d.engagedWithId) : null
     const strength = blocker ? ratingOf(blocker, 'strength') : DEFAULT_BLOCK_STRENGTH
-    const advantage = rushAdvantage(ratingOf(d, 'passRush') ?? 0, strength, d.leverageScore ?? 0)
+    // [blitz momentum] A blitzer — anyone sent after the QB who is not a down lineman.
+    const blitzer  = d.label !== 'DL' && state.defenseCoverage.get(d.id)?.type === 'blitz'
+    const rushRating = (ratingOf(d, 'passRush') ?? 0) + (blitzer ? BLITZ_MOMENTUM : 0)
+    const advantage = rushAdvantage(rushRating, strength, d.leverageScore ?? 0)
 
-    if (d.engageElapsed < ENGAGE_LOCK_TIME) {
+    if (d.engageElapsed < (blitzer ? BLITZ_ENGAGE_LOCK : ENGAGE_LOCK_TIME)) {
       // Locked up — no progress either way; the block is holding.
     } else if (advantage > 0) {
       d.rushWinMeter = (d.rushWinMeter ?? 0) + advantage * dt

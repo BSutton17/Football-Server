@@ -93,7 +93,7 @@ function publicLine(line) {
     passTD: line.passTD, interceptionsThrown: line.interceptionsThrown,
     carries: line.carries, rushYards: line.rushYards, rushTD: line.rushTD,
     receptions: line.receptions, recYards: line.recYards, recTD: line.recTD,
-    tackles: line.tackles, sacks: line.sacks, interceptions: line.interceptions,
+    tackles: line.tackles, tfl: line.tfl ?? 0, sacks: line.sacks, interceptions: line.interceptions,
   }
 }
 

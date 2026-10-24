@@ -85,9 +85,11 @@ export const POWER_REFILL_PER_TAP   = 0.02  // [10] every valid directional inpu
 // ⚠️ AND 15% FASTER, BY REQUEST (2026-10-07): an untouched meter now drains 77.6% over the timer.
 // ⚠️ AND A FURTHER 10% FASTER, BY REQUEST (2026-10-21), for punts and field goals (extra points share
 // the meter). Compounded on the 15%, so 1.15 x 1.1: an untouched meter now drains 85.4% over the timer.
+// ⚠️ AND ANOTHER 10%, BY REQUEST (2026-10-24), compounded again: 1.15 x 1.1 x 1.1 — an untouched
+// meter now drains 93.9% over the timer.
 // The computer is unaffected — it commits its strike in one input and its meter never drains.
 export const POWER_DRAIN_SLOWDOWN   = 4 / 3
-export const POWER_DRAIN_SPEEDUP    = 1.15 * 1.1
+export const POWER_DRAIN_SPEEDUP    = 1.15 * 1.1 * 1.1
 export const POWER_DRAIN_PER_SEC    = (FULL_POWER / KICK_TIMER_SECONDS) * 0.9 / POWER_DRAIN_SLOWDOWN * POWER_DRAIN_SPEEDUP
 // [13] The aiming arrow is capped at ±30° from straight ahead. Angle is normalized −1..1 (±1 = ±30°).
 export const AIM_MAX_DEGREES        = 30

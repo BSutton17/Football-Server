@@ -18,7 +18,7 @@
 
 import { appendFileSync, writeFileSync, mkdirSync, existsSync, readFileSync, statSync } from 'node:fs'
 import { computeReceiverOpenness } from '../game/utils/openness.js'
-import { isReceiverReady } from '../game/serialization.js'
+import { isReceiverReady, laneContext } from '../game/serialization.js'
 import { RECEIVER_LABELS } from '../ai/knowledge.js'
 import { ratingOf } from '../data/ratings.js'
 import { join } from 'node:path'
@@ -202,16 +202,20 @@ function ratingsOf(p) {
 }
 
 // Every eligible receiver's openness, as the offense reads it.
+// ⚠️ WITH THE SAME LANE CONTEXT THE GAME USES. Without it the report scored every throw as though the
+// throwing lane and the zone defenders' break on the ball ([lane block], [zone break]) did not exist,
+// so a window the game resolved as covered was recorded as open.
 function openness(state) {
   const out = []
   try {
     const defenders = [...(state.defensePlayers?.values() ?? [])]
+    const lane = laneContext(state)
     let qb = null
     for (const p of state.offensePlayers?.values() ?? []) if (p.label === 'QB') { qb = p; break }
     for (const p of state.offensePlayers?.values() ?? []) {
       if (!RECEIVER_LABELS.has(p.label)) continue
       const ready = isReceiverReady(p)
-      out.push([p.id, ready ? r2(computeReceiverOpenness(p, defenders, qb)) : null, ready ? 1 : 0])
+      out.push([p.id, ready ? r2(computeReceiverOpenness(p, defenders, qb, lane)) : null, ready ? 1 : 0])
     }
   } catch { /* a sample is not worth a crash */ }
   return out

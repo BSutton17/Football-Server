@@ -125,14 +125,16 @@ export function expectedPoints(toGoal) {
 //         52% on 2, 48% on 3, and about 4 in 10 out to 7 yards.
 //   GAME — measured here, AI against AI at medium, 40 full games, every 4th down gone for
 //          (`node scripts/fullGameLab.mjs 40 --conversions`, 3rd and 4th downs pooled, made
-//          monotone). Short yardage converts far MORE often than in the NFL — 77% at a yard, 72% at
-//          two or three — and then falls off a cliff at ten: 14%, against the NFL's 32%.
+//          monotone). Short yardage converts more often than in the NFL — 68% from one to three
+//          yards — and then falls off a cliff at ten: 18%, against the NFL's 32%.
+//          ⚠️ RE-MEASURED 2026-10-24 after zone coverage got its break on the ball: it was 77% at a
+//          yard and 50% at six, and the stronger zone took most of that off the medium distances.
 //
 // Half and half, because the measurement is the computer against the computer and a human defends
 // differently; the game's own curve is the truth for this engine, the NFL's is the hedge. Re-measure
 // and adjust GAME if the offense or defense changes — this table is what makes the AI aggressive.
 const CONVERSION_NFL  = [[1, 0.64], [2, 0.52], [3, 0.48], [4, 0.44], [5, 0.41], [6, 0.41], [7, 0.40], [8, 0.34], [9, 0.34], [10, 0.32], [15, 0.22], [20, 0.12]]
-const CONVERSION_GAME = [[1, 0.77], [2, 0.72], [3, 0.72], [4, 0.55], [5, 0.55], [6, 0.50], [7, 0.40], [8, 0.40], [9, 0.40], [10, 0.14], [15, 0.11], [20, 0.06]]
+const CONVERSION_GAME = [[1, 0.68], [2, 0.68], [3, 0.68], [4, 0.52], [5, 0.52], [6, 0.39], [7, 0.31], [8, 0.29], [9, 0.29], [10, 0.18], [15, 0.08], [20, 0.05]]
 const CONVERSION_GAME_WEIGHT = 0.5
 
 // Near the goal line the field is compressed — no room behind the defense — and anything longer than

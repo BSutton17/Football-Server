@@ -283,7 +283,39 @@ describe('the summary line', () => {
     const s = createStats()
     recordTackle(s, { tackler: LB })
     recordSack(s, { defender: LB, passer: QB, yards: -6 })
-    expect(statLine(lineOf(s, 'lb1'))).toBe('1 tkl · 1 sack')
+    // A sack is a tackle for loss (the NFL's definition), so it shows as one.
+    expect(statLine(lineOf(s, 'lb1'))).toBe('1 tkl · 1 TFL · 1 sack')
+  })
+})
+
+describe('[TFL] tackles for loss, separate from ordinary tackles', () => {
+  it('a tackle behind the line counts as a tackle AND a tackle for loss', () => {
+    const s = createStats()
+    recordTackle(s, { tackler: LB, forLoss: true })
+    expect(lineOf(s, 'lb1').tackles).toBe(1)
+    expect(lineOf(s, 'lb1').tfl).toBe(1)
+  })
+
+  it('an ordinary tackle is not one', () => {
+    const s = createStats()
+    recordTackle(s, { tackler: LB })
+    recordTackle(s, { tackler: LB, forLoss: false })
+    expect(lineOf(s, 'lb1').tackles).toBe(2)
+    expect(lineOf(s, 'lb1').tfl).toBe(0)
+  })
+
+  it('a sack is a tackle for loss, but not a tackle', () => {
+    const s = createStats()
+    recordSack(s, { defender: LB, passer: QB, yards: -7 })
+    expect(lineOf(s, 'lb1').tfl).toBe(1)
+    expect(lineOf(s, 'lb1').tackles).toBe(0)
+  })
+
+  it('shows on the summary line', () => {
+    const s = createStats()
+    recordTackle(s, { tackler: LB, forLoss: true })
+    recordTackle(s, { tackler: LB })
+    expect(statLine(lineOf(s, 'lb1'))).toBe('2 tkl · 1 TFL')
   })
 })
 

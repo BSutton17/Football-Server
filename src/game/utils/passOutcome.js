@@ -1,3 +1,27 @@
+// ── Pressure on the throw ([pressure throw]) ──────────────────────────────────────
+//
+// ⚠️ PRESSURE NEVER REACHED THE BALL. runPressureDetection has counted defenders around the QB every
+// tick since it was written, and `getThrowAccuracy` below was built to read it — and nothing ever
+// called it. A rusher in the quarterback's face changed nothing about the throw unless he actually
+// finished the sack, which is a large part of "blitzing up the middle does almost nothing": an
+// interior blitzer getting home a step late was worth precisely zero.
+//
+// Now a pressured throw is a worse throw: each defender within PRESSURE_RADIUS (two at most) takes
+// the catch rate down, and one about to make contact takes it down further and adds to the pick.
+// Folded into resolvePass through completionBonus / intDelta, like every other throw modifier.
+export const PRESSURE_CATCH_PENALTY = 0.06
+export const HEAVY_PRESSURE_CATCH_PENALTY = 0.08
+export const HEAVY_PRESSURE_INT = 0.02
+
+export function pressureThrowMods(state) {
+  const count = Math.min(2, state?.qbPressureCount ?? 0)
+  const heavy = !!state?.qbUnderHeavyPressure
+  return {
+    catchBonus: -(count * PRESSURE_CATCH_PENALTY + (heavy ? HEAVY_PRESSURE_CATCH_PENALTY : 0)),
+    intDelta: heavy ? HEAVY_PRESSURE_INT : 0,
+  }
+}
+
 // Base completion probability with no pressure and a clean pocket.
 const BASE_ACCURACY = 0.85
 

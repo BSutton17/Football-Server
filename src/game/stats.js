@@ -32,6 +32,7 @@ export const WEIGHTS = {
   recTD: 6,
   reception: 0.5,
   tackle: 1,
+  tfl: 1,                 // on top of the tackle itself — a stop behind the line is worth more
   sack: 3,
   interception: 6,
   passDefended: 1,
@@ -45,7 +46,9 @@ const BLANK = {
   // receiving
   targets: 0, receptions: 0, recYards: 0, recTD: 0,
   // defense
-  tackles: 0, sacks: 0, interceptions: 0, passesDefended: 0,
+  // tfl — tackles for loss: tackles behind the line of scrimmage, sacks included (the NFL's
+  // definition). Counted beside `tackles`, not instead of it: a TFL is still a tackle.
+  tackles: 0, tfl: 0, sacks: 0, interceptions: 0, passesDefended: 0,
 }
 
 // ⚠️ EVERY ENTRY POINT TOLERATES A MISSING BOX SCORE. Not every game state is built by initGame —
@@ -140,9 +143,13 @@ export function recordRush(stats, { runner, yards }) {
   bump(line, 'rushYards', yards)
 }
 
-export function recordTackle(stats, { tackler }) {
+// [TFL] `forLoss` — the carrier was brought down behind the line of scrimmage. Still a tackle;
+// also a tackle for loss.
+export function recordTackle(stats, { tackler, forLoss = false }) {
   if (!stats) return
-  bump(lineFor(stats, tackler?.id, tackler), 'tackles')
+  const line = lineFor(stats, tackler?.id, tackler)
+  bump(line, 'tackles')
+  if (forLoss) bump(line, 'tfl')
 }
 
 // ⚠️ A SACK IS NOT A PASS ATTEMPT — that is the real rule, and it matters here because the
@@ -150,7 +157,9 @@ export function recordTackle(stats, { tackler }) {
 // nothing to undo; the lost yards go against the team's passing total, not the passer's line.
 export function recordSack(stats, { defender, passer, yards }) {
   if (!stats) return
-  bump(lineFor(stats, defender?.id, defender), 'sacks')
+  const def = lineFor(stats, defender?.id, defender)
+  bump(def, 'sacks')
+  bump(def, 'tfl')                   // [TFL] a sack is a tackle for loss by definition
   const line = lineFor(stats, passer?.id, passer)
   bump(line, 'sacksTaken')
   bump(line, 'passYards', yards)   // negative
@@ -194,6 +203,7 @@ export function impactScore(line) {
     + line.recTD * WEIGHTS.recTD
     + line.receptions * WEIGHTS.reception
     + line.tackles * WEIGHTS.tackle
+    + (line.tfl ?? 0) * WEIGHTS.tfl
     + line.sacks * WEIGHTS.sack
     + line.interceptions * WEIGHTS.interception
     + line.passesDefended * WEIGHTS.passDefended
@@ -212,6 +222,7 @@ export function statLine(line) {
   if (line.receptions) parts.push(`${line.receptions} rec, ${line.recYards} yds`)
   if (line.recTD) parts.push(`${line.recTD} TD`)
   if (line.tackles) parts.push(`${line.tackles} tkl`)
+  if (line.tfl) parts.push(`${line.tfl} TFL`)
   if (line.sacks) parts.push(`${line.sacks} sack${line.sacks > 1 ? 's' : ''}`)
   if (line.interceptions) parts.push(`${line.interceptions} INT`)
   if (line.passesDefended) parts.push(`${line.passesDefended} PD`)

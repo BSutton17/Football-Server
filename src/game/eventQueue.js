@@ -24,7 +24,7 @@ import { recoverStamina, applyTackleStamina, recoverOffField, HALFTIME_RECOVERY 
 import { CATCH_MOMENTUM_TIME, DEEP_CATCH_YARDS, CATCH_SLOW_TIME } from './systems/movement.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { isManualPlay, beginPassSuspense } from './manual.js'
-import { resolvePass, opennessTier } from './utils/passOutcome.js'
+import { resolvePass, opennessTier, pressureThrowMods } from './utils/passOutcome.js'
 import { rngOf } from './utils/rng.js'
 import { resetPancakes } from './systems/pancake.js'
 import {
@@ -40,6 +40,10 @@ import { getRatings, ratingOf } from '../data/ratings.js'
 // Quarter transitions get a slightly longer pause so players can see the scoreboard.
 const BETWEEN_PLAYS_MS    = 2000
 const HALFTIME_YARD_LINE  = 30     // second-half kickoff: receiving offense starts on its own 30
+// [pick reach] How far from the catch point a defender can be and still make an interception: the
+// separation at which the openness model calls a receiver fully open (openness.js WIDE_OPEN_DIST).
+// Farther than that, nobody is covering him and nobody can catch the ball.
+const PICK_REACH = 5.5
 // [transition screens] Full-screen "End of Quarter" / "Halftime" interstitial shown to both players
 // when a period ends (event-queue driven, in advanceQuarter). The next play lines up after this, so
 // the client overlay and the server's next-play delay stay in step.
@@ -368,13 +372,27 @@ function onThrow({ receiverId, x, y }, state, io) {
   const qbBonus  = throwCompletionBonus(state, qb, { tier, deep })
   const wrMods   = receiverThrowMods(state, receiver, { tier })
   const dbMods   = defenderThrowMods(state, guardingDB, { tier, deep })
+  const pressure = pressureThrowMods(state)   // [pressure throw] a rusher in his face
 
-  const { outcome, reason } = resolvePass({
+  const { outcome: rolled, reason: rolledReason } = resolvePass({
     openness: effOpenness, qbAccuracy, receiverCatch,
-    completionBonus: qbBonus + wrMods.catchBonus + dbMods.catchBonus,
-    intDelta: wrMods.intDelta + dbMods.intDelta,
+    completionBonus: qbBonus + wrMods.catchBonus + dbMods.catchBonus + pressure.catchBonus,
+    intDelta: wrMods.intDelta + dbMods.intDelta + pressure.intDelta,
     interceptionEligible: state.throwAtDefender ?? false,
   }, rngOf(state))
+
+  // ⚠️ A PICK NEEDS SOMEBODY TO MAKE IT. The interception went to the nearest defender ANYWHERE,
+  // and the ball was spotted on the receiver — so a safety eight yards away was teleported onto
+  // Brock Bowers at the sideline for an interception "even though no one was near him". The roll
+  // can still say pick (a defender breaking on the throw is what made the window "covered"), but
+  // only a defender within PICK_REACH of the catch point can catch it. With nobody there the ball
+  // simply falls incomplete.
+  let outcome = rolled, reason = rolledReason
+  let catcher = null
+  if (outcome === 'intercepted') {
+    catcher = pickCatcher(defenders, receiver)
+    if (!catcher) { outcome = 'incomplete'; reason = 'drop' }
+  }
 
   // [294] Feed the resolved outcome into every involved player's X-Factor progress (earns + losses):
   // the QB, the targeted receiver, and the DB guarding that receiver.
@@ -388,12 +406,7 @@ function onThrow({ receiverId, x, y }, state, io) {
       outcome, settles: true,
     })
   } else if (outcome === 'intercepted') {
-    // Nearest defender to the target makes the pick.
-    let catcher = null, best = Infinity
-    for (const d of defenders) {
-      const dist = Math.hypot(d.x - receiver.x, d.y - receiver.y)
-      if (dist < best) { best = dist; catcher = d }
-    }
+    // The nearest defender within reach of the catch point makes the pick (chosen above).
     deliverPassOutcome(state, io, {
       event: EVENT.INTERCEPTION, payload: { catcherId: catcher?.id ?? null, x: receiver.x, y: receiver.y },
       outcome, settles: true,
@@ -606,6 +619,18 @@ function onTackle({ carrierId, x, y, interceptionReturn, outOfBounds = false }, 
   // [190] Contact ends an interception return: the intercepting team takes over at the spot.
   if (interceptionReturn) { settleInterception(state, io, x, y); return }
 
+  // ⚠️ A SCRAMBLING QUARTERBACK BROUGHT DOWN BEHIND THE LINE IS SACKED. "A tackle of the QB behind
+  // the line of scrimmage should still be a sack, even if they are in scramble mode." Once he
+  // leaves the pocket he becomes the ball carrier, sack detection stands down, and the ordinary
+  // tackle check used to bring him down as a RUN: no sack for the defender, the loss credited as a
+  // carry. On a pass play, with the ball never thrown (he still has it), a stop behind the line is a
+  // sack whatever he was doing with his feet. A designed QB run is a run, and is left alone; so is
+  // stepping out of bounds, which nobody tackled.
+  if (!outOfBounds && isScrambleSack(state, carrierId, y)) {
+    onSack({ qbY: y, losY: getLosY(state), dir: state.direction, qbX: x }, state, io)
+    return
+  }
+
   state.prevPlayIncompletePass = false   // [294] this play wasn't an incomplete pass
 
   // [fatigue effort] Contact tires both players: the carrier absorbing the hit and the nearest
@@ -655,7 +680,8 @@ function onTackle({ carrierId, x, y, interceptionReturn, outOfBounds = false }, 
   // Nobody tackled a man who stepped out — crediting the nearest defender would invent one.
   const tackler = outOfBounds ? null : nearestTackler(state, x, y)
   {
-    if (tackler) recordTackle(state.stats, { tackler })
+    // [TFL] Brought down behind the line of scrimmage — a tackle for loss, counted on its own.
+    if (tackler) recordTackle(state.stats, { tackler, forLoss: yardsGained < 0 })
     const gained = Math.round(yardsGained)
     if (state.statsWasPass) {
       recordPassYards(state.stats, {
@@ -1424,6 +1450,25 @@ function maybeStartDecision(state) {
   if (state.decisionPending) {
     console.log(`[game] ${state.roomId} 4th down — decision menu (default ${decisionDefault(state)})`)
   }
+}
+
+// [pick reach] The defender who intercepts: the nearest one within PICK_REACH of the catch point, or
+// nobody — in which case there is no interception to be had.
+export function pickCatcher(defenders, receiver, reach = PICK_REACH) {
+  let catcher = null, best = reach
+  for (const d of defenders) {
+    const dist = Math.hypot(d.x - receiver.x, d.y - receiver.y)
+    if (dist <= best) { best = dist; catcher = d }
+  }
+  return catcher
+}
+
+// [scramble sack] The QB is carrying it on a pass play and went down on his side of the line.
+export function isScrambleSack(state, carrierId, y) {
+  const carrier = carrierId ? state.offensePlayers?.get(carrierId) : null
+  if (carrier?.label !== 'QB') return false
+  if ((state.playDesign?.playType ?? 'pass') === 'run') return false
+  return (getLosY(state) - y) * state.direction > 0
 }
 
 // payload: { qbY, losY, dir, qbX }

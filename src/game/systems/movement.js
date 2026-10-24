@@ -1661,6 +1661,39 @@ export function computeSafetyRotation(state, losY, dir) {
 // conclusion the way a real defender does — by looking at the receivers near him and seeing that
 // none of them are heading his way — not by being told everyone ran a go route. The read is honest
 // but fallible: a receiver who breaks back late will beat it, exactly as he should.
+// ── Passing off ([zone pass-off]) ─────────────────────────────────────────────
+//
+// Every defender with a coverage job — not the rushers and blitzers, who are not going to be there.
+function coverageDefenders(state) {
+  const out = []
+  for (const d of state.defensePlayers.values()) {
+    const t = state.defenseCoverage?.get(d.id)?.type
+    if (t === 'zone' || t === 'man') out.push(d)
+  }
+  return out
+}
+
+// Is a teammate already closer to this receiver — now, or to where he is heading? Then he is that
+// teammate's to take, and leaving the zone to chase him only empties the zone.
+function someoneElseCloser(coverMen, self, r, soon, myRun) {
+  const mySoon = soon ? Math.hypot(soon.x - self.x, soon.y - self.y) : myRun
+  for (const o of coverMen) {
+    if (o === self) continue
+    const now = Math.hypot(r.x - o.x, r.y - o.y)
+    if (now < myRun) return true
+    if (soon && Math.hypot(soon.x - o.x, soon.y - o.y) < mySoon) return true
+  }
+  return false
+}
+
+// Is zone defender `o` better placed than `z` for a receiver arriving at `soon`: the receiver is
+// heading into o's area, and o is nearer to where he will be?
+function isBetterPlacedFor(o, z, soon) {
+  if (!soon) return false
+  if (Math.hypot(soon.x - o.cx, soon.y - o.cy) > ZONE_RADIUS) return false
+  return Math.hypot(soon.x - o.d.x, soon.y - o.d.y) < Math.hypot(soon.x - z.d.x, soon.y - z.d.y)
+}
+
 export function computeZoneCoordination(state, losY, dir) {
   const zoners = []
   for (const d of state.defensePlayers.values()) {
@@ -1734,6 +1767,8 @@ export function computeZoneCoordination(state, losY, dir) {
   const helping = new Set()
   const freeDefenders  = zoners.filter(z => !primary.has(z.d.id))
   const looseReceivers = receivers.filter(r => !claimed.has(r.id))
+  // [zone pass-off] Everyone in coverage — zone AND man — who could be the one already on his way.
+  const coverMen = coverageDefenders(state)
   if (freeDefenders.length > 0 && looseReceivers.length > 0) {
     const helpPairs = []
     for (const z of freeDefenders) {
@@ -1743,6 +1778,12 @@ export function computeZoneCoordination(state, losY, dir) {
         // it straight through and he would help from anywhere on the field.
         const run = Math.hypot(r.x - z.d.x, r.y - z.d.y)
         if (!Number.isFinite(run) || run > ZONE_HELP_RADIUS) continue
+        // ⚠️ ONLY IF NOBODY ELSE IS ALREADY CLOSER. "They should only fully abandon their zone if
+        // no one else is heading in the direction." Helping used to go to ANY free defender within
+        // seventeen yards, so a hook linebacker with a quiet area ran nine or ten yards off his spot
+        // after a man a teammate was already on top of — measured: in a third of Cover 3 throws the
+        // defender whose area the ball went to was more than seven yards from his landmark.
+        if (someoneElseCloser(coverMen, z.d, r, soonPos.get(r.id), run)) continue
         helpPairs.push({ zId: z.d.id, r, score: run })
       }
     }
@@ -1770,6 +1811,14 @@ export function computeZoneCoordination(state, losY, dir) {
       const reach = Math.min(distOf(r, z.cx, z.cy), soonDistOf(r, z.cx, z.cy))
       if (reach <= ZONE_CROWD_RADIUS) { contested = true; break }
     }
+    // ⚠️ AND IS THERE SOMEBODY TO HAND HIM TO? An empty area used to be reason enough to carry a man
+    // anywhere inside twelve yards — including straight into a teammate's zone, where the teammate
+    // was standing ready for him. That is not carrying, it is abandoning the area to double a man
+    // who is already covered. If another zone defender is better placed for where he is GOING, this
+    // one passes him off at the edge of his own zone, as asked: "otherwise they should be passing
+    // them off".
+    const handOff = !!mine && zoners.some(o => o !== z && isBetterPlacedFor(o, z, soonPos.get(mine.id)))
+    if (handOff) contested = true
 
     // A helper has already decided to leave his spot, so the zone boundary must not veto the trip.
     const isHelping = helping.has(z.d.id)
