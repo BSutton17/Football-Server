@@ -176,6 +176,9 @@ const REVEAL_LABELS = {
   intercepted: 'Intercepted!',
   drop:        'Dropped!',
   broken_up:   'Broken up!',
+  // [incompletion reason] The passer missed: long on a deep ball, off target on anything shorter.
+  overthrown:  'Overthrown!',
+  inaccurate:  'Inaccurate throw!',
   incomplete:  'Incomplete!',
 }
 

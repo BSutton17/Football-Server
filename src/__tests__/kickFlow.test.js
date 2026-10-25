@@ -1,6 +1,6 @@
 import { describe, it, expect } from '@jest/globals'
 import { beginSpecialTeams, applyKickInput, serializeSpecialTeams, KICK, ST_PHASE, KICK_TIMER_SECONDS, PUNT_RETURN,
-  fgBlockRegion, fgBlockProbability, FG_BLOCK, POWER_DRAIN_PER_SEC, POWER_DRAIN_SLOWDOWN } from '../game/specialTeams.js'
+  fgBlockRegion, fgBlockProbability, FG_BLOCK, POWER_DRAIN_PER_SEC, POWER_DRAIN_SLOWDOWN, powerDrainPerSec } from '../game/specialTeams.js'
 import { runKickClock } from '../game/systems/kickClock.js'
 import { runConversionClock } from '../game/systems/decisionClock.js'
 import { runClock } from '../game/systems/clock.js'
@@ -86,6 +86,21 @@ describe('[9][10] power meter drains continuously once started, refilled by taps
     expect(POWER_DRAIN_SLOWDOWN).toBeCloseTo(4 / 3, 6)
     expect(POWER_DRAIN_PER_SEC).toBeCloseTo((1 / KICK_TIMER_SECONDS) * 0.9 / (4 / 3) * 1.15 * 1.1 * 1.1, 6)
     expect(POWER_DRAIN_PER_SEC * KICK_TIMER_SECONDS).toBeCloseTo(0.939, 3)
+  })
+
+  it('⚠️ THE PUNT METER drains 10% faster still — field goals and extra points do not', () => {
+    expect(powerDrainPerSec(KICK.PUNT)).toBeCloseTo(POWER_DRAIN_PER_SEC * 1.1, 6)
+    expect(powerDrainPerSec(KICK.FIELD_GOAL)).toBe(POWER_DRAIN_PER_SEC)
+    expect(powerDrainPerSec(KICK.EXTRA_POINT)).toBe(POWER_DRAIN_PER_SEC)
+  })
+
+  it('the kick clock drains a punt at the punt rate', () => {
+    const state = kickState('pm-punt-rate', KICK.PUNT); room('pm-punt-rate')
+    beginSpecialTeams(state, KICK.PUNT, { kickingSlot: 0 })
+    const st = state.specialTeams
+    st.started = true; st.power = 1
+    runKickClock(state, mockIo(), 0.5)
+    expect(st.power).toBeCloseTo(1 - powerDrainPerSec(KICK.PUNT) * 0.5, 6)
   })
 
   it('a directional tap fights the drain back up (+2%)', () => {

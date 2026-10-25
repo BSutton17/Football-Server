@@ -91,6 +91,13 @@ export const POWER_REFILL_PER_TAP   = 0.02  // [10] every valid directional inpu
 export const POWER_DRAIN_SLOWDOWN   = 4 / 3
 export const POWER_DRAIN_SPEEDUP    = 1.15 * 1.1 * 1.1
 export const POWER_DRAIN_PER_SEC    = (FULL_POWER / KICK_TIMER_SECONDS) * 0.9 / POWER_DRAIN_SLOWDOWN * POWER_DRAIN_SPEEDUP
+// ⚠️ AND THE PUNT ALONE ANOTHER 10%, BY REQUEST (2026-10-25: "punt meter should be sped up"). Field
+// goals and extra points keep the shared rate. An untouched punt meter now empties (103%) a beat
+// before the timer fires — the punter has to work the whole time.
+export const PUNT_DRAIN_SPEEDUP     = 1.1
+export function powerDrainPerSec(kickType) {
+  return kickType === KICK.PUNT ? POWER_DRAIN_PER_SEC * PUNT_DRAIN_SPEEDUP : POWER_DRAIN_PER_SEC
+}
 // [13] The aiming arrow is capped at ±30° from straight ahead. Angle is normalized −1..1 (±1 = ±30°).
 export const AIM_MAX_DEGREES        = 30
 // [12] Each left/right input nudges the arrow this much (normalized); ~10 presses reach the ±30° cap.

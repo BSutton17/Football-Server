@@ -164,13 +164,68 @@ export function passProbabilities(openness, qbAccuracy = 50, receiverCatch = 50,
   return { tier, catchP, intP, incompleteP: clamp01(1 - catchP - intP) }
 }
 
+// ── Why the ball hit the ground ([incompletion reason]) ───────────────────────────
+//
+// "Saying a pass was 'broken up' every time can be misleading because sometimes the QB accuracy or
+// WR catch rate can cause a covered or smothered pass to be incomplete."
+//
+// The odds above already mix three causes into one incompletion slice: the coverage (the tier), the
+// passer (accuracy, pressure) and the receiver (hands). So the miss is credited to one of them, in
+// proportion to how much each one plausibly cost — looked at on the field, not read off the tier:
+//   • the DEFENSE, by how close the nearest defender will be at the catch (CONTEST_FAR → bodies
+//     touching), or outright when one is standing in the throwing line or over the top of a deep ball
+//   • the PASSER, more for a poor arm and for every rusher in his face — 'overthrown' on a deep ball,
+//     'inaccurate' on anything shorter
+//   • the RECEIVER, more for poor hands — 'drop'
+// A receiver nobody is near can never have the ball broken up, which was the misleading case.
+export const CONTEST_FAR = 4.0          // yd at the catch beyond which no defender gets a hand on it
+const CONTEST_TOUCH = 1.0               // …and inside which he is on the receiver
+export const OVERTHROW_AIR_YARDS = 15   // air yards past the LOS from which a missed throw sails long
+const DEFENSE_WEIGHT = 3.0
+const PASSER_BASE = 0.4, PASSER_ARM = 1.2, PASSER_PER_RUSHER = 0.5, PASSER_HEAVY = 0.5
+const RECEIVER_BASE = 0.3, RECEIVER_HANDS = 1.0
+
+export function incompletionWeights({ tier, contestDist = Infinity, contested = false, qbAccuracy = 50, receiverCatch = 50, pressureCount = 0, heavyPressure = false }) {
+  const contest = tier === 'open' ? 0
+    : contested ? 1
+    : clamp01((CONTEST_FAR - contestDist) / (CONTEST_FAR - CONTEST_TOUCH))
+  return {
+    defense: DEFENSE_WEIGHT * contest,
+    passer: PASSER_BASE + PASSER_ARM * (99 - clampRating(qbAccuracy)) / 99
+      + PASSER_PER_RUSHER * Math.min(2, pressureCount) + (heavyPressure ? PASSER_HEAVY : 0),
+    receiver: RECEIVER_BASE + RECEIVER_HANDS * (99 - clampRating(receiverCatch)) / 99,
+  }
+}
+
+// u ∈ [0, 1) picks the cause from the weights. The name of the miss on a pass the QB missed depends
+// on the throw: a deep ball sails over him, anything shorter is just off target.
+export function incompletionReason(field, u) {
+  const w = incompletionWeights(field)
+  const total = w.defense + w.passer + w.receiver
+  const pick = u * total
+  if (pick < w.defense) return 'broken_up'
+  if (pick < w.defense + w.passer) return passerMiss(field.airYards)
+  return 'drop'
+}
+
+export function passerMiss(airYards = 0) {
+  return airYards >= OVERTHROW_AIR_YARDS ? 'overthrown' : 'inaccurate'
+}
+
 // Resolve a pass instantly. Returns { outcome, reason }:
 //   outcome — 'complete' | 'incomplete' | 'intercepted'
-//   reason  — 'caught' | 'drop' (open) | 'broken_up' (coverage) | 'intercepted'
+//   reason  — 'caught' | 'drop' (open) | 'broken_up' (coverage) | 'intercepted', or — when `field`
+//             is supplied — whichever of 'broken_up' / 'overthrown' / 'inaccurate' / 'drop' the
+//             picture on the field supports ([incompletion reason]).
 //   interceptionEligible — ball thrown into a defender (throwaway-at-coverage): a near-certain pick.
+//   field — { contestDist, contested, airYards, pressureCount, heavyPressure } for the reason.
 //   rng — injectable for tests; defaults to Math.random.
+//
+// ⚠️ THE REASON SPENDS NO RANDOMNESS OF ITS OWN. It is read from where the one roll landed inside the
+// incomplete slice, so naming the miss can never change a result or shift the seeded stream that
+// every later roll in the game depends on.
 export function resolvePass(
-  { openness, qbAccuracy = 50, receiverCatch = 50, interceptionEligible = false, completionBonus = 0, intDelta = 0 },
+  { openness, qbAccuracy = 50, receiverCatch = 50, interceptionEligible = false, completionBonus = 0, intDelta = 0, field = null },
   rng = Math.random,
 ) {
   if (interceptionEligible) {
@@ -180,10 +235,12 @@ export function resolvePass(
       : { outcome: 'incomplete',  reason: 'broken_up' }
   }
 
-  const { tier, catchP, intP } = passProbabilities(openness, qbAccuracy, receiverCatch, completionBonus, intDelta)
+  const { tier, catchP, intP, incompleteP } = passProbabilities(openness, qbAccuracy, receiverCatch, completionBonus, intDelta)
 
   const roll = rng()
   if (roll < catchP)        return { outcome: 'complete',    reason: 'caught' }
   if (roll < catchP + intP) return { outcome: 'intercepted', reason: 'intercepted' }
-  return { outcome: 'incomplete', reason: tier === 'open' ? 'drop' : 'broken_up' }
+  if (!field) return { outcome: 'incomplete', reason: tier === 'open' ? 'drop' : 'broken_up' }
+  const u = incompleteP > 0 ? clamp01((roll - catchP - intP) / incompleteP) : 0
+  return { outcome: 'incomplete', reason: incompletionReason({ ...field, tier, qbAccuracy, receiverCatch }, Math.min(u, 0.999999)) }
 }

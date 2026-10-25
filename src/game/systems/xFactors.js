@@ -325,7 +325,7 @@ export function recordPassingTouchdown(state, qb, io) {
 
 // A throw resolved with `receiver` as the TARGET. Drives WR earn progress (catches, classified by
 // contested/heavily-contested + deep) and the WR loss triggers (drops).
-//   reason: 'caught' | 'drop' (open-window miss) | 'broken_up' (contested miss) | 'intercepted'
+//   reason: 'caught' | 'drop' (his hands) | 'broken_up' (the coverage) | 'overthrown' / 'inaccurate' (the passer) | 'intercepted'
 export function recordReceiverOutcome(state, receiver, { outcome, reason, tier, deep }, io) {
   const r = getRecord(state, receiver)
   if (!r) return
@@ -348,7 +348,9 @@ export function recordReceiverOutcome(state, receiver, { outcome, reason, tier, 
     if (r.active) {
       r.wrDropsInARow += 1
       r.wrDropsTotal  += 1
-      const wideOpenDrop = reason === 'drop'
+      // [incompletion reason] A drop can now happen in coverage too, and a miss on an open window
+      // can be the passer's — so "wide open" is the tier, and "drop" is the receiver's fault.
+      const wideOpenDrop = reason === 'drop' && tier === 'open'
       if (wideOpenDrop) {
         deactivate(state, receiver, r, io, 'dropped a wide-open pass')
       } else if (r.wrDropsInARow >= WR_DROPS_IN_A_ROW_LOSS || r.wrDropsTotal >= WR_DROPS_TOTAL_LOSS) {

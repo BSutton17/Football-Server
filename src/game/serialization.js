@@ -343,7 +343,7 @@ export function serializePlayResult(state, outcome, yardsGained, newPossessionSl
     distance: state.distance,
     yardLine: state.yardLine,
     firstDown,   // [224][225] true when this play moved the chains (drives the "First down!" notice)
-    detail,      // [pass-outcome] 'broken_up' | 'drop' on an incompletion, so the notice can match
+    detail,      // [pass-outcome] 'broken_up' | 'overthrown' | 'inaccurate' | 'drop' on an incompletion, so the notice can match
   }
 
   if (newPossessionSlot != null) {

@@ -380,7 +380,9 @@ function makeWR(ability) {
 }
 
 function caught(tier, deep) { return { outcome: 'complete', reason: 'caught', tier, deep } }
-function missed(reason)     { return { outcome: 'incomplete', reason } }   // 'drop' (open) | 'broken_up'
+// 'drop' defaults to an open window and 'broken_up' to a covered one — the pairing every reason had
+// before [incompletion reason] let either happen in any window.
+function missed(reason, tier = reason === 'drop' ? 'open' : 'covered') { return { outcome: 'incomplete', reason, tier } }
 
 describe('WR — universal earn (scored a touchdown)', () => {
   it('earns any WR ability on a single touchdown', () => {
@@ -504,6 +506,18 @@ describe('WR loss triggers', () => {
     const { wr, state } = activeWR()
     recordReceiverOutcome(state, wr, missed('drop'), noIo)
     expect(wr.xFactorActive).toBe(false)
+  })
+
+  it('⚠️ NOT lost for a drop in coverage — only a wide-open window is "wide open"', () => {
+    const { wr, state } = activeWR()
+    recordReceiverOutcome(state, wr, missed('drop', 'covered'), noIo)
+    expect(wr.xFactorActive).toBe(true)
+  })
+
+  it('⚠️ NOT lost when the QB missed him wide open — an inaccurate throw is not his drop', () => {
+    const { wr, state } = activeWR()
+    recordReceiverOutcome(state, wr, missed('inaccurate', 'open'), noIo)
+    expect(wr.xFactorActive).toBe(true)
   })
 
   it('lost after 2 contested drops in a row', () => {

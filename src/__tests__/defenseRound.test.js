@@ -4,7 +4,9 @@ import { initLivePhase } from '../game/systems/init.js'
 import { transition, PHASE } from '../game/stateMachine.js'
 import { createFakeIo } from '../headless/harness.js'
 import { enqueue, processQueue, EVENT, pickCatcher, isScrambleSack } from '../game/eventQueue.js'
-import { pressureThrowMods, PRESSURE_CATCH_PENALTY, HEAVY_PRESSURE_CATCH_PENALTY, HEAVY_PRESSURE_INT } from '../game/utils/passOutcome.js'
+import { pressureThrowMods, PRESSURE_CATCH_PENALTY, HEAVY_PRESSURE_CATCH_PENALTY, HEAVY_PRESSURE_INT,
+  incompletionReason, resolvePass, OVERTHROW_AIR_YARDS } from '../game/utils/passOutcome.js'
+import { revealLabel } from '../game/manual.js'
 import { computeReceiverOpenness } from '../game/utils/openness.js'
 import { runPassRush } from '../game/systems/passRush.js'
 import { computeZoneCoordination } from '../game/systems/movement.js'
@@ -120,6 +122,76 @@ describe('[zone break] zone defenders close on the throw', () => {
     const zone = computeReceiverOpenness(quick, [def], qb, { zoneIds: new Set(['lb1']) })
     const man = computeReceiverOpenness(quick, [def], qb, { zoneIds: new Set() })
     expect(man - zone).toBeLessThan(0.15)
+  })
+
+  // "Players that are wide open are being read as a pass break up." He breaks to the CATCH POINT.
+  it('⚠️ A RECEIVER RUNNING AWAY FROM HIS ZONE KEEPS HIS SEPARATION — no closing on a man who is leaving', () => {
+    const away = { ...receiver, vx: -7, vy: 0 }                    // running away from the defender's side
+    const zone = computeReceiverOpenness(away, [defender], qb, { zoneIds: new Set(['lb1']) })
+    const man = computeReceiverOpenness(away, [defender], qb, { zoneIds: new Set() })
+    expect(zone).toBeCloseTo(man, 6)
+  })
+
+  it('…while one running INTO the zone is closed on harder than one standing still', () => {
+    const into = { ...receiver, vx: 6, vy: 0 }
+    const still = computeReceiverOpenness(receiver, [defender], qb, { zoneIds: new Set(['lb1']) })
+    const runningIn = computeReceiverOpenness(into, [defender], qb, { zoneIds: new Set(['lb1']) })
+    expect(runningIn).toBeLessThanOrEqual(still)
+  })
+})
+
+// ── [incompletion reason] A miss is named for what caused it ─────────────────────────
+describe('[incompletion reason] broken up, overthrown, inaccurate or dropped', () => {
+  const share = (field, want) => {
+    let n = 0
+    for (let i = 0; i < 1000; i++) if (incompletionReason(field, i / 1000) === want) n++
+    return n / 1000
+  }
+
+  it('⚠️ NOBODY NEAR HIM, NOTHING BROKEN UP — the misleading case', () => {
+    expect(share({ tier: 'covered', contestDist: 6, airYards: 8 }, 'broken_up')).toBe(0)
+  })
+
+  it('a defender on him breaks most of them up', () => {
+    expect(share({ tier: 'smothered', contestDist: 1.0, airYards: 8 }, 'broken_up')).toBeGreaterThan(0.6)
+  })
+
+  it('a defender in the throwing line or over the top counts as on him', () => {
+    expect(share({ tier: 'smothered', contestDist: 6, contested: true, airYards: 8 }, 'broken_up')).toBeGreaterThan(0.6)
+  })
+
+  it('a deep miss by the passer sails over him; a short one is off target', () => {
+    const open = { tier: 'covered', contestDist: 9 }
+    expect(share({ ...open, airYards: OVERTHROW_AIR_YARDS + 5 }, 'overthrown')).toBeGreaterThan(0.3)
+    expect(share({ ...open, airYards: OVERTHROW_AIR_YARDS + 5 }, 'inaccurate')).toBe(0)
+    expect(share({ ...open, airYards: 6 }, 'inaccurate')).toBeGreaterThan(0.3)
+    expect(share({ ...open, airYards: 6 }, 'overthrown')).toBe(0)
+  })
+
+  it('a poor arm and a rusher in his face are the passer’s misses; poor hands are drops', () => {
+    const base = { tier: 'covered', contestDist: 9, airYards: 6 }
+    const good = share({ ...base, qbAccuracy: 95 }, 'inaccurate')
+    expect(share({ ...base, qbAccuracy: 40 }, 'inaccurate')).toBeGreaterThan(good)
+    expect(share({ ...base, qbAccuracy: 95, pressureCount: 2 }, 'inaccurate')).toBeGreaterThan(good)
+    expect(share({ ...base, receiverCatch: 40 }, 'drop')).toBeGreaterThan(share({ ...base, receiverCatch: 95 }, 'drop'))
+  })
+
+  it('⚠️ NAMING THE MISS SPENDS NO RANDOMNESS — the seeded stream and the result are unchanged', () => {
+    for (const roll of [0.1, 0.5, 0.7, 0.95]) {
+      let calls = 0
+      const rng = () => { calls++; return roll }
+      const plain = resolvePass({ openness: 0.5 }, () => roll)
+      const named = resolvePass({ openness: 0.5, field: { contestDist: 2, airYards: 10 } }, rng)
+      expect(calls).toBe(1)
+      expect(named.outcome).toBe(plain.outcome)
+    }
+  })
+
+  it('manual mode announces each one', () => {
+    expect(revealLabel('incomplete', 'overthrown')).toBe('Overthrown!')
+    expect(revealLabel('incomplete', 'inaccurate')).toBe('Inaccurate throw!')
+    expect(revealLabel('incomplete', 'drop')).toBe('Dropped!')
+    expect(revealLabel('incomplete', 'broken_up')).toBe('Broken up!')
   })
 })
 

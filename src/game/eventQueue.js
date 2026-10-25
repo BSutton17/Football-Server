@@ -22,9 +22,9 @@ import { getRoom } from './roomManager.js'
 import { serializeClock, serializeScore, serializeGameState, serializeGameOver, serializePlayResult, isReceiverReady, laneContext } from './serialization.js'
 import { recoverStamina, applyTackleStamina, recoverOffField, HALFTIME_RECOVERY } from './systems/stamina.js'
 import { CATCH_MOMENTUM_TIME, DEEP_CATCH_YARDS, CATCH_SLOW_TIME } from './systems/movement.js'
-import { computeReceiverOpenness } from './utils/openness.js'
+import { opennessBreakdown } from './utils/openness.js'
 import { isManualPlay, beginPassSuspense } from './manual.js'
-import { resolvePass, opennessTier, pressureThrowMods } from './utils/passOutcome.js'
+import { resolvePass, opennessTier, pressureThrowMods, passerMiss } from './utils/passOutcome.js'
 import { rngOf } from './utils/rng.js'
 import { resetPancakes } from './systems/pancake.js'
 import {
@@ -353,7 +353,8 @@ function onThrow({ receiverId, x, y }, state, io) {
 
   // [lane block] Same context the client's color was computed from, so a receiver shown as smothered
   // because a zone defender is standing in the throwing line resolves that way too.
-  const openness      = computeReceiverOpenness(receiver, defenders, qb, laneContext(state))
+  const read          = opennessBreakdown(receiver, defenders, qb, laneContext(state))
+  const openness      = read.openness
   const qbAccuracy    = qb ? ratingOf(qb, 'accuracy') : getRatings('QB').accuracy
   const receiverCatch = ratingOf(receiver, 'catching')
 
@@ -379,6 +380,14 @@ function onThrow({ receiverId, x, y }, state, io) {
     completionBonus: qbBonus + wrMods.catchBonus + dbMods.catchBonus + pressure.catchBonus,
     intDelta: wrMods.intDelta + dbMods.intDelta + pressure.intDelta,
     interceptionEligible: state.throwAtDefender ?? false,
+    // [incompletion reason] What the field shows, so a miss is named for what actually caused it.
+    field: {
+      contestDist: read.nearestDist,
+      contested: read.laneBlocked || read.overTheTop,
+      airYards,
+      pressureCount: state.qbPressureCount ?? 0,
+      heavyPressure: !!state.qbUnderHeavyPressure,
+    },
   }, rngOf(state))
 
   // ⚠️ A PICK NEEDS SOMEBODY TO MAKE IT. The interception went to the nearest defender ANYWHERE,
@@ -391,7 +400,7 @@ function onThrow({ receiverId, x, y }, state, io) {
   let catcher = null
   if (outcome === 'intercepted') {
     catcher = pickCatcher(defenders, receiver)
-    if (!catcher) { outcome = 'incomplete'; reason = 'drop' }
+    if (!catcher) { outcome = 'incomplete'; reason = passerMiss(airYards) }   // thrown where nobody was
   }
 
   // [294] Feed the resolved outcome into every involved player's X-Factor progress (earns + losses):
@@ -478,8 +487,9 @@ function onPassComplete({ receiverId, x, y }, state, _io) {
   state.passCompletedThisPlay = true
 }
 
-// payload: { reason? } — [180] incompletion handling. reason is 'broken_up' (defended) or 'drop'
-// (open but dropped); absent for a throwaway / no-target miss.
+// payload: { reason? } — [180] incompletion handling. reason is 'broken_up' (defended), 'overthrown' /
+// 'inaccurate' (the passer missed) or 'drop' (the receiver) — [incompletion reason]; absent for a
+// throwaway / no-target miss.
 function onPassIncomplete({ reason } = {}, state, io) {
   // Incomplete pass: no gain, the clock stops ([204]), the ball returns to the previous spot,
   // and it's the next down.

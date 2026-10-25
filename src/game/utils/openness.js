@@ -56,14 +56,33 @@ const MAX_FLIGHT       = 3.0   // seconds — nobody gets to run for longer than
 // straight line). A quick throw barely changes; an intermediate throw into a hole between zones
 // closes by a few yards; it never closes past bodies touching.
 const ZONE_BREAK_REACTION = 0.3    // seconds before he moves — he has to see it leave the hand
-const ZONE_BREAK_EFFICIENCY = 0.6  // of his top speed, for the angle he breaks at
+// 0.6 when the break was taken off the separation at release. Measured to the catch point (below) the
+// same 0.6 let zone back to 5.3–6.4 yards a play, so it is 0.7 now: 5.3–5.8, against 6.1–8.2 before any
+// break and 3.5–4.8 with the first version (shellLab, 400 paired downs a shell, medium).
+const ZONE_BREAK_EFFICIENCY = 0.7  // of his top speed, for the angle he breaks at
 const ZONE_BREAK_REF_SPEED = 7.0   // yd/s the break is scaled against: faster defenders close more
 
-function zoneBreakYards(receiver, qb, opts) {
-  if (!qb || !opts?.zoneIds?.size) return 0
+// ⚠️ HE BREAKS TO WHERE THE BALL IS GOING, NOT TO WHERE THE RECEIVER WAS.
+//
+// "Players that are wide open are being read as a pass break up." The first version took his
+// closing distance straight off the separation at release, whatever the geometry — so a receiver
+// running AWAY from a zone defender was judged as though he had stood still and waited for him.
+// Measured: one in five throws to a receiver five or more yards clear of everybody read covered.
+//
+// The ball is led to the receiver, so the break is measured to the catch point (the receiver carried
+// on for the flight time), and it can only ever make a defender count as CLOSER than he is now — a
+// receiver running away from his zone keeps the separation he had, as he did before the break existed.
+function zoneBreak(receiver, qb, opts) {
+  if (!qb || !opts?.zoneIds?.size) return null
   const throwDist = Math.hypot(qb.x - receiver.x, qb.y - receiver.y)
   const flight = Math.min(MAX_FLIGHT, throwDist / PASS_SPEED_YPS)
-  return Math.max(0, flight - ZONE_BREAK_REACTION) * ZONE_BREAK_REF_SPEED * ZONE_BREAK_EFFICIENCY
+  const yards = Math.max(0, flight - ZONE_BREAK_REACTION) * ZONE_BREAK_REF_SPEED * ZONE_BREAK_EFFICIENCY
+  if (!yards) return null
+  return {
+    yards,
+    catchX: receiver.x + (receiver.vx ?? 0) * flight,
+    catchY: receiver.y + (receiver.vy ?? 0) * flight,
+  }
 }
 
 // "Beat your man" ([coverage feedback]): a moving receiver whose nearest defender is TRAILING his
@@ -235,12 +254,14 @@ export function opennessBreakdown(receiver, defenders, qb = null, opts = {}) {
   // is in the air. There is no ball flight in this engine, so that break has to be priced into the
   // window at release — exactly as a deep safety's arrival already is (PASS_SPEED_YPS below). A man
   // defender has his back to the quarterback and gets no such credit.
-  const breakYds = zoneBreakYards(receiver, qb, opts)
+  const brk = zoneBreak(receiver, qb, opts)
   const zoneIds = opts?.zoneIds
   const effDist = (d) => {
     const now = Math.hypot(d.x - receiver.x, d.y - receiver.y)
-    if (!breakYds || !zoneIds?.has?.(d.id)) return now
-    return Math.max(SMOTHERED_DIST, now - breakYds * (speedFromRating(ratingOf(d, 'speed')) / ZONE_BREAK_REF_SPEED))
+    if (!brk || !zoneIds?.has?.(d.id)) return now
+    const reach = brk.yards * (speedFromRating(ratingOf(d, 'speed')) / ZONE_BREAK_REF_SPEED)
+    const atCatch = Math.hypot(d.x - brk.catchX, d.y - brk.catchY) - reach
+    return Math.min(now, Math.max(SMOTHERED_DIST, atCatch))
   }
 
   let nearest = null
