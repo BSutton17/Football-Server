@@ -17,6 +17,7 @@
 // if it was meant the other way.
 
 import { yardsToGoal, scoreMargin } from './knowledge.js'
+import { PUNT_BOUNCE_MIN_YARDS, PUNT_BOUNCE_TOUCHBACK_LINE } from '../constants.js'
 
 export const XP_MAKE_CHANCE = 0.99
 export const FG_BLOCK_CHANCE = 0.01
@@ -79,13 +80,21 @@ export function fieldGoalChance(kickDistance) {
 
 // ── Punt returns ──────────────────────────────────────────────────────────────
 //
-// One rule, exactly as specified: inside the 10, let it bounce (fielding it there risks a touchback
-// or worse field position than the roll gives you); anywhere else, bring it out.
-export const BOUNCE_INSIDE = 10
+// "If the play will result in a touchback, they should let it bounce, otherwise they should return it."
+//
+// WILL, not might: the roll has not happened and nobody can see it, so this asks whether the SHORTEST roll
+// still ends in a touchback, in which case every roll does. Measured from the ball's landing spot and the
+// league's own rule in constants.js. With no backspin that is anything landing inside the own 12. Backspin can
+// check the ball up short of the goal line wherever it lands, so a touchback is never certain and the
+// answer is to go and get it. Backspin is on the kicker's public strike, so this is nothing a human
+// receiver cannot see: the same control is drawn on their screen.
+export function bounceIsCertainTouchback(landingYardLine, backspin = false) {
+  return !backspin && landingYardLine - PUNT_BOUNCE_MIN_YARDS < PUNT_BOUNCE_TOUCHBACK_LINE
+}
 
-export function puntReturnChoice(landingYardLine) {
+export function puntReturnChoice(landingYardLine, backspin = false) {
   // `landingYardLine` is where the ball comes down, measured from the RETURNING team's own goal.
-  return landingYardLine <= BOUNCE_INSIDE ? 'let_it_bounce' : 'return'
+  return bounceIsCertainTouchback(landingYardLine, backspin) ? 'let_it_bounce' : 'return'
 }
 
 // ── Fourth down: the expected-points model ───────────────────────────────────────
@@ -373,10 +382,15 @@ export function specialTeamsAction(k, rng = Math.random) {
   if (!st) return null
 
   // Returning a punt: the decision window is open and this seat is the receiving team.
-  if (st.returnPending && !st.kicking) {
+  //
+  // ⚠️ THE COMPUTER NEVER ANSWERED THIS MENU, ON ANY PUNT, EVER. It looked for `returnPending` and
+  // `returnLandingYardLine`, which are the server's private state and are never sent. What arrives is the
+  // same `returnDecision` and `result` a phone gets. So this never fired: the computer sat out the five
+  // second timer and took the default, a fair catch, on every punt it received.
+  if (st.returnDecision && !st.kicking) {
     return {
       event: 'punt_return_choice',
-      payload: { option: puntReturnChoice(st.returnLandingYardLine ?? 50) },
+      payload: { option: puntReturnChoice(st.result?.landingYardLine ?? 50, !!st.backspin) },
     }
   }
 

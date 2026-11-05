@@ -6,7 +6,8 @@ import { expandShell, canCover } from '../ai/assignments.js'
 import { SHELLS } from '../ai/playbook/coverages.js'
 import { CONCEPTS, assignRoutes } from '../ai/playbook/concepts.js'
 import { FORMATIONS, legalSpot, personnelFor, layout } from '../ai/playbook/formations.js'
-import { fieldGoalChance, puntReturnChoice, fourthDownChoice } from '../ai/specialTeams.js'
+import { fieldGoalChance, puntReturnChoice, fourthDownChoice, specialTeamsAction } from '../ai/specialTeams.js'
+import { resolvePuntBounce } from '../game/kickEngine.js'
 import { ROUTE_TYPES } from '../constants.js'
 import { makeRng } from '../game/utils/rng.js'
 
@@ -355,11 +356,42 @@ describe('special teams', () => {
     }
   })
 
-  it('lets it bounce inside the 10 and returns it otherwise', () => {
+  // "If the play will result in a touchback, they should let it bounce, otherwise they should return it."
+  it('lets it bounce when every roll is a touchback, and returns it otherwise', () => {
     expect(puntReturnChoice(5)).toBe('let_it_bounce')
-    expect(puntReturnChoice(10)).toBe('let_it_bounce')
-    expect(puntReturnChoice(11)).toBe('return')
+    expect(puntReturnChoice(11)).toBe('let_it_bounce')
+    expect(puntReturnChoice(11.9)).toBe('let_it_bounce')
+    expect(puntReturnChoice(12)).toBe('return')       // a 4-yard roll stops on the 8, which is in play
     expect(puntReturnChoice(40)).toBe('return')
+  })
+
+  it('backspin can always check it up short, so a touchback is never certain', () => {
+    expect(puntReturnChoice(5, true)).toBe('return')
+    expect(puntReturnChoice(40, true)).toBe('return')
+  })
+
+  it('⚠️ THE RULE AGREES WITH THE BALL: what it calls certain is a touchback on every roll', () => {
+    for (let landing = 1; landing < 12; landing += 0.5) {
+      for (const roll of [0, 0.25, 0.5, 0.75, 1]) {
+        expect(resolvePuntBounce({ airLanding: landing, backspin: false }, () => roll).touchback).toBe(true)
+      }
+    }
+    // And just past the line, the shortest roll stays in play: it really was not certain.
+    expect(resolvePuntBounce({ airLanding: 12, backspin: false }, () => 0).touchback).toBe(false)
+  })
+
+  it('⚠️ IT ANSWERS THE MENU THE SERVER ACTUALLY SENDS, which it never did', () => {
+    const k = (over) => ({ specialTeams: {
+      kicking: false, backspin: false,
+      returnDecision: { secondsRemaining: 5, options: [] },
+      result: { kickType: 'punt', landingYardLine: 30 },
+      ...over,
+    } })
+    expect(specialTeamsAction(k({}))?.payload.option).toBe('return')
+    expect(specialTeamsAction(k({ result: { landingYardLine: 9 } }))?.payload.option).toBe('let_it_bounce')
+    expect(specialTeamsAction(k({ result: { landingYardLine: 9 }, backspin: true }))?.payload.option).toBe('return')
+    // The kicking team is never shown the menu, and with no menu up there is nothing to answer.
+    expect(specialTeamsAction(k({ returnDecision: null }))).toBeNull()
   })
 
   const fourthDown = (over) => {

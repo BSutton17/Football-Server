@@ -1,3 +1,5 @@
+import { PUNT_BOUNCE_MIN_YARDS, PUNT_BOUNCE_MAX_YARDS, PUNT_BOUNCE_TOUCHBACK_LINE } from '../constants.js'
+
 // ── The unified kicking engine ([Special Teams][6][15][16][17]) ─────────────────
 //
 // Every kick — kickoff, punt, field goal, extra point — runs the SAME math here. `computeKick` turns
@@ -123,9 +125,9 @@ export function computeKick(
 //
 // The single outcome for any kick, from the user input, kicker ratings, field position, and kick
 // type. `yardLine` is the spot (offense-relative); `requiredDistance` is the FG/XP distance to clear.
-// [33] A bounced (Let It Bounce) punt rolls forward this many yards toward the receiving goal.
-export const PUNT_BOUNCE_MIN_YARDS = 3
-export const PUNT_BOUNCE_MAX_YARDS = 10
+// [33] A bounced (Let It Bounce) punt rolls forward 4 to 10 yards toward the receiving goal ([punt roll], the
+// numbers live in constants.js).
+export { PUNT_BOUNCE_MIN_YARDS, PUNT_BOUNCE_MAX_YARDS, PUNT_BOUNCE_TOUCHBACK_LINE }
 // [34] Backspin pulls the downed spot BACK by a random amount in this range after the bounce.
 export const PUNT_BACKSPIN_MIN = 3
 export const PUNT_BACKSPIN_MAX = 8
@@ -318,7 +320,7 @@ export function computePuntReturn(
 
 // [33][34][35] How far a Let-It-Bounce punt rolls forward (toward the receiving goal) after it lands.
 // Two independent effects combine into one net displacement:
-//   [33] forwardRoll  — the live ball rolls 3–10 yards forward (toward the receiving goal).
+//   [33] forwardRoll  — the live ball rolls 4–10 yards forward (toward the receiving goal).
 //   [34] backspinPull — if the punt had backspin, it then checks the ball back 3–8 yards.
 // [35] The final spot reflects BOTH: net = forwardRoll − backspinPull. The two are drawn separately
 // (independent under Math.random), so a big roll can outrun a small bite of backspin, or a strong
@@ -329,11 +331,6 @@ export function computePuntBounce({ backspin = false } = {}, rng = Math.random) 
   const backspinPull = backspin ? PUNT_BACKSPIN_MIN + rng() * (PUNT_BACKSPIN_MAX - PUNT_BACKSPIN_MIN) : 0
   return forwardRoll - backspinPull                  // net forward roll, in yards toward the receiving goal
 }
-
-// [37] A rolling punt that comes to rest at or inside this line (the receiving team's own N) without
-// backspin is treated as having carried into the end zone → touchback. Backspin keeps it out, so a
-// backspin punt can legitimately be downed this deep.
-export const PUNT_BOUNCE_TOUCHBACK_LINE = 8
 
 // [33][34][35][37] Resolve where a Let-It-Bounce punt comes to rest, in the RECEIVING frame (0 = their
 // goal line, 100 = the opponent's). The ball rolls from `airLanding` by the net bounce ([33][34][35]).

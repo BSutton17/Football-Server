@@ -294,7 +294,9 @@ describe('[24] out-of-bounds punt detection', () => {
 
 describe('[33] let-it-bounce roll', () => {
   it('rolls forward 3 to 10 yards (toward the receiving goal)', () => {
-    expect(computePuntBounce({ backspin: false }, () => 0)).toBeCloseTo(PUNT_BOUNCE_MIN_YARDS)   // min roll = 3
+    expect(PUNT_BOUNCE_MIN_YARDS).toBe(4)     // "anything that lands should roll 4-10 yards"
+    expect(PUNT_BOUNCE_MAX_YARDS).toBe(10)
+    expect(computePuntBounce({ backspin: false }, () => 0)).toBeCloseTo(PUNT_BOUNCE_MIN_YARDS)   // min roll = 4
     expect(computePuntBounce({ backspin: false }, () => 1)).toBeCloseTo(PUNT_BOUNCE_MAX_YARDS)   // max roll = 10
     const r = computePuntBounce({ backspin: false }, noNoise)
     expect(r).toBeGreaterThanOrEqual(PUNT_BOUNCE_MIN_YARDS)
@@ -323,22 +325,22 @@ describe('[35] bounce + backspin interaction', () => {
   const seqRng = (...draws) => { let i = 0; return () => draws[i++] }
 
   it('the net roll is exactly the forward bounce MINUS the backspin pull', () => {
-    // roll draw 0 → 3 yds forward; backspin draw 0.5 → 3 + 0.5*5 = 5.5 yds back → net −2.5
-    expect(computePuntBounce({ backspin: true }, seqRng(0, 0.5))).toBeCloseTo(3 - 5.5)
+    // roll draw 0 → 4 yds forward; backspin draw 0.5 → 3 + 0.5*5 = 5.5 yds back → net −1.5
+    expect(computePuntBounce({ backspin: true }, seqRng(0, 0.5))).toBeCloseTo(4 - 5.5)
     // roll draw 1 → 10 yds forward; backspin draw 0 → 3 yds back → net +7
     expect(computePuntBounce({ backspin: true }, seqRng(1, 0))).toBeCloseTo(10 - 3)
   })
 
   it('for the SAME forward roll, adding backspin always lands the ball shorter', () => {
-    const flat = computePuntBounce({ backspin: false }, seqRng(0.7))           // 3 + 0.7*7 = 7.9
-    const both = computePuntBounce({ backspin: true },  seqRng(0.7, 0.4))      // 7.9 − (3 + 0.4*5) = 7.9 − 5
+    const flat = computePuntBounce({ backspin: false }, seqRng(0.7))           // 4 + 0.7*6 = 8.2
+    const both = computePuntBounce({ backspin: true },  seqRng(0.7, 0.4))      // 8.2 − (3 + 0.4*5) = 8.2 − 5
     expect(both).toBeLessThan(flat)
     expect(flat - both).toBeCloseTo(3 + 0.4 * 5)   // the difference is precisely the backspin pull
   })
 
   it('a strong roll still outruns a weak backspin (net stays forward)', () => {
-    // big roll (0.9 → 9.3) vs a light backspin bite (0.1 → 3.5) → net forward 5.8
-    expect(computePuntBounce({ backspin: true }, seqRng(0.9, 0.1))).toBeCloseTo((3 + 0.9 * 7) - (3 + 0.1 * 5))
+    // big roll (0.9 → 9.4) vs a light backspin bite (0.1 → 3.5) → net forward 5.9
+    expect(computePuntBounce({ backspin: true }, seqRng(0.9, 0.1))).toBeCloseTo((4 + 0.9 * 6) - (3 + 0.1 * 5))
   })
 })
 
@@ -375,8 +377,8 @@ describe('[37] touchback on a deep no-backspin bounce', () => {
   })
 
   it('backspin keeps the ball out of the end zone — it can be downed inside the 8', () => {
-    // lands at the 6; backspin nets a 0-yard roll, so it stays pinned at the 6 and is DOWNED (not a TB)
-    const r = resolvePuntBounce({ airLanding: 6, backspin: true }, () => 0)   // roll 3, backspin pull 3 → net 0
+    // lands at the 6; backspin nets a 1-yard roll, so it stays pinned at the 5 and is DOWNED (not a TB)
+    const r = resolvePuntBounce({ airLanding: 6, backspin: true }, () => 0)   // roll 4, backspin pull 3 → net 1
     expect(r.touchback).toBe(false)
     expect(r.yardLine).toBeLessThan(PUNT_BOUNCE_TOUCHBACK_LINE)   // pinned deep, inside the 8
     expect(r.yardLine).toBeGreaterThan(0)

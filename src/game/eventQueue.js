@@ -1157,8 +1157,8 @@ const DEFAULT_RETURNER_RATING = 75
 //   [30] Fair Catch    → downed at the catch (the air landing), AT the landing spot — no roll, no return.
 //   [31] Return        → run back via computePuntReturn (hang time + returner + punter + randomness);
 //   [32]                 a rare (~1%) breakaway is a return touchdown.
-//   [33] Let It Bounce → the ball rolls 0–10 yds toward the receiving goal; [34] backspin checks it
-//                        back 1–5; a roll into the end zone is a touchback.
+//   [33] Let It Bounce → the ball rolls 4–10 yds toward the receiving goal; [34] backspin checks it
+//                        back 3–8; a roll into the end zone is a touchback.
 // Server-authoritative — an invalid choice falls back to the default. `rng` is injectable for tests.
 // [muff] Returning a punt is a risk; a fair catch is not. Without one, Return was strictly better and
 // nobody ever called a fair catch. On a return the ball is muffed MUFF_CHANCE of the time, and the

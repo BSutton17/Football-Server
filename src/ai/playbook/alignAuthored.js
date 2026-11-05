@@ -159,6 +159,52 @@ const MIN_ZONE_GAP = 2.5
 
 export const SHADES = ['none', 'in', 'out', 'over', 'under']
 
+// ── The field runs out ([red zone]) ─────────────────────────────────────────
+//
+// "When the AI is in the redzone on defense, they are playing way too far off. Safeties are deep in the
+// endzone when everyone should be closer to the line while respecting alignment since nothing can beat them
+// over the top."
+//
+// A spot is the line plus its drawn depth, and the shells are drawn for open field: safeties at 13, deep
+// landmarks at 15 to 20. From the 10 that stood safeties three yards into the end zone and sent them to
+// the back of it, guarding grass no ball can land beyond, with the whole goal line in front of them.
+//
+// So the whole defense squeezes toward the line TOGETHER: every defender's depth is scaled by the same
+// factor, which is what keeps the alignment the shell drew. Who is deeper than whom, every lateral spot and
+// every job are unchanged. A safety is still the deepest man on the field. He is just not on the end line.
+//
+//   body      The deepest man may stand RZ_BODY_BASE + RZ_BODY_PER_YARD per yard to the goal: 13.5 from the
+//             20 (where this starts to matter), 8.5 from the 10, 6 from the 5, 4.5 from the 2.
+//   landmark  Where a zone drops to, the same way, with the deepest landmark at most RZ_LANDMARK_PAST_GOAL
+//             into the end zone. It may still carry a route past that: this is where he waits, not a wall.
+//   floor     Nobody is squeezed tighter than RZ_MIN_DEPTH, or the second level would be on the line.
+//
+// ⚠️ DEEP HELP IS READ OFF THE DRAWN DEPTH. A safety squeezed to eight yards is still the man over the top,
+// so `hasDeepHelp` must not read his new depth, or every Cover 1 in the red zone would count as Cover 0.
+const GOAL_LINE = 100
+const RZ_BODY_BASE = 3.5
+const RZ_BODY_PER_YARD = 0.5
+const RZ_LANDMARK_PAST_GOAL = 3
+const RZ_MIN_DEPTH = 2
+
+export function redZoneSqueeze(spots, assignments, losY) {
+  const toGoal = Math.max(1, GOAL_LINE - losY)
+  let deepestBody = 0, deepestLandmark = 0
+  for (const s of spots ?? []) {
+    if (slotLabel(s.slot) !== 'DL') deepestBody = Math.max(deepestBody, s.depth)
+    const center = assignments?.[s.slot]?.center
+    if (center) deepestLandmark = Math.max(deepestLandmark, center.depth)
+  }
+  const bodyMax = RZ_BODY_BASE + toGoal * RZ_BODY_PER_YARD
+  const landmarkMax = toGoal + RZ_LANDMARK_PAST_GOAL
+  return {
+    body: deepestBody > bodyMax ? bodyMax / deepestBody : 1,
+    landmark: deepestLandmark > landmarkMax ? landmarkMax / deepestLandmark : 1,
+  }
+}
+
+const squeezed = (depth, factor) => (factor === 1 ? depth : Math.max(Math.min(depth, RZ_MIN_DEPTH), depth * factor))
+
 export function readyToAlign(k) {
   return Boolean(k?.offenseSet)
 }
@@ -626,8 +672,13 @@ function deepStructureSlide(rows, receivers, losY, ballX) {
 export function alignAuthored({ formation, shell, receivers, ballX, losY, ready = true, adjust = null }) {
   const spots = formation?.spots ?? []
   const assignments = shell?.assignments ?? {}
+  const squeeze = redZoneSqueeze(spots, assignments, losY)
 
-  const base = spots.map(s => ({
+  const base = spots.map(s => {
+    // The front holds the line wherever the ball is. Everybody else comes up with the field ([red zone]).
+    const depth = slotLabel(s.slot) === 'DL' ? s.depth : squeezed(s.depth, squeeze.body)
+    const center = assignments[s.slot]?.center ?? null
+    return {
     slot: s.slot,
     label: slotLabel(s.slot),
     // ⚠️ AN UNASSIGNED DEFENDER COVERS SOMEBODY — he does not rush. A slot the shell forgot used to
@@ -636,15 +687,17 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
     // exception, because rushing IS their assignment and a shell does not state it.
     job: assignments[s.slot]?.job ?? (slotLabel(s.slot) === 'DL' ? 'rush' : 'man'),
     dx: s.dx,
-    depth: s.depth,
+    depth,
+    drawnDepth: s.depth,
     x: ballX + s.dx,
-    y: losY + s.depth,
+    y: losY + depth,
     zone: assignments[s.slot]?.zone ?? null,
-    zoneCenter: assignments[s.slot]?.center ?? null,
+    zoneCenter: center && squeeze.landmark !== 1 ? { ...center, depth: squeezed(center.depth, squeeze.landmark) } : center,
     shade: 'none',
     pressing: false,
     covers: null,
-  }))
+    }
+  })
 
   // ⚠️ Not ready is not a failure — it is the normal state while the offense is still setting.
   if (!ready || !receivers?.length) return base
@@ -670,7 +723,7 @@ export function alignAuthored({ formation, shell, receivers, ballX, losY, ready 
   const blitzing = isBlitz(shell)
   const forced = shell?.forcedLeverage ?? null
   // Somebody deep enough to be help. Without one, nobody may shade anything but UNDER.
-  const hasDeepHelp = base.some(d => d.job === 'zone' && d.zone === 'deep' && d.depth >= 10)
+  const hasDeepHelp = base.some(d => d.job === 'zone' && d.zone === 'deep' && d.drawnDepth >= 10)
 
   const pairs = pairMan(base.filter(d => d.job === 'man'), receivers, ballX)
   const zonePairs = pairUnderneathZones(base, receivers, losY, ballX)

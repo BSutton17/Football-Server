@@ -173,6 +173,18 @@ export const PAUSE_RECONNECT_WINDOW_MS = 10 * 60 * 1000
 // enough to answer a text or take a short call, not long enough to strand them for ten minutes.
 export const AUTO_PAUSE_RECONNECT_WINDOW_MS = 3 * 60 * 1000
 
+// ── A punt that lands ([punt roll]) ──────────────────────────────────────────
+//
+// Here rather than in game/kickEngine.js so the computer can reason about the same numbers the ball
+// settles on: ai/ may not import from game/ (aiBoundary.test.js), and a copy would be free to drift.
+//
+// A punt with no backspin that lands rolls this far toward the receiving goal.
+export const PUNT_BOUNCE_MIN_YARDS = 4
+export const PUNT_BOUNCE_MAX_YARDS = 10
+// [37] With no backspin, coming to rest inside the receiving team's own N is treated as having carried into
+// the end zone: a touchback.
+export const PUNT_BOUNCE_TOUCHBACK_LINE = 8
+
 // ── Committed man coverage ([man commit]) ────────────────────────────────────
 //
 // A man defender normally holds whatever leverage he happened to align with and plays it honestly.
