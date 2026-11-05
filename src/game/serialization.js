@@ -112,6 +112,8 @@ export function serializeGameState(state, viewerSlot) {
     // rather than a frozen-looking one with no explanation.
     paused: isPlayerPaused(state),
     pausedByYou: isPlayerPaused(state) && state.pausedBy === viewerSlot,
+    // [quick leave] The SERVER called it because somebody stepped away, rather than a player asking.
+    pausedAuto: isPlayerPaused(state) && state.pauseWasAutomatic === true,
 
     score:    getScoreFor(state, viewerSlot),
     // [70] Timeouts remaining, viewer-relative (own = this player's team). Both counts sync to both

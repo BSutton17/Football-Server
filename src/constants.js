@@ -168,6 +168,10 @@ export function clampQuarterMinutes(minutes) {
 // interrupting a game, so while it is up a disconnected player's seat is held far longer than the
 // usual reconnect window — a locked phone must not end the match.
 export const PAUSE_RECONNECT_WINDOW_MS = 10 * 60 * 1000
+// [quick leave] How long an ONLINE game waits for a player who dropped without choosing to pause. A
+// real person is sitting on the other end, so it is shorter than the deliberate pause above -- long
+// enough to answer a text or take a short call, not long enough to strand them for ten minutes.
+export const AUTO_PAUSE_RECONNECT_WINDOW_MS = 3 * 60 * 1000
 
 // ── Committed man coverage ([man commit]) ────────────────────────────────────
 //

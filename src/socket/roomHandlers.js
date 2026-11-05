@@ -1,10 +1,12 @@
 import { createRoom, joinRoom, leaveRoomBySlot, updateSocketId, getRoom } from '../game/roomManager.js';
 import { updatePlayer } from '../game/playerRegistry.js';
-import { createSession, markDisconnected, reconnect, getTokenBySocketId, getSlotByToken, invalidateSession, getTokensByRoomId, setSessionRole } from '../game/sessionManager.js';
+import { createSession, markDisconnected, reconnect, getTokenBySocketId, getSlotByToken, invalidateSession, getTokensByRoomId, setSessionRole, otherSessionAway } from '../game/sessionManager.js';
 import { getGame, deleteGame } from '../game/gameState.js';
 import { isPlayerPaused, beginPlayerPause, isAutoPaused, resumePlayerPause } from '../game/pause.js';
 import { isSoloRoom } from '../ai/timing.js';
-import { PAUSE_RECONNECT_WINDOW_MS } from '../constants.js';
+import { PAUSE_RECONNECT_WINDOW_MS, AUTO_PAUSE_RECONNECT_WINDOW_MS } from '../constants.js';
+import { PHASE } from '../game/stateMachine.js';
+import { isManualPlay, releaseGo } from '../game/manual.js';
 import { stopGameLoop } from '../game/simulation.js';
 import { serializeGameState } from '../game/serialization.js';
 import { repairAfterResume } from '../game/resumeRepair.js';
@@ -17,6 +19,44 @@ const CODE_RE = /^\d{4}$/;   // 4-digit numeric room code
 
 function isValidCode(roomId) {
   return typeof roomId === 'string' && CODE_RE.test(roomId);
+}
+
+// ── Stepping away ([quick leave]) ────────────────────────────────────────────
+//
+// "Ensure the game survives quick leaves like swiping up and answering a text or leaving the app for a
+// few moments." Holds the game the moment a player goes, and lets it go the moment they are back.
+//
+// ⚠️ THE HOLD HAS TO BEAT THE DISCONNECT. A phone suspending an app does not close its socket; the
+// server finds out when a ping goes unanswered, up to fifteen seconds later, and the computer happily
+// runs a whole play to nobody in that time. So the client says `app_hidden` as it leaves, and the
+// disconnect path below remains as the backstop for when it could not.
+function holdForAbsentPlayer(io, roomId, slot) {
+  const state = getGame(roomId);
+  if (!state || state.phase === PHASE.GAME_OVER) return false;
+  if (isPlayerPaused(state)) return false;
+  // A finger that left with GO held down is never going to lift it: nothing would ever freeze the
+  // play again once it resumed. Let go on their behalf first, so the pause lands on a frozen board.
+  if (state.phase === PHASE.LIVE && isManualPlay(state)) releaseGo(state, io);
+  if (!beginPlayerPause(state, slot, { automatic: true })) return false;
+
+  const room = getRoom(roomId);
+  room?.players.forEach((socketId, s) => {
+    if (socketId) io.to(socketId).emit('game_paused', { byYou: s === slot, auto: true });
+  });
+  return true;
+}
+
+// Lifts a hold the server called. A pause a player ASKED for is left alone: stepping away is what it
+// was for. Neither does one player returning release a game held for another who is still gone.
+export function releaseAbsenceHold(io, roomId, token) {
+  const live = getGame(roomId);
+  if (!isAutoPaused(live) || otherSessionAway(roomId, token)) return false;
+  if (!resumePlayerPause(live)) return false;
+  io.to(roomId).emit('game_resumed');
+  const repaired = repairAfterResume(live, io, roomId);
+  console.log(`[room] ${roomId} resumed — the player is back` +
+    (repaired.length ? ` — repaired: ${repaired.join('; ')}` : ''));
+  return true;
 }
 
 export function registerRoomHandlers(io, socket) {
@@ -118,7 +158,19 @@ export function registerRoomHandlers(io, socket) {
       return;
     }
 
-    const { roomId, slot } = session;
+    const { roomId, slot, previousSocketId } = session;
+
+    // [quick leave] The connection this token used to be on is dead but nobody has told the server
+    // yet. Retire it here, and clear its room first: its `disconnect` handler would otherwise find no
+    // session under its id and announce `opponent_left`, which tells the other client the game is over.
+    if (previousSocketId) {
+      const old = io.sockets?.sockets?.get?.(previousSocketId);
+      if (old) {
+        old.data.roomId = null;
+        old.leave?.(roomId);
+        old.disconnect?.(true);
+      }
+    }
 
     // The token resolved, but the room it points at may be gone (game ended/abandoned, or it was
     // never anything but a stale token from a previous game). Without a room AND either an active
@@ -161,15 +213,7 @@ export function registerRoomHandlers(io, socket) {
     //
     // Only the AUTOMATIC one. A pause the player actually asked for must survive their phone dropping,
     // or stepping away would cost them the thing they stepped away for.
-    {
-      const live = getGame(roomId);
-      if (isAutoPaused(live) && resumePlayerPause(live)) {
-        io.to(roomId).emit('game_resumed');
-        const repaired = repairAfterResume(live, io, roomId);
-        console.log(`[solo] ${roomId} resumed on reconnect` +
-          (repaired.length ? ` — repaired: ${repaired.join('; ')}` : ''));
-      }
-    }
+    releaseAbsenceHold(io, roomId, token);
 
     // If the room is still in team selection, drop the player back onto the select screen with the
     // current picks restored; otherwise restore the live game state ([268] reconnect support).
@@ -198,6 +242,23 @@ export function registerRoomHandlers(io, socket) {
     console.log(`[room] ${socket.id} reconnected to ${roomId} as ${role}`);
   });
 
+  // ── Stepping away ([quick leave]) ────────────────────────────────────────────
+  // The app went to the background / came back with its connection intact. Only a seated human: the
+  // token is what proves it, and a socket that holds none has no game to hold.
+  socket.on('app_hidden', () => {
+    const { roomId } = socket.data;
+    const token = roomId ? getTokenBySocketId(socket.id) : null;
+    if (!token) return;
+    holdForAbsentPlayer(io, roomId, getSlotByToken(token));
+  });
+
+  socket.on('app_visible', () => {
+    const { roomId } = socket.data;
+    const token = roomId ? getTokenBySocketId(socket.id) : null;
+    if (!token) return;
+    releaseAbsenceHold(io, roomId, token);
+  });
+
   // ── Disconnect ───────────────────────────────────────────────────────────────
   socket.on('disconnect', (reason) => {
     const { roomId } = socket.data;
@@ -220,7 +281,14 @@ export function registerRoomHandlers(io, socket) {
         console.log(`[room] session expired — ${expiredRoomId} slot ${slot} abandoned`);
       }, {
         isPaused: () => isPlayerPaused(getGame(roomId)),
-        pausedWindowMs: PAUSE_RECONNECT_WINDOW_MS,
+        // [quick leave] A computer has nowhere to be, so a solo game waits the full ten minutes. A
+        // person on the other end of an online game gets three, unless the pause was asked for.
+        pausedWindowMs: () => {
+          const held = getGame(roomId);
+          return isAutoPaused(held) && !isSoloRoom(held)
+            ? AUTO_PAUSE_RECONNECT_WINDOW_MS
+            : PAUSE_RECONNECT_WINDOW_MS;
+        },
       });
 
       // [offline] In a SOLO room the other seat is a computer, which will happily keep snapping and
@@ -231,10 +299,10 @@ export function registerRoomHandlers(io, socket) {
       // ⚠️ `slot` IS NOT IN SCOPE HERE — it is the expiry callback's parameter above. Naming it bare
       // threw a ReferenceError on every solo disconnect, and an uncaught throw in a socket handler
       // takes down the whole process: every room on the server, not just this one.
-      const soloState = getGame(roomId);
-      if (isSoloRoom(soloState) && !isPlayerPaused(soloState)) {
-        beginPlayerPause(soloState, getSlotByToken(token), { automatic: true });
-        console.log(`[solo] ${roomId} held — the human dropped, so the computer stops playing`);
+      // [quick leave] An ONLINE game now holds too. The other player used to keep snapping against an
+      // empty side of the ball for thirty seconds, and then lose the game when the window closed.
+      if (holdForAbsentPlayer(io, roomId, getSlotByToken(token))) {
+        console.log(`[room] ${roomId} held — a player dropped`);
       }
 
       socket.to(roomId).emit('opponent_disconnected');

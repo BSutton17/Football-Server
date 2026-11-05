@@ -28,7 +28,9 @@ export function markDisconnected(token, onExpired, opts = {}) {
   if (!session) return false;
 
   const isPaused       = opts.isPaused ?? (() => false);
-  const pausedWindowMs = opts.pausedWindowMs ?? RECONNECT_WINDOW_MS;
+  // [quick leave] A number, or a function when the window depends on WHY the game is held: a pause a
+  // player asked for and one the server called while they answer a text are held for different lengths.
+  const pausedWindow   = opts.pausedWindowMs ?? RECONNECT_WINDOW_MS;
 
   session.active = false;
   session.socketId = null;
@@ -39,7 +41,9 @@ export function markDisconnected(token, onExpired, opts = {}) {
     if (!sessions.has(token) || session.active) return;
 
     const elapsed = Date.now() - session.disconnectedAt;
-    const limit   = isPaused() ? pausedWindowMs : RECONNECT_WINDOW_MS;
+    const limit   = isPaused()
+      ? (typeof pausedWindow === 'function' ? pausedWindow() : pausedWindow)
+      : RECONNECT_WINDOW_MS;
 
     if (elapsed >= limit) {
       sessions.delete(token);
@@ -53,11 +57,20 @@ export function markDisconnected(token, onExpired, opts = {}) {
   return true;
 }
 
-// Match an incoming reconnect token to a pending session.
-// Returns session data on success, null if token is unknown or already active.
+// Match an incoming reconnect token to its session. Returns session data, or null if the token is
+// unknown.
+//
+// ⚠️ A SESSION STILL MARKED ACTIVE IS TAKEN OVER, NOT REFUSED. Swiping out of the app can kill the
+// connection without closing it, and the server only notices when a ping goes unanswered -- up to
+// fifteen seconds later. A player back from answering a text inside that window presented a valid
+// token, was told `reconnect_failed`, and lost the game for being quick. The token is the credential;
+// holding it IS being this player. `previousSocketId` names the dead connection so the caller can
+// retire it (see reconnect_to_room).
 export function reconnect(token, newSocketId) {
   const session = sessions.get(token);
-  if (!session || session.active) return null;
+  if (!session) return null;
+
+  const previousSocketId = session.active && session.socketId !== newSocketId ? session.socketId : null;
 
   clearTimeout(session.expiryTimer);
   session.socketId = newSocketId;
@@ -65,7 +78,16 @@ export function reconnect(token, newSocketId) {
   session.expiryTimer = null;
   delete session.disconnectedAt;
 
-  return { roomId: session.roomId, slot: session.slot, role: session.role };
+  return { roomId: session.roomId, slot: session.slot, role: session.role, previousSocketId };
+}
+
+// Is anyone else in this room currently away? A game held for one absent player must not be released
+// because a different one came back.
+export function otherSessionAway(roomId, token) {
+  for (const [t, session] of sessions) {
+    if (t !== token && session.roomId === roomId && !session.active) return true;
+  }
+  return false;
 }
 
 // Keep a session's recorded role in step with the game. The role a player is GIVEN at kickoff is
