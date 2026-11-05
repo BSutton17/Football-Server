@@ -44,7 +44,7 @@ function freshSeed() {
 // `controller` is optional and is the AI's brain — an object with `onEvent(event, payload)`. Left
 // out, the seat is a silent placeholder that occupies slot 1 and locks a team but never plays,
 // which is exactly what Phase 0 needs to prove the plumbing before there is anything to think with.
-export function createSoloRoom(io, humanSocket, { roomId, mode, difficulty, seed = null, controller = null, aiRoster = null, aiTeamId = null, season = null, seasonSnapshot = null } = {}) {
+export function createSoloRoom(io, humanSocket, { roomId, mode, difficulty, seed = null, controller = null, aiRoster = null, aiTeamId = null, season = null, seasonSnapshot = null, openingOffenseSlot = null } = {}) {
   const gameSeed = seed ?? freshSeed()
   const rng      = makeRng(gameSeed)
 
@@ -86,6 +86,14 @@ export function createSoloRoom(io, humanSocket, { roomId, mode, difficulty, seed
 
   ai.data.roomId = roomId
   updatePlayer(ai.id, { roomId })
+
+  // [seasons] A game coming back from a save already knows who has the ball. Announcing the room's own
+  // coin toss first and correcting it afterwards leaves a window in which the client believes it is on
+  // the wrong side, and takes the computer's offense for its own players (see onPlayerPlaced).
+  if (openingOffenseSlot != null) {
+    const seated = getRoom(roomId)
+    if (seated) seated.offenseSlot = openingOffenseSlot
+  }
 
   // ── Roles + team selection ────────────────────────────────────────────────
   beginTeamSelect(roomId)

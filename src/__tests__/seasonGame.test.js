@@ -175,6 +175,10 @@ describe('[seasons] a game, end to end', () => {
     expect(back.sent('season_game_start')[0].payload.resuming).toBe(true)
     const success = io.of('reconnect_success').at(-1).payload
     expect(success.role).toBe('defense')
+    // ⚠️ AND FROM THE VERY FIRST MESSAGE. The room's own coin toss must never be announced on the way:
+    // in that window the client took the computer's offense for its own players and re-placed them on
+    // defense, and a Denver tight end sacked Denver's quarterback.
+    expect(back.sent('roles_assigned').map(m => m.payload.role)).toEqual(['defense'])
     expect(back.data.role).toBe('defense')
   })
 

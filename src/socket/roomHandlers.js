@@ -88,6 +88,9 @@ export function rejoinRoom(io, socket, token) {
     if (old) {
       old.data.roomId = null;
       old.leave?.(roomId);
+      // Heard only if that connection is really still alive, which means this game was just opened
+      // on another device. Otherwise it would sit on "Reconnecting…" for ever.
+      old.emit?.('session_taken_over');
       old.disconnect?.(true);
     }
   }

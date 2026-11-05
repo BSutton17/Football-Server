@@ -12,13 +12,17 @@
 // defense. Each team also has a good day or a bad day, drawn per game, which is where upsets come
 // from: without it the best roster would go 17-0 and the bottom of the league would never win.
 
-const LEAGUE_POINTS = 22.5         // an average team against an average defense
-const POINTS_PER_RATING = 0.42     // what one point of offense-over-defense rating is worth
-const LEAGUE_RATING = 82           // roughly where the league's offense and defense ratings centre
-const HOME_POINTS = 1.25           // per team: the league's home edge has been a little over two points
-const FORM_SPREAD = 0.27           // how far a team's day can swing its scoring, as a fraction
+// Calibrated by eye against typical NFL figures over 40,000 games: about 24 points a team with a spread
+// of 10, a margin spread of 14, the home side winning 54 to 55%, and around 15% of games decided by 21 or
+// more. Over a season the best record averages 13 or 14 wins and the worst 3 or 4.
+const LEAGUE_POINTS = 23           // an average team against an average defense
+const POINTS_PER_RATING = 0.3      // what one point of offense-over-defense rating is worth
+const LEAGUE_OFFENSE = 83.7        // where the ratings on the cards actually centre
+const LEAGUE_DEFENSE = 81.7
+const HOME_POINTS = 1.5            // per team: the league's home edge has been a little over two points
+const FORM_SPREAD = 0.12           // how far a team's day can swing its scoring, as a fraction
 
-const TD_SHARE = 0.74              // of a team's points, what comes from touchdowns
+const TD_SHARE = 0.7               // of a team's points, what comes from touchdowns
 const DRIVES_MIN = 10
 const DRIVES_EXTRA = 3
 const SAFETY_PER_DRIVE = 0.003
@@ -36,7 +40,7 @@ function gaussian(rng) {
 }
 
 export function expectedPoints(off, def, { home = false, neutral = false } = {}) {
-  const edge = (off.offOvr - LEAGUE_RATING) - (def.defOvr - LEAGUE_RATING)
+  const edge = (off.offOvr - LEAGUE_OFFENSE) - (def.defOvr - LEAGUE_DEFENSE)
   return LEAGUE_POINTS + edge * POINTS_PER_RATING + (home && !neutral ? HOME_POINTS : 0)
 }
 

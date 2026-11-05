@@ -185,6 +185,10 @@ async function playSeasonGame(io, socket, payload) {
   // A save belongs to the game it was made in. One left over from anything else is ignored.
   const save = await getStore().getGameSave(season._id)
   const snapshot = save?.gameId === game.id && save.version === SNAPSHOT_VERSION ? save.snapshot : null
+  let openingOffenseSlot = null
+  if (snapshot) {
+    try { openingOffenseSlot = JSON.parse(snapshot).state?.possession ?? null } catch { /* hydrate reports it */ }
+  }
 
   await saveSeason(season)
 
@@ -208,6 +212,7 @@ async function playSeasonGame(io, socket, payload) {
       roundName: game.round != null ? { 1: 'Wild Card', 2: 'Divisional', 3: 'Conference Championship', 4: 'Super Bowl' }[game.round] : null,
     },
     seasonSnapshot: snapshot,
+    openingOffenseSlot,
   })
   if (created.error) return fail(socket, 'server_error', 'The game could not be started. Please try again.')
 
