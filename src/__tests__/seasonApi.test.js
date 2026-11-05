@@ -1,3 +1,4 @@
+import { TEAMS } from '../season/teams.js'
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from '@jest/globals'
 import express from 'express'
 import { createServer } from 'node:http'
@@ -207,9 +208,13 @@ describe('[seasons] the API', () => {
 
   it('⚠️ A TROPHY OUTLIVES THE SAVE IT WAS WON IN', async () => {
     const token = await signIn()
+    // ⚠️ THE BEST TEAM IN THE LEAGUE, BECAUSE SEEDS ARE RANDOM. A season's seed cannot be set from out here, so
+    // this sims until somebody wins it all. It named one mid-pack favorite, and now and then sixty seasons
+    // went by without a title and a test about trophies failed for no reason to do with trophies.
+    const best = TEAMS.reduce((a, b) => (b.ovr > a.ovr ? b : a)).id
     let trophyAt = null
     for (let i = 0; i < 60 && trophyAt == null; i++) {
-      const id = (await call('POST', '/season/new', { token, body: { slot: 0, teamId: 'SF', replace: true } })).body.season.id
+      const id = (await call('POST', '/season/new', { token, body: { slot: 0, teamId: best, replace: true } })).body.season.id
       let view, guard = 0
       do {
         view = (await call('POST', `/season/${id}/sim`, { token })).body.season
@@ -222,7 +227,7 @@ describe('[seasons] the API', () => {
     const before = (await call('GET', '/season/home', { token })).body
     expect(before.trophies.length).toBeGreaterThanOrEqual(1)
     expect(before.trophies[0].numeral).toBe('LXI')
-    expect(before.trophies[0].teamId).toBe('SF')
+    expect(before.trophies[0].teamId).toBe(best)
 
     await call('DELETE', `/season/${trophyAt.id}`, { token })
     const after = (await call('GET', '/season/home', { token })).body

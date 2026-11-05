@@ -1,4 +1,6 @@
-import { PUNT_BOUNCE_MIN_YARDS, PUNT_BOUNCE_MAX_YARDS, PUNT_BOUNCE_TOUCHBACK_LINE } from '../constants.js'
+import {
+  PUNT_BOUNCE_MIN_YARDS, PUNT_BOUNCE_MAX_YARDS, PUNT_BOUNCE_TOUCHBACK_LINE, PUNT_BACKSPIN_MIN, PUNT_BACKSPIN_MAX,
+} from '../constants.js'
 
 // ── The unified kicking engine ([Special Teams][6][15][16][17]) ─────────────────
 //
@@ -127,10 +129,7 @@ export function computeKick(
 // type. `yardLine` is the spot (offense-relative); `requiredDistance` is the FG/XP distance to clear.
 // [33] A bounced (Let It Bounce) punt rolls forward 4 to 10 yards toward the receiving goal ([punt roll], the
 // numbers live in constants.js).
-export { PUNT_BOUNCE_MIN_YARDS, PUNT_BOUNCE_MAX_YARDS, PUNT_BOUNCE_TOUCHBACK_LINE }
-// [34] Backspin pulls the downed spot BACK by a random amount in this range after the bounce.
-export const PUNT_BACKSPIN_MIN = 3
-export const PUNT_BACKSPIN_MAX = 8
+export { PUNT_BOUNCE_MIN_YARDS, PUNT_BOUNCE_MAX_YARDS, PUNT_BOUNCE_TOUCHBACK_LINE, PUNT_BACKSPIN_MIN, PUNT_BACKSPIN_MAX }
 // [23] A full deflection (|finalAngle| = 1) launches the punt at this angle off straight; the punt's
 // total distance then splits into a downfield (cos) and lateral (sin) component.
 const PUNT_MAX_ANGLE_RAD = (30 * Math.PI) / 180

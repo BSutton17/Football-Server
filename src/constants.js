@@ -184,6 +184,9 @@ export const PUNT_BOUNCE_MAX_YARDS = 10
 // [37] With no backspin, coming to rest inside the receiving team's own N is treated as having carried into
 // the end zone: a touchback.
 export const PUNT_BOUNCE_TOUCHBACK_LINE = 8
+// [34] Backspin then pulls the ball back by this much.
+export const PUNT_BACKSPIN_MIN = 3
+export const PUNT_BACKSPIN_MAX = 8
 
 // ── Committed man coverage ([man commit]) ────────────────────────────────────
 //

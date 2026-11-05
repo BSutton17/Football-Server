@@ -3,8 +3,8 @@ import { createTrainingGame, destroyTrainingGame, applySituation } from '../trai
 import { beginSpecialTeams, serializeSpecialTeams, KICK, ST_PHASE } from '../game/specialTeams.js'
 import { RULES } from '../constants.js'
 
-// [punt roll] "The AI should be able to return or let it bounce. If the play will result in a touchback, they
-// should let it bounce, otherwise they should return it."
+// [punt roll] "It should let it bounce when it thinks it will be a touchback. In other words it should take the
+// decision that it thinks will result in the most yards."
 //
 // ⚠️ THROUGH THE REAL BRAIN, WITH THE REAL PAYLOAD. The bug here was a contract one: the computer read
 // field names the server never sends, so a test handing it a hand-made object would have passed all along.
@@ -48,7 +48,7 @@ describe('[punt roll] the computer receiving a punt', () => {
   })
 
   it('⚠️ A CERTAIN TOUCHBACK IS LEFT ALONE, and it takes the ball at the 20', () => {
-    for (const landing of [3, 9, 11]) {
+    for (const landing of [3, 9, 11, 12]) {
       const ctx = puntAtTheComputer(landing)
       try {
         deliverToReceiver(ctx)
@@ -57,6 +57,30 @@ describe('[punt roll] the computer receiving a punt', () => {
         expect(ctx.state.possession).toBe(1)
       } finally { destroyTrainingGame(ctx) }
     }
+  })
+
+  it('⚠️ A LIKELY TOUCHBACK IS LEFT ALONE TOO, and sometimes the bet does not come in', () => {
+    const outcomes = new Set()
+    for (let seed = 1; seed <= 60; seed++) {
+      const ctx = puntAtTheComputer(13, { seed })
+      try {
+        deliverToReceiver(ctx)
+        const { detail } = lastResult(ctx)
+        // Never fielded: a touchback, or downed where the roll stopped. `detail` is null for the second.
+        expect(['touchback', null]).toContain(detail)
+        outcomes.add(detail)
+      } finally { destroyTrainingGame(ctx) }
+    }
+    expect(outcomes.has('touchback')).toBe(true)
+    expect(outcomes.has(null)).toBe(true)
+  })
+
+  it('with backspin on it, very deep, it still plays for the touchback', () => {
+    const ctx = puntAtTheComputer(1, { backspin: true })
+    try {
+      deliverToReceiver(ctx)
+      expect(['touchback', null]).toContain(lastResult(ctx).detail)
+    } finally { destroyTrainingGame(ctx) }
   })
 
   it('⚠️ ANYTHING ELSE IS FIELDED AND RUN BACK', () => {
@@ -74,7 +98,7 @@ describe('[punt roll] the computer receiving a punt', () => {
     expect(returned).toBeGreaterThan(30)
   })
 
-  it('backspin could stop it short, so even a ball landing deep is fielded', () => {
+  it('a backspin ball that will sit down short of a touchback is fielded', () => {
     const ctx = puntAtTheComputer(6, { backspin: true })
     try {
       deliverToReceiver(ctx)

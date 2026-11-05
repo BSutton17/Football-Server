@@ -17,7 +17,9 @@
 // if it was meant the other way.
 
 import { yardsToGoal, scoreMargin } from './knowledge.js'
-import { PUNT_BOUNCE_MIN_YARDS, PUNT_BOUNCE_TOUCHBACK_LINE } from '../constants.js'
+import {
+  RULES, PUNT_BOUNCE_MIN_YARDS, PUNT_BOUNCE_MAX_YARDS, PUNT_BOUNCE_TOUCHBACK_LINE, PUNT_BACKSPIN_MIN, PUNT_BACKSPIN_MAX,
+} from '../constants.js'
 
 export const XP_MAKE_CHANCE = 0.99
 export const FG_BLOCK_CHANCE = 0.01
@@ -80,21 +82,64 @@ export function fieldGoalChance(kickDistance) {
 
 // ── Punt returns ──────────────────────────────────────────────────────────────
 //
-// "If the play will result in a touchback, they should let it bounce, otherwise they should return it."
+// "It should let it bounce when it thinks it will be a touchback. In other words it should take the decision
+// that it thinks will result in the most yards."
 //
-// WILL, not might: the roll has not happened and nobody can see it, so this asks whether the SHORTEST roll
-// still ends in a touchback, in which case every roll does. Measured from the ball's landing spot and the
-// league's own rule in constants.js. With no backspin that is anything landing inside the own 12. Backspin can
-// check the ball up short of the goal line wherever it lands, so a touchback is never certain and the
-// answer is to go and get it. Backspin is on the kicker's public strike, so this is nothing a human
-// receiver cannot see: the same control is drawn on their screen.
-export function bounceIsCertainTouchback(landingYardLine, backspin = false) {
-  return !backspin && landingYardLine - PUNT_BOUNCE_MIN_YARDS < PUNT_BOUNCE_TOUCHBACK_LINE
+// So each choice is priced as where it expects the next snap to be, and the better one is taken. All in the
+// returning team's frame: higher is better.
+//
+// ⚠️ IT EXPECTS, IT DOES NOT KNOW. The roll has not happened when this is asked, and it must not be read in
+// advance. Everything here is what a human receiver has on their own screen: the landing spot, the hang time
+// and the backspin control.
+//
+// A fair catch is never the answer: it stays where it lands, and an average return does better than that.
+// A muffed return and a return touchdown are left out of the price. Both are rare and they push in opposite
+// directions, and "the most yards" is the question asked.
+
+// A bounce, averaged over the rolls it could take, by the same rules resolvePuntBounce settles it on
+// (aiPuntReturn.test.js holds the two together).
+const ROLL_STEPS = 60
+const PULL_STEPS = 50
+
+export function expectedBounceSpot(landingYardLine, backspin = false) {
+  const restSpot = (rest) => {
+    if (rest <= 0 || (!backspin && rest < PUNT_BOUNCE_TOUCHBACK_LINE)) return RULES.TOUCHBACK_YARD_LINE
+    return Math.max(1, Math.min(99, rest))
+  }
+  // ⚠️ THE MIDDLE OF EACH STEP, NOT ITS EDGES. Sampling the ends of the range weighs them too heavily, and a
+  // touchback is a cliff, and it sits right where this decision is close.
+  let total = 0, count = 0
+  for (let r = 0; r < ROLL_STEPS; r++) {
+    const roll = PUNT_BOUNCE_MIN_YARDS + ((r + 0.5) / ROLL_STEPS) * (PUNT_BOUNCE_MAX_YARDS - PUNT_BOUNCE_MIN_YARDS)
+    if (!backspin) { total += restSpot(landingYardLine - roll); count++; continue }
+    for (let p = 0; p < PULL_STEPS; p++) {
+      const pull = PUNT_BACKSPIN_MIN + ((p + 0.5) / PULL_STEPS) * (PUNT_BACKSPIN_MAX - PUNT_BACKSPIN_MIN)
+      total += restSpot(landingYardLine - (roll - pull))
+      count++
+    }
+  }
+  return total / count
 }
 
-export function puntReturnChoice(landingYardLine, backspin = false) {
-  // `landingYardLine` is where the ball comes down, measured from the RETURNING team's own goal.
-  return bounceIsCertainTouchback(landingYardLine, backspin) ? 'let_it_bounce' : 'return'
+// What a return gains on average, measured from computePuntReturn: a line drive gets you nearly five yards
+// and a high punt lets the coverage arrive, down to just under three. The punter's leg moves this by a tenth
+// or two and a receiver cannot see it, so the league's usual punter stands in.
+const RETURN_YARDS_LOW_HANG = 4.75
+const RETURN_YARDS_HIGH_HANG = 2.85
+const RETURN_LOW_HANG = 1.6
+const RETURN_HIGH_HANG = 4.6
+const USUAL_HANG = 3
+
+export function expectedReturnYards(hangTime = USUAL_HANG) {
+  const t = clamp01((hangTime - RETURN_LOW_HANG) / (RETURN_HIGH_HANG - RETURN_LOW_HANG))
+  return RETURN_YARDS_LOW_HANG + t * (RETURN_YARDS_HIGH_HANG - RETURN_YARDS_LOW_HANG)
+}
+
+// `landingYardLine` is where the ball comes down, measured from the RETURNING team's own goal.
+export function puntReturnChoice(landingYardLine, backspin = false, hangTime = USUAL_HANG) {
+  return expectedBounceSpot(landingYardLine, backspin) > landingYardLine + expectedReturnYards(hangTime)
+    ? 'let_it_bounce'
+    : 'return'
 }
 
 // ── Fourth down: the expected-points model ───────────────────────────────────────
@@ -390,7 +435,7 @@ export function specialTeamsAction(k, rng = Math.random) {
   if (st.returnDecision && !st.kicking) {
     return {
       event: 'punt_return_choice',
-      payload: { option: puntReturnChoice(st.result?.landingYardLine ?? 50, !!st.backspin) },
+      payload: { option: puntReturnChoice(st.result?.landingYardLine ?? 50, !!st.backspin, st.result?.hangTime) },
     }
   }
 

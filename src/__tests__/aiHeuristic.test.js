@@ -6,8 +6,10 @@ import { expandShell, canCover } from '../ai/assignments.js'
 import { SHELLS } from '../ai/playbook/coverages.js'
 import { CONCEPTS, assignRoutes } from '../ai/playbook/concepts.js'
 import { FORMATIONS, legalSpot, personnelFor, layout } from '../ai/playbook/formations.js'
-import { fieldGoalChance, puntReturnChoice, fourthDownChoice, specialTeamsAction } from '../ai/specialTeams.js'
-import { resolvePuntBounce } from '../game/kickEngine.js'
+import {
+  fieldGoalChance, puntReturnChoice, fourthDownChoice, specialTeamsAction, expectedBounceSpot, expectedReturnYards,
+} from '../ai/specialTeams.js'
+import { resolvePuntBounce, computePuntReturn } from '../game/kickEngine.js'
 import { ROUTE_TYPES } from '../constants.js'
 import { makeRng } from '../game/utils/rng.js'
 
@@ -356,28 +358,61 @@ describe('special teams', () => {
     }
   })
 
-  // "If the play will result in a touchback, they should let it bounce, otherwise they should return it."
-  it('lets it bounce when every roll is a touchback, and returns it otherwise', () => {
+  // "It should take the decision that it thinks will result in the most yards."
+  it('lets it bounce where a touchback is the better bet, including when it is only likely', () => {
     expect(puntReturnChoice(5)).toBe('let_it_bounce')
     expect(puntReturnChoice(11)).toBe('let_it_bounce')
-    expect(puntReturnChoice(11.9)).toBe('let_it_bounce')
-    expect(puntReturnChoice(12)).toBe('return')       // a 4-yard roll stops on the 8, which is in play
+    expect(puntReturnChoice(12)).toBe('let_it_bounce')   // every roll is a touchback
+    expect(puntReturnChoice(13)).toBe('let_it_bounce')   // not every roll, but 83% of them: 18.1 against 16.9
+    expect(puntReturnChoice(14)).toBe('return')          // 67%: 16.3 against 17.9
     expect(puntReturnChoice(40)).toBe('return')
   })
 
-  it('backspin can always check it up short, so a touchback is never certain', () => {
+  it('backspin is a real decision too: very deep, a touchback is still worth playing for', () => {
+    expect(puntReturnChoice(1, true)).toBe('let_it_bounce')
+    expect(puntReturnChoice(2, true)).toBe('let_it_bounce')
     expect(puntReturnChoice(5, true)).toBe('return')
     expect(puntReturnChoice(40, true)).toBe('return')
   })
 
-  it('⚠️ THE RULE AGREES WITH THE BALL: what it calls certain is a touchback on every roll', () => {
-    for (let landing = 1; landing < 12; landing += 0.5) {
-      for (const roll of [0, 0.25, 0.5, 0.75, 1]) {
-        expect(resolvePuntBounce({ airLanding: landing, backspin: false }, () => roll).touchback).toBe(true)
+  it('a high punt leaves less to return, which can tip a close one', () => {
+    expect(expectedReturnYards(1.6)).toBeGreaterThan(expectedReturnYards(4.6))
+    expect(puntReturnChoice(3, true, 1.6)).toBe('return')
+    expect(puntReturnChoice(3, true, 4.6)).toBe('let_it_bounce')
+  })
+
+  it('⚠️ IT TAKES WHICHEVER IS WORTH MORE, everywhere on the field', () => {
+    for (const backspin of [false, true]) {
+      for (let landing = 1; landing <= 70; landing += 0.5) {
+        const bounce = expectedBounceSpot(landing, backspin)
+        const ret = landing + expectedReturnYards(3)
+        expect(puntReturnChoice(landing, backspin, 3)).toBe(bounce > ret ? 'let_it_bounce' : 'return')
       }
     }
-    // And just past the line, the shortest roll stays in play: it really was not certain.
-    expect(resolvePuntBounce({ airLanding: 12, backspin: false }, () => 0).touchback).toBe(false)
+  })
+
+  // ⚠️ The computer may not import the game, so it prices both choices from its own copy of the rules. These
+  // are what stop that copy drifting away from what the ball actually does.
+  it('⚠️ ITS PRICE FOR A BOUNCE IS WHAT THE BALL REALLY AVERAGES', () => {
+    const rng = makeRng(11)
+    const n = 40000
+    for (const backspin of [false, true]) {
+      for (const landing of [1, 3, 5, 9, 12, 13, 14, 16, 18, 25, 50]) {
+        let total = 0
+        for (let i = 0; i < n; i++) total += resolvePuntBounce({ airLanding: landing, backspin }, rng).yardLine
+        expect(Math.abs(expectedBounceSpot(landing, backspin) - total / n)).toBeLessThan(0.25)
+      }
+    }
+  })
+
+  it('⚠️ ITS PRICE FOR A RETURN IS WHAT A RETURN REALLY AVERAGES', () => {
+    const rng = makeRng(12)
+    const n = 60000
+    for (const hangTime of [1.6, 2.5, 3, 3.5, 4, 4.6]) {
+      let total = 0
+      for (let i = 0; i < n; i++) total += computePuntReturn({ hangTime, returnerRating: 75, punterPower: 75 }, rng).yards
+      expect(Math.abs(expectedReturnYards(hangTime) - total / n)).toBeLessThan(0.3)
+    }
   })
 
   it('⚠️ IT ANSWERS THE MENU THE SERVER ACTUALLY SENDS, which it never did', () => {
@@ -390,6 +425,9 @@ describe('special teams', () => {
     expect(specialTeamsAction(k({}))?.payload.option).toBe('return')
     expect(specialTeamsAction(k({ result: { landingYardLine: 9 } }))?.payload.option).toBe('let_it_bounce')
     expect(specialTeamsAction(k({ result: { landingYardLine: 9 }, backspin: true }))?.payload.option).toBe('return')
+    // Hang time reaches the decision: this one turns on it.
+    expect(specialTeamsAction(k({ result: { landingYardLine: 3, hangTime: 1.6 }, backspin: true }))?.payload.option).toBe('return')
+    expect(specialTeamsAction(k({ result: { landingYardLine: 3, hangTime: 4.6 }, backspin: true }))?.payload.option).toBe('let_it_bounce')
     // The kicking team is never shown the menu, and with no menu up there is nothing to answer.
     expect(specialTeamsAction(k({ returnDecision: null }))).toBeNull()
   })
