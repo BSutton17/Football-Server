@@ -14,9 +14,10 @@ import { PHASE } from './stateMachine.js'
 
 export const SNAPSHOT_VERSION = 1
 
-// Timers, the generator (a closure), who is paused, and where this particular process has got to.
+// Timers, the generator (a closure), who is paused, and where this particular process has got to. And
+// `season`, which is rebuilt when the room is opened and is too big to write on every play.
 const SKIP = new Set([
-  'rng', 'roomId', 'nextPlayTimer', 'nextPlayDueAt', 'countdownTimers', 'countdownDueAt', 'countdownToken',
+  'rng', 'season', 'roomId', 'nextPlayTimer', 'nextPlayDueAt', 'countdownTimers', 'countdownDueAt', 'countdownToken',
   'phaseSince', 'stoppageSince', 'stoppage', 'pauseInterrupted', 'pausedBy', 'pauseWasAutomatic',
 ])
 

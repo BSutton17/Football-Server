@@ -18,9 +18,14 @@ import { TEAM } from './teams.js'
 import { simGame } from './simGame.js'
 import { buildTable, conferenceSeeds, standingsView } from './standings.js'
 import { superBowlNumber, superBowlNumeral } from './calendar.js'
+import {
+  emptyLedger, bookSimulatedGame, bookPlayedGame, backfillStats, leadersView, teamStatsView,
+} from './seasonStats.js'
+import { computeAwards } from './awards.js'
 
 export const LAST_REGULAR_WEEK = 18
 export const SCREEN = {
+  AWARDS: 'awards',
   MADE_PLAYOFFS: 'made_playoffs',
   MISSED_PLAYOFFS: 'missed_playoffs',
   ELIMINATED: 'eliminated',
@@ -61,6 +66,9 @@ export function createSeason({ id, userId, slot, teamId, settings, schedule, see
     screens: [],
     // The game they have started and not finished. It can be resumed, never simulated or replayed.
     activeGameId: null,
+    // Every player's numbers for the year ([season stats]) and, once they are given, the league's awards.
+    stats: emptyLedger(),
+    awards: null,
   }
 }
 
@@ -99,6 +107,7 @@ function simulate(season, game) {
     gameRng(season, game.id),
   )
   finalize(game, result, 'sim')
+  bookSimulatedGame(season, game)
 }
 
 // ── Moving the season on ─────────────────────────────────────────────────
@@ -145,6 +154,10 @@ function beginPlayoffs(season) {
   const seeds = { AFC: conferenceSeeds('AFC', table, tieRng), NFC: conferenceSeeds('NFC', table, tieRng) }
   season.playoffs = { seeds, round: 1, games: [], champion: null, conferenceChampions: {} }
   season.phase = 'playoffs'
+
+  // [awards] Before a playoff snap, as the real ballots are. It is the first thing the player sees.
+  season.awards = computeAwards(season)
+  season.screens.push({ type: SCREEN.AWARDS })
 
   // #1 has the week off. Then 2 v 7, 3 v 6, 4 v 5, the higher seed at home.
   for (const conf of ['AFC', 'NFC']) {
@@ -265,7 +278,8 @@ export function beginGame(season, gameId) {
 }
 
 // A played game has finished. `us` and `them` are the player's and the opponent's points.
-export function recordUserGame(season, gameId, { us, them, usTds = 0, themTds = 0, overtime = false }) {
+// `box` is the engine's own count of what everybody did ([season stats]), in roster ids.
+export function recordUserGame(season, gameId, { us, them, usTds = 0, themTds = 0, overtime = false, box = null }) {
   const game = findGame(season, gameId)
   if (!game) return { error: 'Unknown game.' }
   if (game.status === 'final') return { error: 'That game has already been recorded.' }
@@ -282,6 +296,8 @@ export function recordUserGame(season, gameId, { us, them, usTds = 0, themTds = 
     awayTds: isHome ? themTds : usTds,
     overtime,
   }, 'user')
+  if (box) bookPlayedGame(season, game, box)
+  else bookSimulatedGame(season, game)
   season.activeGameId = null
   finishPeriod(season)
   return { ok: true }
@@ -289,6 +305,17 @@ export function recordUserGame(season, gameId, { us, them, usTds = 0, themTds = 
 
 export function acknowledgeScreen(season) {
   season.screens.shift()
+}
+
+// A save from before season stats and awards. Its games get lines from their final scores. If it is already
+// past the regular season the awards are decided now, without interrupting it with a ceremony.
+export function upgradeSeason(season) {
+  let changed = backfillStats(season)
+  if (season.phase !== 'regular' && !season.awards) {
+    season.awards = computeAwards(season)
+    changed = true
+  }
+  return changed
 }
 
 // ── What the screens need ────────────────────────────────────────────────
@@ -340,5 +367,8 @@ export function seasonView(season) {
     roundName: season.playoffs ? ROUND_NAMES[season.playoffs.round] : null,
     standings: standingsView(season.games, gameRng(season, 'standings')),
     superBowl: { number: superBowlNumber(season.year), numeral: superBowlNumeral(season.year) },
+    awards: season.awards ?? null,
+    leaders: leadersView(season),
+    teamStats: teamStatsView(season, season.teamId),
   }
 }

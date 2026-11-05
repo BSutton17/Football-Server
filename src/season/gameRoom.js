@@ -21,6 +21,7 @@ import { startGameFromSelection } from '../socket/teamSelectHandlers.js'
 import { rejoinRoom } from '../socket/roomHandlers.js'
 import { TEAM } from './teams.js'
 import { beginGame, currentUserGame, seasonView } from './season.js'
+import { boxFromEngine, totalsForGame } from './seasonStats.js'
 import { loadOwned, saveSeason, recordPlayedGame } from './service.js'
 import { setSeasonRoom, seasonRoomOf, forgetSeasonRoom, closeRoom, closeSeasonRoomFor } from './rooms.js'
 
@@ -87,6 +88,8 @@ async function finishGame(state, io, roomId) {
     usTds: state.touchdowns?.[0] ?? 0,
     themTds: state.touchdowns?.[1] ?? 0,
     overtime: !!state.overtime,
+    // [season stats] What everybody actually did, as the engine counted it.
+    box: state.season.teams ? boxFromEngine(state.stats, state.season.teams) : null,
   }
   saves.delete(seasonId)   // anything still queued describes a game that is over
 
@@ -210,6 +213,10 @@ async function playSeasonGame(io, socket, payload) {
       superBowl: game.round === 4,
       week: game.week ?? null,
       roundName: game.round != null ? { 1: 'Wild Card', 2: 'Divisional', 3: 'Conference Championship', 4: 'Super Bowl' }[game.round] : null,
+      // [season stats] Who is in each seat, and everybody's year so far for the SEASON graphic. Fixed for
+      // the game. Never sent to the client as it is, and rebuilt rather than saved on a resume.
+      teams: [season.teamId, opponent],
+      totals: totalsForGame(season, [season.teamId, opponent]),
     },
     seasonSnapshot: snapshot,
     openingOffenseSlot,

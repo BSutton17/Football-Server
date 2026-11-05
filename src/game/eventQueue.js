@@ -2,7 +2,7 @@ import { PHASE, transition } from './stateMachine.js'
 import { noteEvent, endPlay, recordKick } from '../analytics/playLog.js'
 import {
   recordAttempt, recordCompletion, recordPassYards, recordRush, recordTackle, recordSack,
-  recordInterception, recordTouchdown, serializeStats,
+  recordInterception, recordPassDefended, recordTouchdown, serializeStats,
 } from './stats.js'
 import { observePlay, adjustmentsFor, describeAdjustments } from '../ai/playcall/tendencies.js'
 import { isSoloRoom } from '../ai/timing.js'
@@ -409,6 +409,10 @@ function onThrow({ receiverId, x, y }, state, io) {
   recordPassOutcome(state, qb, { outcome, tier, deep, receiverId, airYards }, io)
   recordReceiverOutcome(state, receiver, { outcome, reason, tier, deep, airYards }, io)
   recordDefenderOutcome(state, guardingDB, { outcome, reason, tier }, io)
+  // [stats] A break-up belongs to the man covering him. The recorder has always existed; nothing called it.
+  if (outcome === 'incomplete' && reason === 'broken_up' && guardingDB) {
+    recordPassDefended(state.stats, { defender: defensePlayer(state, guardingDB.id) })
+  }
 
   if (outcome === 'complete') {
     deliverPassOutcome(state, io, {
@@ -528,6 +532,10 @@ function onInterception({ catcherId, x, y }, state, io) {
     passer: state.statsPasser,
   })
   const catcher = catcherId ? state.defensePlayers.get(catcherId) : null
+
+  // [spotlight] Decided now, with the pick on his line. Shown when the ball is next spotted, however the
+  // return ends. The return itself never earns a second graphic: it does not go through the run path.
+  if (catcher) maybeSpotlight(state, io, { kind: 'interception', interceptor: defensePlayer(state, catcherId) })
 
   // No defender to take it (shouldn't happen) — settle immediately as a turnover at the spot.
   if (!catcher) { settleInterception(state, io, x, y); return }

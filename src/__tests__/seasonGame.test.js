@@ -18,6 +18,8 @@ import { installSeasonHooks, registerSeasonHandlers, canSaveAndQuit } from '../s
 import { seasonRoomOf, closeSeasonRoomFor, forgetSeasonRoom } from '../season/rooms.js'
 import { createNewSeason, recordPlayedGame, setScheduleFetcher } from '../season/service.js'
 import { currentUserGame } from '../season/season.js'
+import { ROSTER as LEAGUE } from '../season/rosters.js'
+import { recordRush } from '../game/stats.js'
 
 // ── The whole path: sign in, start a game, autosave, lose the server, resume, finish ──
 
@@ -217,6 +219,26 @@ describe('[seasons] a game, end to end', () => {
     expect(played.by).toBe('user')
     expect(stored.activeGameId).toBeNull()
     expect(await getStore().getGameSave(season._id)).toBeNull()
+  })
+
+  it('⚠️ WHAT HAPPENED IN THE GAME GOES ON THE PLAYERS\' YEARS, for both clubs', async () => {
+    const state = await startGame()
+    const [mine, theirs] = state.season.teams
+    const myBack = LEAGUE[mine].rb[0]
+    const theirQb = LEAGUE[theirs].qb
+    recordRush(state.stats, { runner: { id: myBack.id, slot: 0, label: 'RB' }, yards: 61 })
+    recordRush(state.stats, { runner: { id: 'auto_qb', slot: 1, label: 'QB' }, yards: 14 })
+    await finishGameAt(state, [31, 10])
+    await waitFor(() => io.of('season_game_final').length)
+    const stored = await getStore().getSeason(season._id)
+    expect(stored.stats.regular[myBack.id].rushYards).toBe(61)
+    expect(stored.stats.regular[theirQb.id].rushYards).toBe(14)
+  })
+
+  it('⚠️ A PLAYER\'S YEAR NEVER REACHES THE CLIENT IN THE GAME STATE', async () => {
+    const state = await startGame()
+    expect(state.season.totals).toBeTruthy()
+    expect(serializeGameState(state, 0).season.totals).toBeUndefined()
   })
 
   it('⚠️ A FINISHED GAME CANNOT BE PLAYED AGAIN, and cannot be rematched', async () => {

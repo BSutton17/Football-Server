@@ -361,16 +361,16 @@ describe('[seasons] how a season ends', () => {
     const s = playAll(fullSeason('KC'), { winAll: true })
     expect(s.finish).toBe('champion')
     expect(s.playoffs.champion).toBe('KC')
-    expect(screensOf(s)).toEqual([SCREEN.MADE_PLAYOFFS, SCREEN.CONFERENCE_CHAMPION, SCREEN.SUPER_BOWL_CHAMPION])
-    expect(s.screens[1].conference).toBe('AFC')
-    expect(s.screens[0].seed).toBe(1)
-    expect(s.screens[0].bye).toBe(true)
+    expect(screensOf(s)).toEqual([SCREEN.AWARDS, SCREEN.MADE_PLAYOFFS, SCREEN.CONFERENCE_CHAMPION, SCREEN.SUPER_BOWL_CHAMPION])
+    expect(s.screens[2].conference).toBe('AFC')
+    expect(s.screens[1].seed).toBe(1)
+    expect(s.screens[1].bye).toBe(true)
   })
 
   it('⚠️ LOSING OUT: the season is over, and the playoffs still finish without them', () => {
     const s = playAll(fullSeason('KC'), { winAll: false })
     expect(s.finish).toBe('missed')
-    expect(screensOf(s)).toEqual([SCREEN.MISSED_PLAYOFFS])
+    expect(screensOf(s)).toEqual([SCREEN.AWARDS, SCREEN.MISSED_PLAYOFFS])
     expect(s.phase).toBe('complete')
     expect(s.playoffs.champion).not.toBe('KC')
     expect(s.playoffs.champion).toBeTruthy()
@@ -393,14 +393,14 @@ describe('[seasons] how a season ends', () => {
     expect(s.finish).toBe('eliminated')
     expect(s.phase).toBe('complete')
     expect(s.playoffs.champion).not.toBe('KC')
-    expect(s.screens.map(x => x.type)).toEqual([SCREEN.MADE_PLAYOFFS, SCREEN.ELIMINATED])
+    expect(s.screens.map(x => x.type)).toEqual([SCREEN.AWARDS, SCREEN.MADE_PLAYOFFS, SCREEN.ELIMINATED])
   })
 
   it('a screen is cleared once acknowledged', () => {
     const s = playAll(fullSeason('KC'), { winAll: true })
     acknowledgeScreen(s)
-    expect(s.screens).toHaveLength(2)
-    expect(s.screens[0].type).toBe(SCREEN.CONFERENCE_CHAMPION)
+    expect(s.screens).toHaveLength(3)
+    expect(s.screens[0].type).toBe(SCREEN.MADE_PLAYOFFS)
   })
 
   it('the view carries what the client draws', () => {

@@ -12,11 +12,13 @@
 // defense. Each team also has a good day or a bad day, drawn per game, which is where upsets come
 // from: without it the best roster would go 17-0 and the bottom of the league would never win.
 
-// Calibrated by eye against typical NFL figures over 40,000 games: about 24 points a team with a spread
-// of 10, a margin spread of 14, the home side winning 54 to 55%, and around 15% of games decided by 21 or
-// more. Over a season the best record averages 13 or 14 wins and the worst 3 or 4.
+// ⚠️ A BETTER OFFENSE SCORES MORE AGAINST A WORSE DEFENSE, AND THE BETTER TEAM WINS MORE OFTEN. Never
+// always. Calibrated by eye against typical NFL figures over 40,000 games: about 24 points a team with a
+// spread of 10, a margin spread of 14, the home side winning 54 to 55%, around 15% of games decided by 21
+// or more. The widest OVR gap in the league (LAR 90 against NYJ 74) wins about 85% on a neutral field,
+// which is what a two-touchdown favorite wins in the real league.
 const LEAGUE_POINTS = 23           // an average team against an average defense
-const POINTS_PER_RATING = 0.3      // what one point of offense-over-defense rating is worth
+const POINTS_PER_RATING = 0.43     // what one point of offense-over-defense rating is worth
 const LEAGUE_OFFENSE = 83.7        // where the ratings on the cards actually centre
 const LEAGUE_DEFENSE = 81.7
 const HOME_POINTS = 1.5            // per team: the league's home edge has been a little over two points

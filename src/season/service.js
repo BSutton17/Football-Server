@@ -8,7 +8,7 @@ import { GAME_MODE, DIFFICULTY, clampQuarterMinutes } from '../constants.js'
 import { isTeam } from './teams.js'
 import { seasonYearFor, superBowlNumeral } from './calendar.js'
 import { fetchSchedule } from './schedule.js'
-import { createSeason, recordOf, playoffRecordOf, simCurrent, acknowledgeScreen, recordUserGame, findGame } from './season.js'
+import { createSeason, recordOf, playoffRecordOf, simCurrent, acknowledgeScreen, recordUserGame, findGame, upgradeSeason } from './season.js'
 import bundled2026 from './data/schedule2026.js'
 
 export const SAVE_SLOTS = 3
@@ -60,7 +60,9 @@ function normalizeSettings(raw) {
 export async function loadOwned(userId, seasonId) {
   if (typeof seasonId !== 'string') return null
   const season = await getStore().getSeason(seasonId)
-  return season && season.userId === userId ? season : null
+  if (!season || season.userId !== userId) return null
+  if (upgradeSeason(season)) await saveSeason(season)
+  return season
 }
 
 export async function saveSeason(season, now = new Date()) {

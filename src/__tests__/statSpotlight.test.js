@@ -4,9 +4,10 @@ import { createStats, recordRush, recordSack } from '../game/stats.js'
 import { makeRng } from '../game/utils/rng.js'
 
 // [spotlight] The requested rules, each checked as stated:
-//   run  > 5 yds: 50% -> 75% runner / 25% tackler
-//   pass > 8 yds: 60% -> 45% receiver / 45% passer / 10% tackler
+//   run  > 5 yds: 50%, the runner
+//   pass > 8 yds: 60%, half the receiver and half the passer
 //   sack: always, the sacker
+//   interception: always, the man who got it (seasonStats.test.js)
 //   and nothing until both teams have had the ball.
 
 const rb = { id: 'rb1', slot: 0, label: 'RB' }
@@ -37,19 +38,19 @@ describe('the thresholds are "more than"', () => {
 })
 
 describe('the odds', () => {
-  it('run: 50% shown, of which 75% the runner and 25% the tackler', () => {
+  it('run: 50% shown, and it is the runner', () => {
     const s = shares({ kind: 'run', yards: 12, carrier: rb, tackler: lb })
     expect(s.none).toBeCloseTo(0.5, 1)
-    expect(s.rusher).toBeCloseTo(0.375, 1)
-    expect(s.tackler).toBeCloseTo(0.125, 1)
+    expect(s.rusher).toBeCloseTo(0.5, 1)
+    expect(s.tackler ?? 0).toBe(0)
   })
 
-  it('pass: 60% shown, of which 45% receiver, 45% passer, 10% tackler', () => {
+  it('pass: 60% shown, half the receiver and half the passer', () => {
     const s = shares({ kind: 'pass', yards: 15, carrier: wr, passer: qb, tackler: lb })
     expect(s.none).toBeCloseTo(0.4, 1)
-    expect(s.receiver).toBeCloseTo(0.27, 1)
-    expect(s.passer).toBeCloseTo(0.27, 1)
-    expect(s.tackler).toBeCloseTo(0.06, 1)
+    expect(s.receiver).toBeCloseTo(0.3, 1)
+    expect(s.passer).toBeCloseTo(0.3, 1)
+    expect(s.tackler ?? 0).toBe(0)
   })
 
   it('tackle for loss: 50%, and it is the tackler — on a run or a catch behind the line', () => {
@@ -69,9 +70,8 @@ describe('the odds', () => {
     expect(s.sacker).toBe(1)
   })
 
-  it('with nobody to call the tackler (out of bounds, a touchdown) it shows the ball carrier', () => {
-    const rng = (() => { const seq = [0, 0.99]; let i = 0; return () => seq[i++ % 2] })()
-    expect(chooseSpotlight({ kind: 'run', yards: 9, carrier: rb, tackler: null }, rng).role).toBe('rusher')
+  it('with no tackler (out of bounds, a touchdown) it is the ball carrier all the same', () => {
+    expect(chooseSpotlight({ kind: 'run', yards: 9, carrier: rb, tackler: null }, () => 0).role).toBe('rusher')
   })
 })
 
