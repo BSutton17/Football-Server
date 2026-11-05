@@ -4,6 +4,7 @@ import { registerTeamSelectHandlers } from './teamSelectHandlers.js';
 import { registerPlayer, removePlayer, getConnectedCount } from '../game/playerRegistry.js';
 import { createSoloRoom } from '../ai/solo.js';
 import { bridgeIo } from '../ai/seats.js';
+import { installSeasonHooks, registerSeasonHandlers } from '../season/gameRoom.js';
 
 const CODE_RE = /^\d{4}$/;
 
@@ -11,6 +12,7 @@ export function registerSocketHandlers(io) {
   // [offline] Wrap io ONCE so emits can also reach virtual (AI) seats. With no AI seats registered
   // this is a pass-through, so every online game is unaffected.
   const bridged = bridgeIo(io);
+  installSeasonHooks();
 
   bridged.on('connection', (socket) => {
     registerPlayer(socket.id);
@@ -19,6 +21,7 @@ export function registerSocketHandlers(io) {
     registerRoomHandlers(bridged, socket);
     registerTeamSelectHandlers(bridged, socket);
     registerGameHandlers(bridged, socket);
+    registerSeasonHandlers(bridged, socket);
 
     // [offline] Solo games get their own event rather than a flag on create_room, so the ordinary
     // two-player path is untouched and cannot be changed by a malformed payload.

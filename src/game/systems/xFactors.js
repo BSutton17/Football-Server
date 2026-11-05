@@ -129,6 +129,53 @@ function ensureStore(state) {
   return state.xFactors
 }
 
+// Which team a player on the field is on. Possession swaps; the two field maps swap with it.
+function slotOfPlayer(state, player) {
+  if (state.offensePlayers?.get?.(player.id) === player) return state.possession
+  if (state.defensePlayers?.get?.(player.id) === player) return 1 - state.possession
+  return null
+}
+
+// ⚠️ THE QUARTERBACK'S ID IS THE SAME ON BOTH TEAMS. The auto-placed line and quarterback are literally
+// `auto_qb`, `auto_ol_lt` on each side (see the same note in stats.js), and records were keyed by bare
+// id. So both quarterbacks shared ONE record -- one's completions counted toward the other's ability
+// -- and the moment one earned his, `auto_qb` went into the active list and the client drew a star on
+// both. The computer's quarterback carries no X-Factor at all, and he lit up anyway.
+//
+// Reported as "I think there is a glitch where even those who do not have an X-Factor turn into a star".
+const SHARED_ID_PREFIX = 'auto_'
+
+function recordKey(state, player) {
+  if (!String(player.id).startsWith(SHARED_ID_PREFIX)) return player.id
+  const slot = slotOfPlayer(state, player)
+  return slot == null ? player.id : `${slot}:${player.id}`
+}
+
+// ── Home field ([seasons]) ───────────────────────────────────────────────────
+//
+// "In season mode only, to simulate what it is like having home field advantage, the players that
+// qualify for an X-Factor should get theirs slightly easier ... around a 5% boost or so."
+//
+// Most earn conditions are small counts -- two touchdowns, three contested catches -- and 5% of those
+// rounds to nothing. So: yardage requirements come down by 5%, and each play that counts toward a count
+// has a 5% chance of counting twice. Whichever team is at home, the computer included. Nobody has it
+// at a neutral site, which is every Super Bowl and the international games.
+export const HOME_EDGE = 0.05
+
+function hasHomeEdge(state, player) {
+  const s = state.season
+  if (!s || s.neutral || s.homeSlot == null) return false
+  return slotOfPlayer(state, player) === s.homeSlot
+}
+
+function earnYards(state, player, yards) {
+  return hasHomeEdge(state, player) ? yards * (1 - HOME_EDGE) : yards
+}
+
+function progressStep(state, player) {
+  return hasHomeEdge(state, player) && rngOf(state)() < HOME_EDGE ? 2 : 1
+}
+
 export function findOffenseQB(state) {
   if (!state.offensePlayers) return null
   for (const p of state.offensePlayers.values()) {
@@ -142,9 +189,12 @@ export function findOffenseQB(state) {
 function getRecord(state, player, create = true) {
   if (!player?.xFactor) return null
   const m = ensureStore(state)
-  let r = m.get(player.id)
+  const key = recordKey(state, player)
+  let r = m.get(key)
   if (!r && create) {
     r = {
+      playerId:              player.id,
+      slot:                  slotOfPlayer(state, player),
       ability:               player.xFactor,
       active:                false,
       lostThisHalf:          false,   // once lost early, can't be re-earned until the half resets
@@ -189,7 +239,7 @@ function getRecord(state, player, create = true) {
       // ── DB loss tracking (only while active) ──
       dbCatchesAllowed:      0,
     }
-    m.set(player.id, r)
+    m.set(key, r)
   }
   return r ?? null
 }
@@ -281,17 +331,19 @@ function checkEarn(state, player, r, io) {
 //   outcome: 'complete' | 'incomplete' | 'intercepted'
 //   tier:    'open' | 'covered' | 'smothered'  (covered = contested, smothered = heavily contested)
 //   deep:    boolean
-export function recordPassOutcome(state, qb, { outcome, tier, deep, receiverId }, io) {
+export function recordPassOutcome(state, qb, { outcome, tier, deep, receiverId, airYards = null }, io) {
   const r = getRecord(state, qb)
   if (!r) return
 
   if (outcome === 'complete') {
     r.consecIncompletions = 0
-    r.completionStreak    += 1
+    r.completionStreak    += progressStep(state, qb)
     if (receiverId) r.receivers.add(receiverId)
+    // [seasons] A different receiver is a set, so a throw counting twice is one extra name in it.
+    if (progressStep(state, qb) === 2) r.receivers.add(`home-edge-${r.receivers.size}`)
     if (tier === 'smothered') r.heavyContestedComplete = true
-    else if (tier === 'covered') r.contestedCompletions += 1
-    if (deep) r.deepCompletions += 1
+    else if (tier === 'covered') r.contestedCompletions += progressStep(state, qb)
+    if (deep || (airYards != null && airYards >= earnYards(state, qb, DEEP_YARDS))) r.deepCompletions += progressStep(state, qb)
     checkEarn(state, qb, r, io)
   } else if (outcome === 'incomplete') {
     r.completionStreak     = 0
@@ -310,14 +362,14 @@ export function recordPassOutcome(state, qb, { outcome, tier, deep, receiverId }
 export function recordScramble(state, qb, yards, io) {
   const r = getRecord(state, qb)
   if (!r) return
-  if (yards >= SCRAMBLE_EARN_YARDS) { r.scrambleEarned = true; checkEarn(state, qb, r, io) }
+  if (yards >= earnYards(state, qb, SCRAMBLE_EARN_YARDS)) { r.scrambleEarned = true; checkEarn(state, qb, r, io) }
 }
 
 // A passing touchdown (the universal 2-TD earn path).
 export function recordPassingTouchdown(state, qb, io) {
   const r = getRecord(state, qb)
   if (!r) return
-  r.passTds += 1
+  r.passTds += progressStep(state, qb)
   checkEarn(state, qb, r, io)
 }
 
@@ -326,19 +378,20 @@ export function recordPassingTouchdown(state, qb, io) {
 // A throw resolved with `receiver` as the TARGET. Drives WR earn progress (catches, classified by
 // contested/heavily-contested + deep) and the WR loss triggers (drops).
 //   reason: 'caught' | 'drop' (his hands) | 'broken_up' (the coverage) | 'overthrown' / 'inaccurate' (the passer) | 'intercepted'
-export function recordReceiverOutcome(state, receiver, { outcome, reason, tier, deep }, io) {
+export function recordReceiverOutcome(state, receiver, { outcome, reason, tier, deep, airYards = null }, io) {
   const r = getRecord(state, receiver)
   if (!r) return
 
   if (outcome === 'complete') {
-    r.wrCatchStreak += 1
+    const deepEnough = deep || (airYards != null && airYards >= earnYards(state, receiver, DEEP_YARDS))
+    r.wrCatchStreak += progressStep(state, receiver)
     r.wrDropsInARow  = 0
     if (tier === 'smothered') {
       r.wrHeavyCatch = true
-      if (deep) r.wrHeavyDeepCatch = true
+      if (deepEnough) r.wrHeavyDeepCatch = true
     } else if (tier === 'covered') {
-      r.wrContestedCatches += 1
-      if (deep) r.wrContestedDeepCatches += 1
+      r.wrContestedCatches += progressStep(state, receiver)
+      if (deepEnough) r.wrContestedDeepCatches += progressStep(state, receiver)
     }
     checkEarn(state, receiver, r, io)
   } else if (outcome === 'incomplete') {
@@ -381,8 +434,12 @@ export function recordRun(state, carrier, { yards, firstDown }, io) {
   const r = getRecord(state, carrier)
   if (!r) return
 
-  if (yards >= SHIFTY_LONG_RUN_EARN) r.rbLongRun = true
-  if (firstDown) { r.rbFirstDowns += 1; r.rbFirstDownsDrive += 1 }
+  if (yards >= earnYards(state, carrier, SHIFTY_LONG_RUN_EARN)) r.rbLongRun = true
+  if (firstDown) {
+    const step = progressStep(state, carrier)
+    r.rbFirstDowns += step
+    r.rbFirstDownsDrive += step
+  }
 
   if (yards <= 0) {
     r.rbNonPositiveRuns += 1
@@ -454,7 +511,7 @@ export function recordDefenderOutcome(state, db, { outcome, reason, tier }, io) 
     checkEarn(state, db, r, io)
   } else if (outcome === 'incomplete' && reason === 'broken_up') {
     // A defended incompletion is a pass break-up; a 'drop' (open-window miss) is not.
-    r.dbPbus += 1
+    r.dbPbus += progressStep(state, db)
     checkEarn(state, db, r, io)
   }
 }
@@ -475,9 +532,15 @@ export function onSnapXFactors(state) {
 // [294] Ids of every player whose X-Factor is currently ACTIVE. Sent in game_state so the client can
 // draw the gold star BEFORE the snap as well — the per-tick position updates only carry xfActive
 // during live play, so a placed pre-snap player would otherwise miss it.
-export function activeXFactorIds(state) {
+export function activeXFactorIds(state, slot = null) {
   const ids = []
-  if (state.xFactors) for (const [id, r] of state.xFactors) if (r.active) ids.push(id)
+  if (state.xFactors) {
+    for (const [key, r] of state.xFactors) {
+      if (!r.active) continue
+      if (slot != null && r.slot != null && r.slot !== slot) continue
+      ids.push(r.playerId ?? key)
+    }
+  }
   return ids
 }
 
@@ -488,7 +551,7 @@ export function applyXFactorFlags(state) {
   if (!m) return
   const apply = (p) => {
     if (!p.xFactor) return
-    const r = m.get(p.id)
+    const r = m.get(recordKey(state, p))
     p.xFactorActive = !!r?.active
     if (r?.active) applyPassiveBuff(p, r)
     else           clearPassiveBuff(p)

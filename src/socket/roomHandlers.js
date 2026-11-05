@@ -7,6 +7,13 @@ import { isSoloRoom } from '../ai/timing.js';
 import { PAUSE_RECONNECT_WINDOW_MS, AUTO_PAUSE_RECONNECT_WINDOW_MS } from '../constants.js';
 import { PHASE } from '../game/stateMachine.js';
 import { isManualPlay, releaseGo } from '../game/manual.js';
+import { clearAiSeats } from '../ai/seats.js';
+import { clearQueue } from '../game/eventQueue.js';
+import { seasonRoomExpired } from '../game/seasonHooks.js';
+
+// [seasons] A season game is saved, so nothing is lost when it does expire; holding it for half an hour
+// just means a return inside that time lands on the exact frame instead of the last dead ball.
+const SEASON_HOLD_MS = 30 * 60 * 1000;
 import { stopGameLoop } from '../game/simulation.js';
 import { serializeGameState } from '../game/serialization.js';
 import { repairAfterResume } from '../game/resumeRepair.js';
@@ -57,6 +64,102 @@ export function releaseAbsenceHold(io, roomId, token) {
   console.log(`[room] ${roomId} resumed — the player is back` +
     (repaired.length ? ` — repaired: ${repaired.join('; ')}` : ''));
   return true;
+}
+
+// Put a socket back in the seat a session token holds. Exported for a season game opened on a new
+// connection, which arrives at the same place by a different door.
+export function rejoinRoom(io, socket, token) {
+  if (typeof token !== 'string') return;
+
+  const session = reconnect(token, socket.id);
+
+  if (!session) {
+    socket.emit('reconnect_failed');
+    return;
+  }
+
+  const { roomId, slot, previousSocketId } = session;
+
+  // [quick leave] The connection this token used to be on is dead but nobody has told the server
+  // yet. Retire it here, and clear its room first: its `disconnect` handler would otherwise find no
+  // session under its id and announce `opponent_left`, which tells the other client the game is over.
+  if (previousSocketId) {
+    const old = io.sockets?.sockets?.get?.(previousSocketId);
+    if (old) {
+      old.data.roomId = null;
+      old.leave?.(roomId);
+      old.disconnect?.(true);
+    }
+  }
+
+  // The token resolved, but the room it points at may be gone (game ended/abandoned, or it was
+  // never anything but a stale token from a previous game). Without a room AND either an active
+  // team selection or a live game, there's nothing to rejoin — fail the reconnect so the client
+  // returns to the lobby instead of landing in a 'ready' state with no game (which would make the
+  // first place_player fail with "No active game found"). [268] join-after-stale-token fix.
+  if (!getRoom(roomId) || (!getTeamSelect(roomId) && !getGame(roomId))) {
+    invalidateSession(token);
+    socket.emit('reconnect_failed');
+    return;
+  }
+
+  // [role drift] The session records the role the player was GIVEN at kickoff, but roles swap on
+  // EVERY possession change (notifyRoleSwap in eventQueue.js updates socket.data.role and emits
+  // switch_sides — it never touched the session). Handing back the stored role after a refresh or
+  // a swipe out of the tab therefore put the player on the wrong side of the ball, and since
+  // socket.data.role is exactly what the validators check, every action they took was then
+  // rejected: a soft-lock. Derive the role from the live game with the same formula
+  // notifyRoleSwap uses, and write it back so the session can't drift again.
+  const liveGame = getGame(roomId);
+  const role = liveGame ? (liveGame.possession === slot ? 'offense' : 'defense') : session.role;
+  setSessionRole(token, role);
+
+  // Slot the returning player back into their room
+  updateSocketId(roomId, slot, socket.id);
+
+  socket.join(roomId);
+  socket.data.roomId = roomId;
+  socket.data.role   = role;
+  updatePlayer(socket.id, { roomId, role });
+
+  socket.emit('reconnect_success', { roomId, role, slot });
+  socket.to(roomId).emit('opponent_reconnected');
+
+  // ⚠️ LIFT THE PAUSE THE SERVER CALLED ON THIS PLAYER'S BEHALF. The disconnect handler pauses a
+  // solo game so the computer does not play on to an empty stadium, and its comment has always
+  // promised "Reconnecting resumes it" -- nothing ever did. The player came back to a game frozen on
+  // a stoppage they did not ask for, every button phase-gated into a silent refusal, and no clock
+  // running to get out of it.
+  //
+  // Only the AUTOMATIC one. A pause the player actually asked for must survive their phone dropping,
+  // or stepping away would cost them the thing they stepped away for.
+  releaseAbsenceHold(io, roomId, token);
+
+  // If the room is still in team selection, drop the player back onto the select screen with the
+  // current picks restored; otherwise restore the live game state ([268] reconnect support).
+  const sel = getTeamSelect(roomId);
+  if (sel) {
+    socket.emit('team_select_start', {
+      slot, teamIds: TEAM_IDS,
+      quarterMinutes: getTeamSelect(roomId)?.quarterMinutes,   // [quarter length] restore on reconnect
+      defenseSeesOpenness: getTeamSelect(roomId)?.defenseSeesOpenness,
+    });
+    sel.picks.forEach((teamId, s) => {
+      if (teamId) socket.emit('team_selected', { slot: s, teamId, locked: sel.locked[s] });
+    });
+  } else {
+    const gameState = getGame(roomId);
+    if (gameState) {
+      // Restore BOTH teams' picks so the client recovers team colors, rosters, and names after a
+      // refresh (state.teams = locked team per slot, set when both players locked in).
+      (gameState.teams ?? []).forEach((teamId, s) => {
+        if (teamId) socket.emit('team_selected', { slot: s, teamId, locked: true });
+      });
+      socket.emit('game_state', serializeGameState(gameState, slot));
+    }
+  }
+
+  console.log(`[room] ${socket.id} reconnected to ${roomId} as ${role}`);
 }
 
 export function registerRoomHandlers(io, socket) {
@@ -148,99 +251,7 @@ export function registerRoomHandlers(io, socket) {
   });
 
   // ── Reconnect ────────────────────────────────────────────────────────────────
-  socket.on('reconnect_to_room', (token) => {
-    if (typeof token !== 'string') return;
-
-    const session = reconnect(token, socket.id);
-
-    if (!session) {
-      socket.emit('reconnect_failed');
-      return;
-    }
-
-    const { roomId, slot, previousSocketId } = session;
-
-    // [quick leave] The connection this token used to be on is dead but nobody has told the server
-    // yet. Retire it here, and clear its room first: its `disconnect` handler would otherwise find no
-    // session under its id and announce `opponent_left`, which tells the other client the game is over.
-    if (previousSocketId) {
-      const old = io.sockets?.sockets?.get?.(previousSocketId);
-      if (old) {
-        old.data.roomId = null;
-        old.leave?.(roomId);
-        old.disconnect?.(true);
-      }
-    }
-
-    // The token resolved, but the room it points at may be gone (game ended/abandoned, or it was
-    // never anything but a stale token from a previous game). Without a room AND either an active
-    // team selection or a live game, there's nothing to rejoin — fail the reconnect so the client
-    // returns to the lobby instead of landing in a 'ready' state with no game (which would make the
-    // first place_player fail with "No active game found"). [268] join-after-stale-token fix.
-    if (!getRoom(roomId) || (!getTeamSelect(roomId) && !getGame(roomId))) {
-      invalidateSession(token);
-      socket.emit('reconnect_failed');
-      return;
-    }
-
-    // [role drift] The session records the role the player was GIVEN at kickoff, but roles swap on
-    // EVERY possession change (notifyRoleSwap in eventQueue.js updates socket.data.role and emits
-    // switch_sides — it never touched the session). Handing back the stored role after a refresh or
-    // a swipe out of the tab therefore put the player on the wrong side of the ball, and since
-    // socket.data.role is exactly what the validators check, every action they took was then
-    // rejected: a soft-lock. Derive the role from the live game with the same formula
-    // notifyRoleSwap uses, and write it back so the session can't drift again.
-    const liveGame = getGame(roomId);
-    const role = liveGame ? (liveGame.possession === slot ? 'offense' : 'defense') : session.role;
-    setSessionRole(token, role);
-
-    // Slot the returning player back into their room
-    updateSocketId(roomId, slot, socket.id);
-
-    socket.join(roomId);
-    socket.data.roomId = roomId;
-    socket.data.role   = role;
-    updatePlayer(socket.id, { roomId, role });
-
-    socket.emit('reconnect_success', { roomId, role, slot });
-    socket.to(roomId).emit('opponent_reconnected');
-
-    // ⚠️ LIFT THE PAUSE THE SERVER CALLED ON THIS PLAYER'S BEHALF. The disconnect handler pauses a
-    // solo game so the computer does not play on to an empty stadium, and its comment has always
-    // promised "Reconnecting resumes it" -- nothing ever did. The player came back to a game frozen on
-    // a stoppage they did not ask for, every button phase-gated into a silent refusal, and no clock
-    // running to get out of it.
-    //
-    // Only the AUTOMATIC one. A pause the player actually asked for must survive their phone dropping,
-    // or stepping away would cost them the thing they stepped away for.
-    releaseAbsenceHold(io, roomId, token);
-
-    // If the room is still in team selection, drop the player back onto the select screen with the
-    // current picks restored; otherwise restore the live game state ([268] reconnect support).
-    const sel = getTeamSelect(roomId);
-    if (sel) {
-      socket.emit('team_select_start', {
-        slot, teamIds: TEAM_IDS,
-        quarterMinutes: getTeamSelect(roomId)?.quarterMinutes,   // [quarter length] restore on reconnect
-        defenseSeesOpenness: getTeamSelect(roomId)?.defenseSeesOpenness,
-      });
-      sel.picks.forEach((teamId, s) => {
-        if (teamId) socket.emit('team_selected', { slot: s, teamId, locked: sel.locked[s] });
-      });
-    } else {
-      const gameState = getGame(roomId);
-      if (gameState) {
-        // Restore BOTH teams' picks so the client recovers team colors, rosters, and names after a
-        // refresh (state.teams = locked team per slot, set when both players locked in).
-        (gameState.teams ?? []).forEach((teamId, s) => {
-          if (teamId) socket.emit('team_selected', { slot: s, teamId, locked: true });
-        });
-        socket.emit('game_state', serializeGameState(gameState, slot));
-      }
-    }
-
-    console.log(`[room] ${socket.id} reconnected to ${roomId} as ${role}`);
-  });
+  socket.on('reconnect_to_room', (token) => rejoinRoom(io, socket, token));
 
   // ── Stepping away ([quick leave]) ────────────────────────────────────────────
   // The app went to the background / came back with its connection intact. Only a seated human: the
@@ -272,6 +283,9 @@ export function registerRoomHandlers(io, socket) {
       // to sleep in their pocket should not abandon the match.
       markDisconnected(token, (expiredRoomId, slot) => {
         // Clean up sessions, game state, and loop before notifying the other player
+        seasonRoomExpired(getGame(expiredRoomId), expiredRoomId);
+        clearAiSeats(expiredRoomId);
+        clearQueue(expiredRoomId);
         for (const t of getTokensByRoomId(expiredRoomId)) invalidateSession(t);
         leaveRoomBySlot(expiredRoomId, slot);
         stopGameLoop(expiredRoomId);
@@ -285,6 +299,7 @@ export function registerRoomHandlers(io, socket) {
         // person on the other end of an online game gets three, unless the pause was asked for.
         pausedWindowMs: () => {
           const held = getGame(roomId);
+          if (held?.season) return SEASON_HOLD_MS;
           return isAutoPaused(held) && !isSoloRoom(held)
             ? AUTO_PAUSE_RECONNECT_WINDOW_MS
             : PAUSE_RECONNECT_WINDOW_MS;

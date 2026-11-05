@@ -6,6 +6,9 @@ import { initGame, getGame } from '../game/gameState.js'
 import { startGameLoop } from '../game/simulation.js'
 import { serializeGameState } from '../game/serialization.js'
 import { QUARTER_MINUTES_DEFAULT } from '../constants.js'
+import { hydrateGame } from '../game/snapshot.js'
+import { resumeDeadBall } from '../game/eventQueue.js'
+import { PHASE } from '../game/stateMachine.js'
 
 // Which player slot (0 | 1) a socket occupies in its room, or -1 if not seated.
 function slotOf(roomId, socketId) {
@@ -77,7 +80,7 @@ export function registerTeamSelectHandlers(io, socket) {
 
 // Both players locked — create the authoritative game state (recording each slot's team),
 // start the tick loop, and push everyone into gameplay with a full game_state snapshot.
-function startGameFromSelection(io, roomId) {
+export function startGameFromSelection(io, roomId) {
   const room = getRoom(roomId)
   const sel  = getTeamSelect(roomId)
   if (!room || !sel) return
@@ -96,13 +99,31 @@ function startGameFromSelection(io, roomId) {
   // [offline] A solo room plays by different pre-snap timing rules (ai/timing.js). The flag is set
   // on the ROOM at creation, because the game state does not exist until both teams are locked.
   if (room.solo) markSoloRoom(state)
+  // [seasons] Which game of which season this is, and if it was saved, everything up to the last dead
+  // ball. The score, the clock, who has the ball and everyone's legs all come back from the save.
+  state.season = room.season ?? undefined
+  const resumed = !!(room.seasonSnapshot && hydrateGame(state, room.seasonSnapshot))
+  room.seasonSnapshot = null
   startGameLoop(roomId, io)
 
-  io.to(roomId).emit('team_select_complete', { teams: state.teams })
+  if (resumed) {
+    // No VS screen on the way back into a game. The save decides who has the ball, not the coin toss
+    // made when this room was created, so the seats are told their sides again.
+    room.players.forEach((socketId, slot) => {
+      if (!socketId) return
+      const role = state.possession === slot ? 'offense' : 'defense'
+      const sock = io.sockets?.sockets?.get(socketId)
+      if (sock?.data) sock.data.role = role
+      if (slot === 0) io.to(socketId).emit('reconnect_success', { roomId, role, slot })
+    })
+  } else {
+    io.to(roomId).emit('team_select_complete', { teams: state.teams })
+  }
   room.players.forEach((socketId, slot) => {
     if (!socketId) return
     io.to(socketId).emit('game_state', serializeGameState(getGame(roomId), slot))
   })
+  if (resumed && state.phase === PHASE.DEAD) resumeDeadBall(state, io)
 
   clearTeamSelect(roomId)
   console.log(`[teamselect] ${roomId} both locked → game start (${sel.picks[0]} vs ${sel.picks[1]})`)

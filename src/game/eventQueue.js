@@ -26,6 +26,7 @@ import { opennessBreakdown } from './utils/openness.js'
 import { isManualPlay, beginPassSuspense } from './manual.js'
 import { resolvePass, opennessTier, pressureThrowMods, passerMiss } from './utils/passOutcome.js'
 import { rngOf } from './utils/rng.js'
+import { seasonCheckpoint, seasonGameOver } from './seasonHooks.js'
 import { resetPancakes } from './systems/pancake.js'
 import {
   recordPassOutcome, recordScramble, recordPassingTouchdown,
@@ -405,8 +406,8 @@ function onThrow({ receiverId, x, y }, state, io) {
 
   // [294] Feed the resolved outcome into every involved player's X-Factor progress (earns + losses):
   // the QB, the targeted receiver, and the DB guarding that receiver.
-  recordPassOutcome(state, qb, { outcome, tier, deep, receiverId }, io)
-  recordReceiverOutcome(state, receiver, { outcome, reason, tier, deep }, io)
+  recordPassOutcome(state, qb, { outcome, tier, deep, receiverId, airYards }, io)
+  recordReceiverOutcome(state, receiver, { outcome, reason, tier, deep, airYards }, io)
   recordDefenderOutcome(state, guardingDB, { outcome, reason, tier }, io)
 
   if (outcome === 'complete') {
@@ -856,6 +857,11 @@ function onTouchdown({ scoringSlot, carrierId }, state, io) {
 
   // [51] Six points for the touchdown — the try (extra point or 2-pt) adds the rest.
   state.score[scoringSlot] = (state.score[scoringSlot] ?? 0) + RULES.TD_POINTS
+  // [seasons] Net touchdowns is one of the league's playoff tie-breakers.
+  state.touchdowns ??= [0, 0]
+  state.touchdowns[scoringSlot]++
+  // [overtime] Asked before possession changes below, because a defensive score is a different case.
+  const endsOvertime = touchdownEndsOvertime(state, scoringSlot)
 
   // [51] The SCORING team keeps the ball to attempt the conversion; arm the XP / 2-pt menu. (For a
   // defensive-return TD the scorer was the defense, so possession flips to them for the try.)
@@ -886,6 +892,14 @@ function onTouchdown({ scoringSlot, carrierId }, state, io) {
   }
 
   notifyRoleSwap(state, io)   // possession is now the scoring team (for the try)
+
+  // [overtime] The winning score needs no try.
+  if (endsOvertime) {
+    state.conversionPending = false
+    state.conversionTimer = 0
+    endGame(state, io)
+    return
+  }
 
   console.log(`[game] ${state.roomId} TOUCHDOWN slot ${scoringSlot} (+6) — conversion pending — score ${state.score[0]}-${state.score[1]}`)
   beginNextPlay(state.roomId, io)
@@ -1004,6 +1018,9 @@ function onSafety({ safetySlot }, state, io) {
   }
 
   notifyRoleSwap(state, io)   // [211] possession changed — swap both players' roles (server + client)
+
+  // [overtime] A safety ends overtime on the spot, whoever has or has not had the ball.
+  if (state.overtime) { endSpecialTeams(state); endGame(state, io); return }
 
   console.log(`[game] ${state.roomId} SAFETY slot ${safetySlot} (+2 → slot ${scoringSlot}) — score ${state.score[0]}-${state.score[1]}`)
   beginNextPlay(state.roomId, io)
@@ -1572,7 +1589,7 @@ function onClockExpired(_payload, state, io) {
   }
 
   if (state.quarter >= RULES.QUARTERS) {
-    endGame(state, io)
+    endOrOvertime(state, io)
     return
   }
 
@@ -1662,6 +1679,86 @@ function advanceQuarter(state, io) {
   console.log(`[game] ${state.roomId} end of Q${prev} → Q${state.quarter} begins`)
 }
 
+// ── Overtime ([overtime], season games only) ────────────────────────────────
+//
+// There was no overtime in this game: a level score at the end of Q4 was a tie. That is still true of
+// every ordinary game. A season needs it, because a playoff game has to have a winner and the regular
+// season has overtime too. These are the league's current rules, both seasons alike:
+//
+//   • A coin toss decides who receives. Ten minutes in the NFL, so two thirds of a quarter here.
+//   • Both teams get the ball, unless the first team's drive ends in a safety or a score on defense.
+//   • After that it is sudden death: the next score wins, and a winning touchdown needs no try.
+//   • A regular-season overtime that runs out stays as it stands, a tie if level. A playoff game plays
+//     another period until somebody has won.
+const OVERTIME_FRACTION = 2 / 3
+const OVERTIME_TIMEOUTS = 2
+
+function overtimeSeconds(state) {
+  return Math.round((state.quarterSeconds ?? RULES.QUARTER_SECONDS) * OVERTIME_FRACTION)
+}
+
+const bothHadTheBall = (ot) => ot.firstDriveDone[0] && ot.firstDriveDone[1]
+
+// A drive has ended when the ball has gone to the other team.
+function noteOvertimePossession(state) {
+  const ot = state.overtime
+  if (state.possession !== ot.possessor) {
+    ot.firstDriveDone[ot.possessor] = true
+    ot.possessor = state.possession
+  }
+}
+
+function touchdownEndsOvertime(state, scoringSlot) {
+  const ot = state.overtime
+  if (!ot) return false
+  const leads = state.score[scoringSlot] > state.score[1 - scoringSlot]
+  // A score by the DEFENSE ends it outright, since the other team's drive has just failed.
+  if (scoringSlot !== state.possession) return leads
+  // The other team has had its chance, so there is nothing left to answer. The first team's opening
+  // touchdown does not qualify: they still have to kick off and let the other side reply.
+  return leads && ot.firstDriveDone[1 - scoringSlot]
+}
+
+// The clock has run out on the last period there was going to be. Is that the end?
+function endOrOvertime(state, io) {
+  const tied = state.score[0] === state.score[1]
+  const more = !state.season ? false
+    : !state.overtime ? tied
+    : !!state.season.playoff && (tied || !bothHadTheBall(state.overtime))
+  if (more) startOvertimePeriod(state, io)
+  else endGame(state, io)
+}
+
+function startOvertimePeriod(state, io) {
+  const first = !state.overtime
+  const ended = state.quarter
+  state.quarter++
+  state.clock = overtimeSeconds(state)
+  state.clockStopped = true
+  state.timeouts = [OVERTIME_TIMEOUTS, OVERTIME_TIMEOUTS]
+
+  if (first) {
+    const receiving = rngOf(state)() < 0.5 ? 0 : 1
+    state.overtime = { periods: 1, firstDriveDone: [false, false], possessor: receiving }
+    state.possession = receiving
+    state.direction  = receiving === 0 ? 1 : -1
+    state.yardLine   = HALFTIME_YARD_LINE
+    state.down       = 1
+    state.distance   = RULES.FIRST_DOWN_YARDS
+    state.ballX      = FIELD_CENTER_X
+    state.newDrive   = true
+    notifyRoleSwap(state, io)
+  } else {
+    state.overtime.periods++
+  }
+
+  io.to(state.roomId).emit('clock_update', serializeClock(state))
+  io.to(state.roomId).emit('period_transition', { kind: 'overtime', endedQuarter: ended, seconds: TRANSITION_SECONDS })
+  console.log(`[game] ${state.roomId} OVERTIME period ${state.overtime.periods} — slot ${state.possession} has the ball`)
+  seasonCheckpoint(state)
+  beginNextPlay(state.roomId, io, TRANSITION_MS)
+}
+
 // [219][220] End the game: enter the terminal GAME_OVER phase (no further snaps) and send each
 // player the viewer-relative final result (win / loss / tie).
 function endGame(state, io) {
@@ -1676,6 +1773,7 @@ function endGame(state, io) {
   }
 
   console.log(`[game] ${state.roomId} final — slot0: ${state.score[0]}, slot1: ${state.score[1]}`)
+  seasonGameOver(state, io)
 }
 
 // ── Turnover handling ([192]) ───────────────────────────────────────────────────
@@ -1743,16 +1841,27 @@ export function startNextPlay(roomId, io, { quiet = false } = {}) {
   // We're already in DEAD, so applyTwoPointResult stages the kickoff and reschedules this.
   if (state.twoPointActive != null) { applyTwoPointResult(state, io, false); return }
 
+  // [overtime] Has the ball changed hands, and does that settle it? Both teams have had their chance
+  // and somebody is ahead: that is the end, between plays, with no more football to run.
+  if (state.overtime) {
+    noteOvertimePossession(state)
+    if (bothHadTheBall(state.overtime) && state.score[0] !== state.score[1] && !state.conversionPending) {
+      endGame(state, io)
+      return
+    }
+  }
+
   // [216] Safety net: if the clock ran out at the exact end of this play, the play-ending event
   // pre-empted CLOCK_EXPIRED in the queue. Resolve the period end here rather than lining up
   // with a dead clock. (When onClockExpired handled it directly the clock is already reset > 0.)
   if (state.clock <= 0) {
-    if (state.quarter >= RULES.QUARTERS) { endGame(state, io); return }
+    if (state.quarter >= RULES.QUARTERS) { endOrOvertime(state, io); return }
     advanceQuarter(state, io)
     // ⚠️ THE SAME SOLO HALF-TIME HOLD AS IN onClockExpired, AND IT HAS TO BE IN BOTH. There are two
     // ways a period ends — the clock running out BETWEEN plays, and the play that ran it to zero
     // finishing — and this is the common one. Handling only the other left half-time auto-advancing
     // on almost every real game.
+    seasonCheckpoint(state)   // [seasons] the new period starts here if the server does not make it
     if (state.quarter === 3 && isSoloRoom(state) && !state.headless) {
       holdForTransitionTap(state, roomId, io)
       return
@@ -1854,6 +1963,7 @@ export function startNextPlay(roomId, io, { quiet = false } = {}) {
   }
 
   console.log(`[game] ${roomId} Q${state.quarter} — ready for next snap (${state.down}&${state.distance} at ${state.yardLine})`)
+  seasonCheckpoint(state)   // [seasons] autosave: every play, at the moment nothing is in the air
 }
 
 // [transition screens] Hold the game on the half-time box score until the player dismisses it.
@@ -1882,6 +1992,13 @@ function holdForTransitionTap(state, roomId, io) {
   state.awaitingTransitionTap = true
   console.log(`[game] ${roomId} halftime — holding for the player`)
   beginNextPlay(roomId, io, TRANSITION_TAP_FALLBACK_MS)
+}
+
+// [seasons] A game resumed from a save made in a dead ball has no timer behind it. Half-time goes back
+// to waiting for the tap; anything else lines up the next play after a beat.
+export function resumeDeadBall(state, io) {
+  if (state.awaitingTransitionTap) beginNextPlay(state.roomId, io, TRANSITION_TAP_FALLBACK_MS)
+  else beginNextPlay(state.roomId, io, 1000)
 }
 
 function beginNextPlay(roomId, io, delayMs = BETWEEN_PLAYS_MS) {

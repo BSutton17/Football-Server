@@ -1,11 +1,14 @@
 import 'dotenv/config';
 import express from 'express';
+import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import { registerSocketHandlers } from './socket/index.js';
 import { SIM } from './constants.js';
 import { createPlaybookDevRouter, isDevPlaybookEnabled } from './playbook/devRoutes.js';
 import { createAnalyticsRouter } from './analytics/routes.js';
+import { createAuthRouter } from './auth/routes.js';
+import { createSeasonRouter } from './season/routes.js';
 
 const PORT = process.env.PORT || 3001;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
@@ -52,6 +55,12 @@ const corsOrigin = (origin, cb) => {
   console.warn(`[server] CORS REJECTED origin: ${origin} (allowed: ${[...allowedOrigins].join(', ')})`);
   cb(null, false);
 };
+
+// [seasons] Accounts and seasons. Called from the client's origin with a bearer token, so CORS applies;
+// the token is sent by hand, not as a cookie, so there is nothing for a cross-site request to borrow.
+const apiCors = cors({ origin: corsOrigin, methods: ['GET', 'POST', 'DELETE'], maxAge: 3600 });
+app.use('/auth', apiCors, createAuthRouter());
+app.use('/season', apiCors, createSeasonRouter());
 
 const httpServer = createServer(app);
 

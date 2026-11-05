@@ -127,7 +127,22 @@ export function serializeGameState(state, viewerSlot) {
     // [dev reveal] The computer's own call, for comparing alignment against what it should be.
     // Triple-gated and null in every ordinary case — see devReveal.js.
     devReveal: serializeDevReveal(state, viewerSlot),
-    xfActiveIds: activeXFactorIds(state),   // [294] active-X-Factor players → star shows pre-snap too
+    // [294] active-X-Factor players → star shows pre-snap too. ⚠️ ONE LIST PER TEAM: the line and the
+    // quarterback have the same ids on both sides, so one list stars the wrong man (see xFactors.js).
+    xfActiveIds:    activeXFactorIds(state, viewerSlot),
+    xfOppActiveIds: activeXFactorIds(state, 1 - viewerSlot),
+    // [seasons] Who is home, and whether this is a season game at all. Null otherwise.
+    season: state.season ? {
+      seasonId: state.season.seasonId,
+      gameId: state.season.gameId,
+      homeSlot: state.season.homeSlot,
+      neutral: !!state.season.neutral,
+      superBowl: !!state.season.superBowl,
+      year: state.season.year,
+      roundName: state.season.roundName ?? null,
+      week: state.season.week ?? null,
+    } : null,
+    overtime: !!state.overtime,
     fatigue:  serializeFatigue(state, viewerSlot),   // [fatigue] own-team stamina (drives the bars)
     // [manual] Fixed for the game. The client needs both: mode switches HIKE for GO, and difficulty
     // tells it whether openness colors will arrive at all (hard sends none to the offense).

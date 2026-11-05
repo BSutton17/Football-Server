@@ -669,6 +669,8 @@ export function registerGameHandlers(io, socket) {
     if (!roomId) return
     const state = getGame(roomId)
     if (!state || state.phase !== PHASE.GAME_OVER) return
+    // [seasons] "Once a game is over there is no way to replay it."
+    if (state.season) return
 
     // [manual] A rematch keeps the room's mode and difficulty — they were fixed when it was created.
     initGame(roomId, 0, { mode: state.mode, difficulty: state.difficulty })

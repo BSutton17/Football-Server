@@ -44,7 +44,7 @@ function freshSeed() {
 // `controller` is optional and is the AI's brain — an object with `onEvent(event, payload)`. Left
 // out, the seat is a silent placeholder that occupies slot 1 and locks a team but never plays,
 // which is exactly what Phase 0 needs to prove the plumbing before there is anything to think with.
-export function createSoloRoom(io, humanSocket, { roomId, mode, difficulty, seed = null, controller = null, aiRoster = null, aiTeamId = null } = {}) {
+export function createSoloRoom(io, humanSocket, { roomId, mode, difficulty, seed = null, controller = null, aiRoster = null, aiTeamId = null, season = null, seasonSnapshot = null } = {}) {
   const gameSeed = seed ?? freshSeed()
   const rng      = makeRng(gameSeed)
 
@@ -108,12 +108,17 @@ export function createSoloRoom(io, humanSocket, { roomId, mode, difficulty, seed
   humanSocket.emit('room_joined', { slot: 0, mode: created.mode, difficulty: created.difficulty })
   humanSocket.emit('roles_assigned', { role: humanRole })
   humanSocket.emit('session_token', token)
-  humanSocket.emit('team_select_start', {
-    slot: 0,
-    teamIds: TEAM_IDS,
-    quarterMinutes: getTeamSelect(roomId)?.quarterMinutes,
-    defenseSeesOpenness: getTeamSelect(roomId)?.defenseSeesOpenness,
-  })
+  // [seasons] Both teams are already decided by the schedule, so there is no selection screen to show.
+  if (season) {
+    humanSocket.emit('season_game_start', { slot: 0, resuming: !!seasonSnapshot })
+  } else {
+    humanSocket.emit('team_select_start', {
+      slot: 0,
+      teamIds: TEAM_IDS,
+      quarterMinutes: getTeamSelect(roomId)?.quarterMinutes,
+      defenseSeesOpenness: getTeamSelect(roomId)?.defenseSeesOpenness,
+    })
+  }
 
   // The computer picks first and locks straight away, so the human sees a settled opponent rather
   // than an empty slot. Locking first also means the existing duplicate-team rule does the work of
@@ -148,7 +153,11 @@ export function createSoloRoom(io, humanSocket, { roomId, mode, difficulty, seed
   // Flagged on the ROOM, because the game state does not exist yet — it is created when both
   // teams lock. startGameFromSelection copies the flag across.
   const room2 = getRoom(roomId)
-  if (room2) room2.solo = true
+  if (room2) {
+    room2.solo = true
+    room2.season = season
+    room2.seasonSnapshot = seasonSnapshot
+  }
 
   console.log(`[solo] ${roomId} seeded ${gameSeed} — human ${humanRole} slot 0, AI ${aiRole} slot 1 (${chosen}${aiTeamId ? '' : ', random'})`)
 
