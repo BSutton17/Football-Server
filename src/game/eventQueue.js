@@ -365,7 +365,7 @@ function onThrow({ receiverId, x, y }, state, io) {
   const guardingDB  = findGuardingDB(state, receiver)
   const airYards    = (receiver.y - getLosY(state)) * state.direction
   const deep        = airYards >= DEEP_YARDS
-  let   effOpenness = adjustOpennessForReceiver(state, receiver, openness, deep)
+  let   effOpenness = adjustOpennessForReceiver(state, receiver, openness, deep, read.beforeShade)
   effOpenness       = applyDefenderOpenness(state, guardingDB, effOpenness)
   const tier        = opennessTier(effOpenness)
 
@@ -384,7 +384,7 @@ function onThrow({ receiverId, x, y }, state, io) {
     // [incompletion reason] What the field shows, so a miss is named for what actually caused it.
     field: {
       contestDist: read.nearestDist,
-      contested: read.laneBlocked || read.overTheTop,
+      contested: read.laneBlocked || read.overTheTop || !!read.shade,
       airYards,
       pressureCount: state.qbPressureCount ?? 0,
       heavyPressure: !!state.qbUnderHeavyPressure,

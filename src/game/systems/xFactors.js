@@ -611,11 +611,14 @@ export function shakeOffSack(state, qb, rng = null) {
 // BEFORE the pass resolves, so the upgraded window drives the catch/INT odds:
 //   • High Point — on a deep route the WR is never heavily contested (smothered → contested).
 //   • I'm Always F*cking Open — a wider "open" window (the contested band's upper half reads open).
-export function adjustOpennessForReceiver(state, receiver, openness, deep) {
+// `beforeShade` is the read before a man defender's shade capped it ([man shade]). An ability that opens a
+// window judges that one: "heavily contested, unless something like an X-Factor is on". High Point works
+// from the capped read regardless, because lifting a heavily contested deep ball is exactly what it does.
+export function adjustOpennessForReceiver(state, receiver, openness, deep, beforeShade = openness) {
   const r = getRecord(state, receiver, false)
   if (!r || !r.active) return openness
   if (r.ability === XF.HIGH_POINT && deep && openness < OPENNESS_RED) return OPENNESS_RED
-  if (r.ability === XF.IM_ALWAYS_OPEN && openness >= IAFO_OPEN_THRESHOLD && openness < OPENNESS_OPEN) return OPENNESS_OPEN
+  if (r.ability === XF.IM_ALWAYS_OPEN && beforeShade >= IAFO_OPEN_THRESHOLD && openness < OPENNESS_OPEN) return OPENNESS_OPEN
   return openness
 }
 

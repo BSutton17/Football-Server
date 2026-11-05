@@ -201,12 +201,14 @@ function serializeFatigue(state, viewerSlot) {
 // the ball). Exported so the throw resolution settles the pass on the identical read.
 export function laneContext(state) {
   const zoneIds = new Set()
+  const manIds = new Set()   // [man shade]
   if (state.defenseCoverage) {
     for (const [id, cov] of state.defenseCoverage) {
       if (cov?.type === 'zone') zoneIds.add(id)
+      else if (cov?.type === 'man') manIds.add(id)
     }
   }
-  return { losY: getLosY(state), direction: state.direction, zoneIds }
+  return { losY: getLosY(state), direction: state.direction, zoneIds, manIds }
 }
 
 export function serializePositions(state, viewerSlot = null) {

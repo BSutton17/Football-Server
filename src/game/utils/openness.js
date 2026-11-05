@@ -120,6 +120,13 @@ const LANE_AHEAD_MIN    = 0.3   // dot-with-heading threshold for a defender to 
 // from a list of route names. Named and hand-drawn routes are therefore read identically, and a
 // route shortened with the depth handle is judged as the route it actually became.
 const BREAK_BACK_BOOST  = 0.6   // how strongly a defender-in-front opens a comeback/curl window
+// ⚠️ ONLY A DEFENDER HE IS COMING BACK AWAY FROM, AND ONLY ONCE THERE IS ROOM. This used to be
+// unconditional. "In front" is measured along the receiver's heading, and after the break a curl's heading
+// points back at the quarterback, so the man sitting underneath him, bodies touching, counted as a defender
+// he was getting away from: 0.18 became 0.67, green, a 95% catch. Reported as a receiver catching "the ball
+// basically through the db body". The same boost opened a stem with a corner two yards over the top.
+const BREAK_BACK_TIGHT  = 2.0   // yd — inside this, coming back gets him no room at all
+const BREAK_BACK_CLEAR  = 4.0   // yd — beyond this the full boost applies
 const GO_FRONT_PENALTY  = 0.45  // extra cut to a go/deep window when a defender sits in the deep lane
 
 // ── Short-pass throwing lanes ([lane block]) ─────────────────────────────────
@@ -161,6 +168,64 @@ const DEEP_OVER_MIN       = 1.0   // yards deeper than the receiver to count as 
 const DEEP_OVER_MAX       = 12    // …beyond this he is too deep to be over the top of THIS throw
 const DEEP_OVER_WIDTH     = 4.0   // yards either side of the receiver he still covers
 const DEEP_SMOTHERED      = 0.25  // well inside the red band
+
+// ── [man shade] A man defender who has played it right ──────────────────────
+//
+// "We have to respect man coverage shading. Too many times a player is playing underneath, TOUCHING a wr on
+// a curl route and the wr catches the ball basically through the db body, the same is true with some go
+// routes and the db is playing perfect defense over the top, both of those situations should be a heavily
+// contested ball (unless something like an X-Factor is on)."
+//
+//   UNDER  He is between the receiver and the quarterback, close enough to play the ball, which has to come
+//          through him. A route coming back to the ball closes the last of the gap by itself, so it gets a
+//          longer reach. A receiver running AWAY from him has beaten him (that is the risk of sitting
+//          underneath on a go), and the ball is led past him: that stays a read on separation.
+//   OVER   The receiver is running straight at him. Not only on a route long enough to be called deep: a go
+//          shortened with the depth handle is the same picture, and was reading open.
+//
+// Both cap the read rather than adjust it, so nothing below a separation can talk its way back up. Receiver
+// X-Factors act after this, on the capped read, which is how an active ability still beats it. Man only:
+// zone has its own rules, and a defender rushing the passer is not covering anybody.
+const SHADE_UNDER_REACH      = 2.25  // yd centre to centre; bodies touch at 1.5 (PLAYER.CONTACT_RADIUS)
+const SHADE_UNDER_COMING_BACK = 3.0  // yd, on a route that comes back to the ball
+const SHADE_BALL_SIDE        = 0.5   // how squarely between him and the passer (cosine: 60 degrees either way)
+const SHADE_TRAILING         = -0.3  // heading dot at or below which the receiver is running away from him
+const SHADE_OVER_REACH       = 4.0   // yd along the receiver's heading
+const SHADE_OVER_MIN         = 0.5   // yd: level with him is separation's business, not this rule's
+const SHADE_OVER_WIDTH       = 2.0   // yd either side of the heading
+const SHADE_SMOTHERED        = 0.25  // well inside the red band
+
+// 'under' | 'over' | null. opts.manIds is who is playing man; without it the rule sits out.
+export function manShade(receiver, defenders, qb, opts = {}) {
+  const manIds = opts?.manIds
+  if (!qb || !defenders || !manIds?.size) return null
+
+  const comesBack = receiver.routeTraits?.breaksBack ?? false
+  const toQbX = qb.x - receiver.x, toQbY = qb.y - receiver.y
+  const toQb = Math.hypot(toQbX, toQbY) || 1
+  const speed = Math.hypot(receiver.vx ?? 0, receiver.vy ?? 0)
+  const moving = speed > BEATEN_MIN_SPEED
+  const hx = moving ? receiver.vx / speed : 0, hy = moving ? receiver.vy / speed : 0
+
+  for (const d of defenders) {
+    if (!manIds.has(d.id)) continue
+    const dx = d.x - receiver.x, dy = d.y - receiver.y
+    const dist = Math.hypot(dx, dy) || 1e-6
+
+    const ballSide = (toQbX * dx + toQbY * dy) / (toQb * dist)
+    if (ballSide >= SHADE_BALL_SIDE && dist <= (comesBack ? SHADE_UNDER_COMING_BACK : SHADE_UNDER_REACH)) {
+      const runningAway = moving && (hx * dx + hy * dy) / dist <= SHADE_TRAILING
+      if (comesBack || !runningAway) return 'under'
+    }
+
+    if (moving && !comesBack) {
+      const along = hx * dx + hy * dy
+      const across = Math.abs(-hy * dx + hx * dy)
+      if (along >= SHADE_OVER_MIN && along <= SHADE_OVER_REACH && across <= SHADE_OVER_WIDTH) return 'over'
+    }
+  }
+  return null
+}
 
 // Is a defender established over the top of a deep target?
 //   receiver / qb   — { x, y }
@@ -332,6 +397,7 @@ export function opennessBreakdown(receiver, defenders, qb = null, opts = {}) {
   // tight the trail is. (Stationary/settled receivers skip this and rely on raw separation.)
   let ahead = 0   // +1 nearest defender is in the path ahead (contests), -1 fully trailing (beaten)
   let frontDist = Infinity   // nearest defender sitting in the throwing lane ahead of the receiver
+  let frontDef = null
   const rv = Math.hypot(receiver.vx ?? 0, receiver.vy ?? 0)
   if (rv > BEATEN_MIN_SPEED) {
     const hx = receiver.vx / rv, hy = receiver.vy / rv
@@ -345,7 +411,7 @@ export function opennessBreakdown(receiver, defenders, qb = null, opts = {}) {
       const dl = Math.hypot(dx, dy) || 1
       const aheadDot = (hx * dx + hy * dy) / dl          // >0 in front along the heading
       const lateral  = Math.abs(-hy * dx + hx * dy)      // perpendicular distance from the heading line
-      if (aheadDot >= LANE_AHEAD_MIN && lateral <= LANE_HALF_WIDTH && dl < frontDist) frontDist = dl
+      if (aheadDot >= LANE_AHEAD_MIN && lateral <= LANE_HALF_WIDTH && dl < frontDist) { frontDist = dl; frontDef = d }
     }
   }
 
@@ -362,10 +428,19 @@ export function opennessBreakdown(receiver, defenders, qb = null, opts = {}) {
     const breaksBack = receiver.routeTraits?.breaksBack ?? false
     const deepGo     = receiver.routeTraits?.deepVertical ?? false
 
+    let frontOpen = clamp01((frontDist - SMOTHERED_DIST) / (WIDE_OPEN_DIST - SMOTHERED_DIST))
     if (breaksBack) {
-      openness = clamp01(openness + BREAK_BACK_BOOST * (1 - openness))
+      // Which side of him is the ball on? Past him, and coming back opens the window. Between him and the
+      // passer, and he is coming back INTO the man the ball has to get through.
+      const passerSide = qb
+        ? (qb.x - receiver.x) * (frontDef.x - receiver.x) + (qb.y - receiver.y) * (frontDef.y - receiver.y) > 0
+        : false
+      if (passerSide) openness = Math.min(openness, frontOpen)
+      else {
+        const room = clamp01((frontDist - BREAK_BACK_TIGHT) / (BREAK_BACK_CLEAR - BREAK_BACK_TIGHT))
+        openness = clamp01(openness + room * BREAK_BACK_BOOST * (1 - openness))
+      }
     } else {
-      let frontOpen = clamp01((frontDist - SMOTHERED_DIST) / (WIDE_OPEN_DIST - SMOTHERED_DIST))
       if (deepGo) frontOpen *= GO_FRONT_PENALTY   // heavily contested
       openness = Math.min(openness, frontOpen)
     }
@@ -383,8 +458,15 @@ export function opennessBreakdown(receiver, defenders, qb = null, opts = {}) {
   const overTheTop = deepOverTheTop(receiver, defenders, qb, opts)
   if (overTheTop) openness = Math.min(openness, DEEP_SMOTHERED)
 
+  // [man shade] The read before this cap goes out as well: an ability that opens a window judges that one.
+  const beforeShade = clamp01(openness)
+  const shade = manShade(receiver, defenders, qb, opts)
+  if (shade) openness = Math.min(openness, SHADE_SMOTHERED)
+
   return {
     openness: clamp01(openness),
+    shade,
+    beforeShade,
     nearestId: nearest.id ?? null, nearestLabel: nearest.label ?? null, nearestDist,
     align, closing, safeties, bracket, ahead, beaten,
     frontDist: Number.isFinite(frontDist) ? frontDist : null,

@@ -160,8 +160,8 @@ export function drawnRouteWaypoints(points, startX, startY, dir) {
 //
 //   settles      — the route finishes coming back toward the passer, so the receiver should stop
 //                  and wait rather than run through the endpoint (a curl / comeback shape)
-//   breaksBack   — the final leg works back toward the line, which OPENS the window: the receiver
-//                  is coming underneath the defender rather than running into him
+//   breaksBack   — the final leg works back toward the line, which opens the window against a defender
+//                  over the top of him, and closes it against one sitting underneath ([man shade])
 //   deepVertical — gets well downfield without breaking back; the deep shell should recognize it
 //   maxDepth     — deepest point past the LOS, in yards
 export function routeTraits(waypoints, startY, losY, dir, startX = null, pivotX = null) {

@@ -12,8 +12,8 @@
 //     That matters for correctness, not just tidiness: the openness engine reads each receiver's
 //     velocity heading to judge whether he has beaten his man, and treats a route breaking BACK
 //     toward the ball (comeback / curl / return) differently from one running INTO a defender. A
-//     frozen comeback therefore still reads open even though the paused picture shows a corner
-//     draped all over him — exactly the case a naive freeze would get wrong.
+//     frozen play therefore reads exactly as the same moment would have in motion, which a naive freeze
+//     would get wrong. See [man shade] in openness.js for a corner draped over a comeback.
 //
 //   • Throws are legal ONLY while frozen. You cannot throw into moving traffic, so the read the
 //     offense acts on is always the read it was shown.
