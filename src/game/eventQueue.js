@@ -1844,6 +1844,13 @@ export function startNextPlay(roomId, io, { quiet = false } = {}) {
   if (state) { state.nextPlayTimer = null; state.nextPlayDueAt = 0 }
   if (!state || state.phase !== PHASE.DEAD) return
 
+  // ⚠️ WHATEVER IS STILL QUEUED BELONGS TO THE PLAY THAT JUST ENDED. A throw books its catch for the next
+  // tick, so a sack or tackle ending the play first left that catch waiting, and it went off on the next
+  // snap. With the ball now the other team's, the "carrier" was a receiver who was not on the field: nobody
+  // could tackle him, the play never ended and the game was frozen for good. A clock that ran out is not
+  // lost by this, because it is asked about just below.
+  clearQueue(roomId)
+
   // [51] A two-point try that ended without reaching the end zone is a FAILED conversion (a score
   // clears twoPointActive in onTouchdown before this runs). No points; the scoring team kicks off.
   // We're already in DEAD, so applyTwoPointResult stages the kickoff and reschedules this.
