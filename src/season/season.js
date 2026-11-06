@@ -24,6 +24,7 @@ import {
 import { computeAwards } from './awards.js'
 
 export const LAST_REGULAR_WEEK = 18
+const PROJECT_AFTER_WEEK = 8
 export const SCREEN = {
   AWARDS: 'awards',
   MADE_PLAYOFFS: 'made_playoffs',
@@ -148,10 +149,30 @@ function playoffGame(season, round, conf, home, away, opts = {}) {
   }
 }
 
-function beginPlayoffs(season) {
+// #1 has the week off. Then 2 v 7, 3 v 6, 4 v 5, the higher seed at home.
+const WILD_CARD_PAIRS = [[2, 7], [3, 6], [4, 5]]
+
+function currentSeeds(season) {
   const table = buildTable(season.games)
   const tieRng = gameRng(season, 'seeding')
-  const seeds = { AFC: conferenceSeeds('AFC', table, tieRng), NFC: conferenceSeeds('NFC', table, tieRng) }
+  return { AFC: conferenceSeeds('AFC', table, tieRng), NFC: conferenceSeeds('NFC', table, tieRng) }
+}
+
+// [projected] "After week 8 in the playoff tab it should show the projected playoff format." The bracket if the
+// season ended today, by the same seeding the real one uses. Null until Week 8 is in, and once the real one exists.
+export function projectedPlayoffs(season) {
+  if (season.phase !== 'regular' || season.week <= PROJECT_AFTER_WEEK) return null
+  const seeds = currentSeeds(season)
+  const games = ['AFC', 'NFC'].flatMap(conf => WILD_CARD_PAIRS.map(([hi, lo]) => {
+    const home = seeds[conf][hi - 1]
+    const away = seeds[conf][lo - 1]
+    return { id: `proj-${away}-${home}`, round: 1, conf, home, away, homeSeed: hi, awaySeed: lo, status: 'scheduled' }
+  }))
+  return { throughWeek: season.week - 1, seeds, games }
+}
+
+function beginPlayoffs(season) {
+  const seeds = currentSeeds(season)
   season.playoffs = { seeds, round: 1, games: [], champion: null, conferenceChampions: {} }
   season.phase = 'playoffs'
 
@@ -159,9 +180,8 @@ function beginPlayoffs(season) {
   season.awards = computeAwards(season)
   season.screens.push({ type: SCREEN.AWARDS })
 
-  // #1 has the week off. Then 2 v 7, 3 v 6, 4 v 5, the higher seed at home.
   for (const conf of ['AFC', 'NFC']) {
-    for (const [hi, lo] of [[2, 7], [3, 6], [4, 5]]) {
+    for (const [hi, lo] of WILD_CARD_PAIRS) {
       season.playoffs.games.push(playoffGame(season, 1, conf, seeds[conf][hi - 1], seeds[conf][lo - 1]))
     }
   }
@@ -362,6 +382,7 @@ export function seasonView(season) {
     ...seasonSummary(season),
     games: season.games,
     playoffs: season.playoffs,
+    projectedPlayoffs: projectedPlayoffs(season),
     screens: season.screens,
     currentGame: game,
     roundName: season.playoffs ? ROUND_NAMES[season.playoffs.round] : null,

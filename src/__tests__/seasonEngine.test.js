@@ -181,6 +181,62 @@ function fullSeason(teamId = 'KC', seed = 11) {
   return season
 }
 
+describe('[projected] the bracket after Week 8', () => {
+  const afterWeeks = (n, seed = 11) => {
+    const s = fullSeason('KC', seed)
+    for (let i = 0; i < n; i++) expect(simCurrent(s).ok).toBe(true)
+    return s
+  }
+
+  it('is not there until Week 8 is in', () => {
+    expect(seasonView(fullSeason()).projectedPlayoffs).toBeNull()
+    expect(seasonView(afterWeeks(7)).projectedPlayoffs).toBeNull()
+  })
+
+  it('appears after Week 8, with seven seeds a conference and the league\'s matchups', () => {
+    const p = seasonView(afterWeeks(8)).projectedPlayoffs
+    expect(p.throughWeek).toBe(8)
+    for (const conf of ['AFC', 'NFC']) {
+      expect(p.seeds[conf]).toHaveLength(7)
+      expect(new Set(p.seeds[conf]).size).toBe(7)
+      for (const id of p.seeds[conf]) expect(TEAM[id].conference).toBe(conf)
+      const games = p.games.filter(g => g.conf === conf)
+      expect(games.map(g => [g.homeSeed, g.awaySeed])).toEqual([[2, 7], [3, 6], [4, 5]])
+      for (const g of games) {
+        expect(g.home).toBe(p.seeds[conf][g.homeSeed - 1])
+        expect(g.away).toBe(p.seeds[conf][g.awaySeed - 1])
+      }
+      // The top seed is on the bye, in no game.
+      expect(games.some(g => g.home === p.seeds[conf][0] || g.away === p.seeds[conf][0])).toBe(false)
+    }
+  })
+
+  it('the first four are division winners by the current table', () => {
+    const s = afterWeeks(10)
+    const p = seasonView(s).projectedPlayoffs
+    const winners = new Set(p.seeds.AFC.slice(0, 4).map(id => TEAM[id].division))
+    expect(winners.size).toBe(4)
+  })
+
+  it('reads the same every time it is opened in a week, and moves on as games are played', () => {
+    const s = afterWeeks(9)
+    const once = seasonView(s).projectedPlayoffs
+    expect(seasonView(s).projectedPlayoffs).toEqual(once)
+    expect(once.throughWeek).toBe(9)
+    expect(seasonView(afterWeeks(10)).projectedPlayoffs.throughWeek).toBe(10)
+  })
+
+  it('makes way for the real bracket, and the real one seeds by the same rules', () => {
+    const s = afterWeeks(17)
+    const last = seasonView(s).projectedPlayoffs
+    expect(last.throughWeek).toBe(17)
+    expect(simCurrent(s).ok).toBe(true)              // Week 18
+    const view = seasonView(s)
+    expect(view.playoffs).not.toBeNull()
+    expect(view.projectedPlayoffs).toBeNull()
+  })
+})
+
 function simToEnd(season) {
   let guard = 0
   while (season.phase !== 'complete' && guard++ < 40) expect(simCurrent(season).ok).toBe(true)
