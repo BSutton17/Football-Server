@@ -9,7 +9,7 @@ import { runCollisionResponse } from './systems/collisionResponse.js'
 import { runClock }             from './systems/clock.js'
 import { runPlayClock }         from './systems/playClock.js'
 import { chewStep, clearChewClock } from './chewClock.js'
-import { runDecisionClock, runConversionClock } from './systems/decisionClock.js'
+import { runDecisionClock, runConversionClock, runOnsideChoiceClock } from './systems/decisionClock.js'
 import { runKickClock }         from './systems/kickClock.js'
 import { runEventQueue }        from './systems/eventQueue.js'
 import { runBroadcast }         from './systems/broadcast.js'
@@ -261,6 +261,11 @@ export function tick(roomId, io) {
       // [Special Teams][51] The post-touchdown extra-point / 2-pt menu also pauses everything else.
       if (state.conversionPending) {
         runConversionClock(state, io, DT)
+        break
+      }
+      // [onside] So does the choice of how to kick off.
+      if (state.onsideChoicePending) {
+        runOnsideChoiceClock(state, io, DT)
         break
       }
       // [Special Teams][6][8][9] A player-controlled kick (punt / FG) owns pre-snap: the kick clock

@@ -44,12 +44,28 @@ export const RULES = {
   KICKOFF_YARD_LINE: 25,         // opening drive / game-start spot
   KICKOFF_RESULT_YARD_LINE: 30,  // [Special Teams][5] receiving team's spot after an (automatic) kickoff
   TOUCHBACK_YARD_LINE: 20,       // [Special Teams][38] receiving offense's spot after a punt touchback
+  ONSIDE_WINDOW_SECONDS: 90,     // [onside] behind with 1:30 or less in the 4th quarter
+  ONSIDE_CHOICE_SECONDS: 5,      // [onside] kick-off menu timer before defaulting to a normal kickoff
+  ONSIDE_KICK_YARD_LINE: 35,     // [onside] kicked from the kicking team's own 35 (where the field is shown)
+  ONSIDE_RECOVERY_YARD_LINE: 50, // [onside] whoever wins it starts at midfield
   MISSED_FG_MIN_YARD_LINE: 20,   // [Special Teams][45] missed-FG spot floor — no closer than the own 20
   PLAY_CLOCK_SECONDS: 30,        // normal play clock
   PLAY_CLOCK_NEW_DRIVE: 45,      // first play of a drive — extra time to set the formation
   DELAY_OF_GAME_YARDS: 5,        // [delay of game] play-clock expiry → 5-yard penalty, replay the down
   TIMEOUTS_PER_HALF: 3,          // [70] timeouts each team gets per half (reset at halftime)
   TIMEOUT_SECONDS: 6,            // [69] how long a called timeout freezes play before auto-resuming
+}
+
+// [onside] The receiving team's meter: the field-goal block bar turned inside out. Half-widths from the center
+// of the bar, so green is 75% of it, yellow 20% (10% a side) and red 5% (2.5% a side). Green recovers, red does
+// not, yellow is a coin flip. Lives here because the computer rolls on the same numbers and `ai/` may not import
+// `game/`.
+export const ONSIDE_METER = {
+  GREEN_HALF:  0.375,
+  YELLOW_HALF: 0.475,
+  GREEN_PROB:  1,
+  YELLOW_PROB: 0.5,
+  RED_PROB:    0,
 }
 
 // Tick rate — read from TICK_RATE env variable at startup.

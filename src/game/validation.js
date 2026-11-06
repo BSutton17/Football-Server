@@ -204,6 +204,7 @@ export function validateSetOffense(socket, payload) {
   if (state.decisionPending) return 'Make your 4th-down decision first'
   // [Special Teams][51] …and until the post-touchdown extra-point / 2-pt choice is made.
   if (state.conversionPending) return 'Choose your extra-point try first'
+  if (state.onsideChoicePending) return 'Choose how to kick off first'
   // [69] …and while a timeout (or other stoppage) is freezing play.
   if (state.stoppage) return 'Play is paused for a timeout'
 
@@ -511,6 +512,7 @@ export function validateCallTimeout(socket) {
   if (state.specialTeams)      return 'Cannot call a timeout during a kick'
   if (state.decisionPending)   return 'Cannot call a timeout during the 4th-down decision'
   if (state.conversionPending) return 'Cannot call a timeout during the conversion decision'
+  if (state.onsideChoicePending) return 'Cannot call a timeout during the kickoff decision'
 
   return null
 }

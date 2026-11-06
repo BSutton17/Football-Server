@@ -15,6 +15,7 @@ import {
   KICK, ST_PHASE, beginSpecialTeams, advanceSTPhase, endSpecialTeams, serializeSpecialTeams,
   PUNT_RETURN, PUNT_RETURN_SECONDS, puntReturnDefault, isValidPuntReturn, FG_HOLDER_DEPTH,
   fgBlockRegion, fgBlockProbability, CONVERSION, conversionDefault, isValidConversion,
+  KICKOFF_CHOICE, isValidKickoffChoice, canChooseOnside, onsideRegion, onsideRecoveryProbability,
 } from './specialTeams.js'
 import { calculateKickResult, computePuntReturn, resolvePuntBounce, DEFAULT_KICK_POWER, DEFAULT_KICK_ACCURACY } from './kickEngine.js'
 import { getSpecialist } from '../data/specialists.js'
@@ -773,15 +774,7 @@ function onOutOfBounds(payload, state, io) {
 // TD/FG; the conceding team on a safety free-kick). Returns the receiving slot.
 function enterKickoff(state, io, kickingSlot) {
   const receivingSlot = 1 - kickingSlot
-  state.possession         = receivingSlot
-  state.direction          = receivingSlot === 0 ? 1 : -1
-  state.yardLine           = RULES.KICKOFF_RESULT_YARD_LINE   // receiving team's own 30
-  state.ballX              = FIELD_CENTER_X
-  state.down               = 1
-  state.distance           = RULES.FIRST_DOWN_YARDS
-  state.interceptionReturn = false
-  state.ballCarrierId      = null
-  state.clockStopped       = true   // a score stops the clock
+  spotFreshDrive(state, receivingSlot, RULES.KICKOFF_RESULT_YARD_LINE)   // receiving team's own 30
   // [fatigue] A kickoff is a change of possession too — no free stamina (see recoverOffField).
 
   // Automatic kick — straight to KICKING (no aim/power window), cleared by beginNextPlay.
@@ -789,6 +782,87 @@ function enterKickoff(state, io, kickingSlot) {
   advanceSTPhase(state, ST_PHASE.KICKING)
   broadcastSpecialTeams(state, io)
   return receivingSlot
+}
+
+// 1st and 10 for `slot` at `yardLine`, ball centered, clock stopped.
+function spotFreshDrive(state, slot, yardLine) {
+  state.possession         = slot
+  state.direction          = slot === 0 ? 1 : -1
+  state.yardLine           = yardLine
+  state.ballX              = FIELD_CENTER_X
+  state.down               = 1
+  state.distance           = RULES.FIRST_DOWN_YARDS
+  state.interceptionReturn = false
+  state.ballCarrierId      = null
+  state.clockStopped       = true   // a score stops the clock
+}
+
+// ── Onside kick ────────────────────────────────────────────────────────────────
+//
+// The kick that follows a touchdown or a field goal. Inside the window the scoring team is asked first: the menu
+// opens on the next pre-snap, and until then the ball stays with them, which is why every caller holds its role
+// swap back while the menu is pending (resolving it does the swap, and a second one would age X-Factors twice).
+function enterKickAfterScore(state, io, kickingSlot) {
+  if (!canChooseOnside(state, kickingSlot)) return enterKickoff(state, io, kickingSlot)
+  spotFreshDrive(state, kickingSlot, RULES.ONSIDE_KICK_YARD_LINE)
+  state.onsideChoicePending = true
+  state.onsideChoiceTimer   = RULES.ONSIDE_CHOICE_SECONDS
+  console.log(`[game] ${state.roomId} kick-off menu — slot ${kickingSlot} may go onside (${state.score[0]}-${state.score[1]}, ${Math.ceil(state.clock)}s)`)
+  return kickingSlot
+}
+
+export function resolveOnsideChoice(state, io, option) {
+  if (!state.onsideChoicePending) return
+  if (!isValidKickoffChoice(option)) option = KICKOFF_CHOICE.NORMAL
+  state.onsideChoicePending = false
+  state.onsideChoiceTimer   = 0
+  const kickingSlot = state.possession
+
+  if (option === KICKOFF_CHOICE.ONSIDE) {
+    beginSpecialTeams(state, KICK.ONSIDE, { kickingSlot })
+    broadcastSpecialTeams(state, io)
+    console.log(`[game] ${state.roomId} kick-off: ONSIDE by slot ${kickingSlot}`)
+    return
+  }
+
+  enterKickoff(state, io, kickingSlot)
+  transition(state, PHASE.DEAD)
+  notifyRoleSwap(state, io)
+  console.log(`[game] ${state.roomId} kick-off: normal by slot ${kickingSlot}`)
+  beginNextPlay(state.roomId, io)
+}
+
+// The receiving team's one tap. The result stays on the server until the kick is away, so the kicker's meter
+// plays out in full and neither side learns anything early.
+export function resolveOnsideAttempt(state, io, position, rng = null) {
+  rng = rngOf(state, rng)
+  const st = state.specialTeams
+  if (!st || st.blockAttempted) return
+  st.blockAttempted = true
+  const region = onsideRegion(position)
+  st.onsideRecovered = rng() < onsideRecoveryProbability(region)
+  broadcastSpecialTeams(state, io)
+  console.log(`[game] ${state.roomId} onside recovery attempt — ${region}`)
+}
+
+// The kick is away. Whoever won it gets a 1st and 10 at midfield.
+function applyOnsideOutcome(state, io) {
+  const st = state.specialTeams
+  const kickingSlot = st.kickingSlot
+  const winner = st.onsideRecovered ? 1 - kickingSlot : kickingSlot
+  state.prevPlayIncompletePass = false
+  spotFreshDrive(state, winner, RULES.ONSIDE_RECOVERY_YARD_LINE)
+  transition(state, PHASE.DEAD)
+  const detail = winner === kickingSlot ? 'kicking_team' : 'receiving_team'
+  const room = getRoom(state.roomId)
+  if (room) {
+    room.players.forEach((socketId, slot) => {
+      if (socketId) io.to(socketId).emit('play_result', serializePlayResult(state, 'onside_kick', 0, winner, slot, false, detail))
+    })
+  }
+  notifyRoleSwap(state, io)
+  console.log(`[game] ${state.roomId} ONSIDE KICK recovered by slot ${winner} (${detail}) at the ${state.yardLine}`)
+  beginNextPlay(state.roomId, io)
 }
 
 // payload: { scoringSlot, carrierId, x, y }
@@ -958,7 +1032,7 @@ function applyTwoPointResult(state, io, success) {
   state.twoPointActive = null
   if (success) state.score[slot] = (state.score[slot] ?? 0) + RULES.TWO_POINT_POINTS
 
-  const receivingSlot = enterKickoff(state, io, slot)   // [5] scoring team kicks off
+  const receivingSlot = enterKickAfterScore(state, io, slot)   // [5] scoring team kicks off
   // On success we're called mid-play (LIVE); on failure we're already in DEAD (from the play ender).
   if (state.phase !== PHASE.DEAD) transition(state, PHASE.DEAD)
   const room = getRoom(state.roomId)
@@ -969,7 +1043,7 @@ function applyTwoPointResult(state, io, success) {
       io.to(socketId).emit('play_result', serializePlayResult(state, 'two_point', 0, receivingSlot, viewerSlot, false, success ? 'made' : 'missed'))
     })
   }
-  notifyRoleSwap(state, io)
+  if (!state.onsideChoicePending) notifyRoleSwap(state, io)
   console.log(`[game] ${state.roomId} TWO-POINT ${success ? 'GOOD (+2)' : 'NO GOOD'} slot ${slot} — score ${state.score[0]}-${state.score[1]}`)
   beginNextPlay(state.roomId, io)
 }
@@ -983,7 +1057,7 @@ function applyExtraPointOutcome(state, io, result) {
   state.clockStopped = true
   if (good) state.score[kickingSlot] = (state.score[kickingSlot] ?? 0) + RULES.XP_POINTS
 
-  const receivingSlot = enterKickoff(state, io, kickingSlot)   // [5] kickoff after the try
+  const receivingSlot = enterKickAfterScore(state, io, kickingSlot)   // [5] kickoff after the try
   transition(state, PHASE.DEAD)
   const room = getRoom(state.roomId)
   if (room) {
@@ -993,7 +1067,7 @@ function applyExtraPointOutcome(state, io, result) {
       io.to(socketId).emit('play_result', serializePlayResult(state, 'extra_point', 0, receivingSlot, slot, false, good ? 'made' : 'missed'))
     })
   }
-  notifyRoleSwap(state, io)
+  if (!state.onsideChoicePending) notifyRoleSwap(state, io)
   console.log(`[game] ${state.roomId} EXTRA POINT ${good ? 'GOOD (+1)' : 'NO GOOD'} slot ${kickingSlot} — score ${state.score[0]}-${state.score[1]}`)
   beginNextPlay(state.roomId, io)
 }
@@ -1044,6 +1118,13 @@ export function executeKick(state, io) {
   // [analytics] What the player actually did with the meter, captured BEFORE the kick consumes it.
   const inputAtKick = { power: st.power, angle: st.angle, backspin: !!st.backspin, started: !!st.started, timer: st.kickTimer }
   advanceSTPhase(state, ST_PHASE.KICKING)
+
+  // [onside] The power and aim are for show. There is no flight to work out, only who came up with it.
+  if (st.kickType === KICK.ONSIDE) {
+    recordKick(state, { kickType: st.kickType, input: inputAtKick, result: { recovered: !!st.onsideRecovered, attempted: !!st.blockAttempted } })
+    broadcastSpecialTeams(state, io)
+    return applyOnsideOutcome(state, io)
+  }
 
   // [15][16][17] Resolve the kick with the player's input AND the kicker's ratings (Kicker for
   // FG/XP, Punter for punts — defaults until those players exist).
@@ -1282,7 +1363,7 @@ function applyFieldGoalOutcome(state, io, result) {
 
   if (good) {
     state.score[kickingSlot] = (state.score[kickingSlot] ?? 0) + RULES.FG_POINTS
-    const receivingSlot = enterKickoff(state, io, kickingSlot)   // [5] kickoff after the score
+    const receivingSlot = enterKickAfterScore(state, io, kickingSlot)   // [5] kickoff after the score
     transition(state, PHASE.DEAD)
     const room = getRoom(state.roomId)
     if (room) {
@@ -1292,7 +1373,7 @@ function applyFieldGoalOutcome(state, io, result) {
         io.to(socketId).emit('play_result', serializePlayResult(state, 'field_goal', 0, receivingSlot, slot, false, 'made'))
       })
     }
-    notifyRoleSwap(state, io)
+    if (!state.onsideChoicePending) notifyRoleSwap(state, io)
     console.log(`[game] ${state.roomId} FIELD GOAL GOOD slot ${kickingSlot} (+3, ${required} yd) — score ${state.score[0]}-${state.score[1]}`)
   } else {
     // [44][45] Missed (wide left / wide right / short) — an immediate dead ball, no return. Standard
@@ -1346,7 +1427,7 @@ export function resolveFieldGoalBlock(state, io, position, rng = null) {
     // [53] A blocked extra point scores nothing; the kicking (scoring) team still kicks off — exactly
     // like a missed extra point, NOT a turnover on downs.
     const kickingSlot   = state.possession
-    const receivingSlot = enterKickoff(state, io, kickingSlot)
+    const receivingSlot = enterKickAfterScore(state, io, kickingSlot)
     transition(state, PHASE.DEAD)
     if (room) {
       room.players.forEach((socketId, slot) => {
@@ -1354,7 +1435,7 @@ export function resolveFieldGoalBlock(state, io, position, rng = null) {
         io.to(socketId).emit('play_result', serializePlayResult(state, 'extra_point', 0, receivingSlot, slot, false, 'blocked'))
       })
     }
-    notifyRoleSwap(state, io)
+    if (!state.onsideChoicePending) notifyRoleSwap(state, io)
     console.log(`[game] ${state.roomId} EXTRA POINT BLOCKED (${region}) — no point, kickoff`)
   } else {
     // [49] A blocked field goal is a turnover on downs — the opponent takes over at the LOS.
@@ -1479,7 +1560,8 @@ export function resolveDecision(state, io, option, { quiet = false } = {}) {
 // true the play clock is paused (runPlayClock) and the offense can't set/snap (validation).
 function maybeStartDecision(state) {
   // [51] The post-TD extra-point / 2-pt menu owns this pre-snap — never overlay the 4th-down menu.
-  if (state.conversionPending) { state.decisionPending = false; state.decisionTimer = 0; return }
+  // [onside] So does the kick-off menu.
+  if (state.conversionPending || state.onsideChoicePending) { state.decisionPending = false; state.decisionTimer = 0; return }
   state.decisionPending = decisionRequired(state)
   state.decisionTimer   = state.decisionPending ? DECISION_SECONDS : 0
   if (state.decisionPending) {

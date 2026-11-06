@@ -19,10 +19,13 @@
 import { yardsToGoal, scoreMargin } from './knowledge.js'
 import {
   RULES, PUNT_BOUNCE_MIN_YARDS, PUNT_BOUNCE_MAX_YARDS, PUNT_BOUNCE_TOUCHBACK_LINE, PUNT_BACKSPIN_MIN, PUNT_BACKSPIN_MAX,
+  ONSIDE_METER,
 } from '../constants.js'
 
 export const XP_MAKE_CHANCE = 0.99
 export const FG_BLOCK_CHANCE = 0.01
+const BLOCK_IN_LAST_SECONDS = 1
+const BLOCK_SWEET_SPOT = 0.5       // the center of the bar: the green, which always blocks
 // Roughly what one more snap costs off the clock. Below this there is no time to improve the spot,
 // so the kick is the call.
 export const ONE_MORE_PLAY_SECONDS = 8
@@ -357,6 +360,93 @@ export function wantsTwoPoint(margin, quarter = 1) {
   return margin === -1 && quarter >= 4
 }
 
+// ── Onside kicks ───────────────────────────────────────────────────────────────
+//
+// The rules below are the user's, numbered as they gave them, and they are checked in an order that settles where
+// they overlap: the narrow rule goes before the broad one it is an exception to. The menu only opens when the team
+// is behind with 1:30 or less, so rule 4 (more than 1:30 left, kick normally) is the menu not opening at all.
+//
+// "Enough time" is priced as a three-and-out: three snaps and a punt, with the play clock running between snaps
+// unless a timeout stops it. What is left is the time the offense would have with the ball back.
+const SNAP_SECONDS = 6
+const PUNT_SECONDS = 6
+const STOP_SNAPS = 3
+
+export function secondsAfterStop(clock, timeouts) {
+  const stopped = Math.max(0, Math.min(STOP_SNAPS, timeouts))
+  return clock - STOP_SNAPS * SNAP_SECONDS - PUNT_SECONDS - (STOP_SNAPS - stopped) * RULES.PLAY_CLOCK_SECONDS
+}
+
+const SECONDS_FOR_TOUCHDOWN = 30   // to go the length of the field after a stop
+const SECONDS_FOR_FIELD_GOAL = 15  // to reach field-goal range after a stop
+const MOST_TIMEOUTS = 2
+const LAST_MINUTE = 60
+
+// Yards per play, from the box score, set off what whole AI games measure (50 team-games): median 5.1, a quarter
+// of teams at 4.3 or under, about one in seven at 6.5 or over.
+const STRUGGLING_YARDS = 6.5       // the other offense is moving it at will
+const STOUT_YARDS = 4.3            // the defense can get a stop
+const HOT_YARDS = 6.5              // this offense is moving it at will
+
+// The overall rule, for the deficits no numbered rule speaks to. A kicking team recovers yellow's half and all of
+// red: 15%. A possession is priced as its expected points (a touchdown's worth at most) if there is time to run it.
+const ONSIDE_KICKER_RECOVERY = (0.5 - ONSIDE_METER.YELLOW_HALF) * 2 + (ONSIDE_METER.YELLOW_HALF - ONSIDE_METER.GREEN_HALF) * 2 * ONSIDE_METER.YELLOW_PROB
+const STOP_CHANCE = 0.5
+const YARDS_AFTER_RECOVERY = 50
+const YARDS_AFTER_PUNT = 80
+
+function possessionValue(toGoal, seconds) {
+  return clamp01(expectedPoints(toGoal) / RULES.TD_POINTS) * clamp01(seconds / toGoal)
+}
+
+export function onsideBeatsKickoff(clock, timeouts) {
+  return ONSIDE_KICKER_RECOVERY * possessionValue(YARDS_AFTER_RECOVERY, clock)
+    > STOP_CHANCE * possessionValue(YARDS_AFTER_PUNT, secondsAfterStop(clock, timeouts))
+}
+
+export function wantsOnsideKick({ trailingBy, clock, timeouts, ownYardsPerPlay = null, oppYardsPerPlay = null }) {
+  if (trailingBy <= 0) return false
+  const afterStop = secondsAfterStop(clock, timeouts)
+
+  // 6. Down two scores with under a minute left, there is no time to get the ball back any other way.
+  if (trailingBy >= 8 && clock < LAST_MINUTE) return true
+
+  // 3. A defense that has not stopped them all game is not going to now.
+  const struggling = oppYardsPerPlay != null && oppYardsPerPlay >= STRUGGLING_YARDS
+  if (struggling) return true
+
+  // 7. The offense is rolling, the defense can get a stop and there is time to use it.
+  const hot = ownYardsPerPlay != null && ownYardsPerPlay >= HOT_YARDS
+  const stout = oppYardsPerPlay != null && oppYardsPerPlay <= STOUT_YARDS
+  if (hot && stout && afterStop >= SECONDS_FOR_TOUCHDOWN) return false
+
+  // 8. Down a field goal or less, only when a stop would come too late to matter. (A stop being unlikely for any
+  // other reason is rule 3, already asked.)
+  if (trailingBy <= 3) return afterStop < SECONDS_FOR_FIELD_GOAL
+
+  // 5. Down seven with most of the timeouts and time for a stop, trust the defense.
+  if (trailingBy === 7 && timeouts >= MOST_TIMEOUTS && afterStop >= SECONDS_FOR_TOUCHDOWN) return false
+
+  // 1 and 2. Down one score or two with the clock running out.
+  if (trailingBy <= 14) return true
+
+  // The overall rule: chance of recovering times what the ball is worth, against kicking it away.
+  return onsideBeatsKickoff(clock, timeouts)
+}
+
+// "When kicking against an AI, just have it roll a number. 75 or less is a success, 76-95 is a 50/50 and 96+ is a
+// fail." The roll becomes a spot on the bar and goes through the same message a phone sends, so the server settles
+// it by the same table. Numbers rather than ONSIDE_METER shares because that is how the rule was stated: the meter
+// is what makes the two the same.
+const ONSIDE_ROLL_GREEN = 75
+const ONSIDE_ROLL_YELLOW = 95
+
+export function onsideRollPosition(roll) {
+  if (roll <= ONSIDE_ROLL_GREEN) return 0.5
+  if (roll <= ONSIDE_ROLL_YELLOW) return 0.5 + (ONSIDE_METER.GREEN_HALF + ONSIDE_METER.YELLOW_HALF) / 2
+  return 1
+}
+
 // [4th and inches] A yard or less. Past the own 40 a punt is never the answer — the user's rule, and
 // the model agrees well before that line; it is kept as a guarantee rather than left to the numbers.
 const INCHES_YARDS = 1
@@ -381,6 +471,18 @@ export function fourthDownChoice(k, rng = Math.random) {
 
   // A conversion menu after a touchdown comes through the same channel.
   if (d.context === 'conversion') return choose(wantsTwoPoint(margin, k.quarter) ? 'two_point' : 'extra_point')
+
+  // So does the choice of how to kick off.
+  if (d.context === 'onside') {
+    const onside = wantsOnsideKick({
+      trailingBy: -margin,
+      clock: k.clock ?? 0,
+      timeouts: k.timeouts?.own ?? 0,
+      ownYardsPerPlay: d.form?.ownYardsPerPlay,
+      oppYardsPerPlay: d.form?.oppYardsPerPlay,
+    })
+    return choose(onside ? 'onside_kick' : 'kickoff')
+  }
 
   // ⚠️ ASKED ON AN EARLY DOWN, THE ANSWER IS USUALLY "PLAY ON". The menu now opens on any down
   // inside the last thirty seconds of a half, and everything below this point reasons as though it
@@ -439,12 +541,30 @@ export function specialTeamsAction(k, rng = Math.random) {
     }
   }
 
-  // Defending a field goal: one attempt, and it rarely works.
-  if (!st.kicking && st.blockAvailable && !st.blockAttempted) {
-    // The roll happens HERE rather than being left to the engine's own region model, because the
-    // design fixed the rate at 1%. Declining to attempt is the other 99%.
-    if (rng() >= FG_BLOCK_CHANCE) return null
-    return { event: 'fg_block', payload: { position: 0 } }
+  // Receiving an onside kick: one roll, as soon as the kick is under way.
+  if (!st.kicking && st.kickType === 'onside_kick' && st.phase === 'setup' && st.started && !st.blockAttempted) {
+    const memo = kickMemo(k, st)
+    if (memo.committed) return null
+    memo.committed = true
+    return { event: 'onside_recovery', payload: { position: onsideRollPosition(1 + Math.floor(rng() * 100)) } }
+  }
+
+  // Defending a field goal or an extra point: one roll per kick, and it rarely works.
+  //
+  // ⚠️ THE COMPUTER NEVER TRIED, THREE WAYS OVER. This asked for `st.blockAvailable`, which the server has never
+  // sent, so it was dead code. Its position was 0, the red end of the bar, which blocks nothing. And the roll was
+  // not remembered, so with the field fixed it would have been rolled on every meter update of the kick.
+  //
+  // The roll happens HERE rather than being left to the engine's own regions, because the design fixed the rate
+  // at 1%. Declining to attempt is the other 99%. It waits for the last second of the kicker's timer so the kick
+  // is blocked as it goes up, not on the first tap. That leans on the meter updates a human's kick sends: a
+  // computer kicker's committed strike sends none, so two computers never block each other.
+  if (!st.kicking && (st.kickType === 'field_goal' || st.kickType === 'extra_point')
+    && st.phase === 'setup' && st.started && !st.blockAttempted) {
+    const memo = kickMemo(k, st)
+    if (memo.willBlock === undefined) memo.willBlock = rng() < FG_BLOCK_CHANCE
+    if (!memo.willBlock || (st.secondsRemaining ?? 0) > BLOCK_IN_LAST_SECONDS) return null
+    return { event: 'fg_block', payload: { position: BLOCK_SWEET_SPOT } }
   }
 
   // ⚠️ THE WHOLE STRIKE IS COMMITTED IN ONE INPUT, AND THE AI DOES NOT WORK THE METER.
@@ -525,7 +645,7 @@ const MISS_BY = 0.8
 function aimFor(st, k, memo, rng) {
   const target = st.targetAngle ?? 0
   // A punt has no uprights to split: the target is straight ahead and the aim stays there.
-  if (st.kickType === 'punt' || st.kickType === 'kickoff') return target
+  if (st.kickType === 'punt' || st.kickType === 'kickoff' || st.kickType === 'onside_kick') return target
 
   if (memo.intent === undefined) {
     const chance = st.kickType === 'extra_point'

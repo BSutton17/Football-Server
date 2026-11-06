@@ -7,7 +7,7 @@ import { FIELD, HIDES_OPENNESS, RULES } from '../constants.js'
 import { computeReceiverOpenness } from './utils/openness.js'
 import { ratingOf } from '../data/ratings.js'
 import { findBallCarrier } from './systems/movement.js'
-import { serializeSpecialTeams, serializeDecision, serializeConversion } from './specialTeams.js'
+import { serializeSpecialTeams, serializeDecision, serializeConversion, serializeOnsideChoice } from './specialTeams.js'
 import { slotIsAi } from './roomManager.js'
 import { activeXFactorIds } from './systems/xFactors.js'
 
@@ -123,7 +123,7 @@ export function serializeGameState(state, viewerSlot) {
     specialTeams: serializeSpecialTeams(state, viewerSlot),   // [Special Teams][1] null on a normal scrimmage play
     // [Special Teams][2][3] 4th-down menu, or [51] the post-TD extra-point / 2-pt menu — both render
     // through the same client menu (scoring/offense team only).
-    decision: serializeDecision(state, viewerSlot) ?? serializeConversion(state, viewerSlot),
+    decision: serializeDecision(state, viewerSlot) ?? serializeConversion(state, viewerSlot) ?? serializeOnsideChoice(state, viewerSlot),
     // [dev reveal] The computer's own call, for comparing alignment against what it should be.
     // Triple-gated and null in every ordinary case — see devReveal.js.
     devReveal: serializeDevReveal(state, viewerSlot),

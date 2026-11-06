@@ -15,9 +15,9 @@ function freshState(possession = 0) {
 }
 
 describe('kick config', () => {
-  it('has a config for all four kick kinds', () => {
+  it('has a config for all five kick kinds', () => {
     expect(Object.keys(KICK_CONFIG).sort()).toEqual(
-      [KICK.KICKOFF, KICK.PUNT, KICK.FIELD_GOAL, KICK.EXTRA_POINT].sort(),
+      [KICK.KICKOFF, KICK.PUNT, KICK.FIELD_GOAL, KICK.EXTRA_POINT, KICK.ONSIDE].sort(),
     )
   })
 

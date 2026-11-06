@@ -259,6 +259,19 @@ export function teamTotals(stats, slot) {
   return { passYards, rushYards, totalOffense: passYards + rushYards, takeaways }
 }
 
+// [onside] Yards per play, on the offense's side of it: a sack is a play and its lost yards are already in the
+// passing total. Null until there is enough of a game to mean anything.
+export function yardsPerPlay(stats, slot, minPlays = 0) {
+  if (!stats) return null
+  let plays = 0, yards = 0
+  for (const line of stats.players.values()) {
+    if (line.slot !== slot) continue
+    plays += line.attempts + line.carries + line.sacksTaken
+    yards += line.passYards + line.rushYards
+  }
+  return plays > 0 && plays >= minPlays ? yards / plays : null
+}
+
 export function serializeStats(stats, { top = 3 } = {}) {
   return {
     top: topPerformers(stats, top),

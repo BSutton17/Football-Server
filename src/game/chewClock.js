@@ -47,7 +47,7 @@ export function chewRefusal(state, slot, { ignoreLive = false } = {}) {
   if (!state.solo) return 'chewing the clock is offline-only'           // see the warning above
   if (state.possession !== slot) return 'only the offense may chew the clock'
   if (state.phase !== PHASE.PRE_SNAP) return 'the ball is not on the ground'
-  if (state.decisionPending || state.conversionPending) return 'a decision is pending'
+  if (state.decisionPending || state.conversionPending || state.onsideChoicePending) return 'a decision is pending'
   if (state.specialTeams) return 'not during a kick'
   if (!state.playClockRunning) return 'the play clock is not running'
   if (ignoreLive) return null

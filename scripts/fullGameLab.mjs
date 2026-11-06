@@ -30,7 +30,7 @@
 //               leaving the green can be seen rather than assumed.
 
 import { createTrainingGame, destroyTrainingGame, playDown } from '../src/training/game.js'
-import { startNextPlay, resolveDecision, resolveConversion } from '../src/game/eventQueue.js'
+import { startNextPlay, resolveDecision, resolveConversion, resolveOnsideChoice } from '../src/game/eventQueue.js'
 import { PHASE } from '../src/game/stateMachine.js'
 import { endStoppage } from '../src/game/pause.js'
 
@@ -75,6 +75,7 @@ for (let g = 0; g < GAMES; g++) {
       if (st.awaitingTransitionTap) { st.awaitingTransitionTap = false; startNextPlay(ctx.roomId, ctx.io, { quiet: true }); continue }
       if (st.decisionPending) { resolveDecision(st, ctx.io, 'go_for_it', { quiet: true }); continue }
       if (st.conversionPending) { resolveConversion(st, ctx.io, 'two_point'); if (st.phase === PHASE.DEAD) startNextPlay(ctx.roomId, ctx.io, { quiet: true }); continue }
+      if (st.onsideChoicePending) { resolveOnsideChoice(st, ctx.io, 'kickoff'); continue }
       if (st.phase === PHASE.DEAD) { startNextPlay(ctx.roomId, ctx.io, { quiet: true }); continue }
 
       if (WANT.fatigue) {

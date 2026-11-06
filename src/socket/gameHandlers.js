@@ -31,7 +31,7 @@ import { transition, PHASE } from '../game/stateMachine.js'
 import { beginStoppage, STOPPAGE, beginPlayerPause, resumePlayerPause, isPlayerPaused } from '../game/pause.js'
 import { FIELD, RULES } from '../constants.js'
 import { initLivePhase } from '../game/systems/init.js'
-import { enqueue, EVENT, resolveDecision, resolveConversion, resolvePuntReturn, resolveFieldGoalBlock, broadcastSpecialTeams, sampleForTendencies, startNextPlay } from '../game/eventQueue.js'
+import { enqueue, EVENT, resolveDecision, resolveConversion, resolveOnsideChoice, resolveOnsideAttempt, resolvePuntReturn, resolveFieldGoalBlock, broadcastSpecialTeams, sampleForTendencies, startNextPlay } from '../game/eventQueue.js'
 import { startGameLoop } from '../game/simulation.js'
 import { getRoom } from '../game/roomManager.js'
 import { serializeGameState, serializeClock } from '../game/serialization.js'
@@ -43,7 +43,7 @@ import { solvedTable } from '../ai/playcall/table.js'
 import { coolingPlays, noteRecommended, noteSelected } from '../ai/playcall/cooldown.js'
 import { loadPlaybook } from '../playbook/store.js'
 import {
-  beginSpecialTeams, applyKickInput, isSpecialTeamsActive, isValidKickType, canAttemptBlock,
+  beginSpecialTeams, applyKickInput, isSpecialTeamsActive, isValidKickType, canAttemptBlock, canAttemptOnsideRecovery,
 } from '../game/specialTeams.js'
 
 // Shared rejection helper — rejects the action and logs it without crashing.
@@ -702,6 +702,7 @@ export function registerGameHandlers(io, socket) {
     if (room.players.indexOf(socket.id) !== state.possession) return   // only the offense / scoring team
     // [51] The same menu carries the 4th-down choice and the post-TD extra-point / 2-pt choice.
     if (state.conversionPending)    resolveConversion(state, io, option)
+    else if (state.onsideChoicePending) resolveOnsideChoice(state, io, option)
     else if (state.decisionPending) resolveDecision(state, io, option)
   })
 
@@ -735,6 +736,21 @@ export function registerGameHandlers(io, socket) {
     const slot = room.players.indexOf(socket.id)
     if (!canAttemptBlock(state, slot)) return
     resolveFieldGoalBlock(state, io, typeof position === 'number' ? position : 0.5)
+  })
+
+  // ── Onside recovery ────────────────────────────────────────────────────────
+  //
+  // The receiving team's one tap at the meter, as a position on the bar (0..1). The server decides what that
+  // position is worth, and keeps the answer to itself until the kick is away.
+  socket.on('onside_recovery', ({ position } = {}) => {
+    const roomId = socket.data.roomId
+    const state  = getGame(roomId)
+    if (!state) return
+    const room = getRoom(roomId)
+    if (!room) return
+    const slot = room.players.indexOf(socket.id)
+    if (!canAttemptOnsideRecovery(state, slot)) return
+    resolveOnsideAttempt(state, io, typeof position === 'number' ? position : 0)
   })
 
   // ── Special teams kick input ([Special Teams][6][7][8]) ────────────────────

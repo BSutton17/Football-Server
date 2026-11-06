@@ -1,5 +1,5 @@
-import { resolveDecision, resolveConversion } from '../eventQueue.js'
-import { decisionDefault, conversionDefault } from '../specialTeams.js'
+import { resolveDecision, resolveConversion, resolveOnsideChoice } from '../eventQueue.js'
+import { decisionDefault, conversionDefault, KICKOFF_CHOICE } from '../specialTeams.js'
 
 // [Special Teams][3] Counts down the 4th-down decision menu while it's pending. When it hits zero
 // the server auto-selects the default option (server-authoritative, so both clients agree even if
@@ -19,5 +19,14 @@ export function runConversionClock(state, io, dt) {
   state.conversionTimer = Math.max(0, (state.conversionTimer ?? 0) - dt)
   if (state.conversionTimer <= 0) {
     resolveConversion(state, io, conversionDefault())
+  }
+}
+
+// [onside] Counts down the kick-off menu. Nobody answering means a normal kickoff.
+export function runOnsideChoiceClock(state, io, dt) {
+  if (!state.onsideChoicePending) return
+  state.onsideChoiceTimer = Math.max(0, (state.onsideChoiceTimer ?? 0) - dt)
+  if (state.onsideChoiceTimer <= 0) {
+    resolveOnsideChoice(state, io, KICKOFF_CHOICE.NORMAL)
   }
 }

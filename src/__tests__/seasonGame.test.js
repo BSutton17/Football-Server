@@ -5,7 +5,7 @@ import { createFakeIo } from '../headless/harness.js'
 import { createTrainingGame, destroyTrainingGame, playDown } from '../training/game.js'
 import { getGame } from '../game/gameState.js'
 import { PHASE, transition } from '../game/stateMachine.js'
-import { startNextPlay, resolveDecision, resolveConversion, enqueue, processQueue, EVENT } from '../game/eventQueue.js'
+import { startNextPlay, resolveDecision, resolveConversion, resolveOnsideChoice, enqueue, processQueue, EVENT } from '../game/eventQueue.js'
 import { snapshotGame, hydrateGame } from '../game/snapshot.js'
 import { endStoppage } from '../game/pause.js'
 import { setSeasonHooks } from '../game/seasonHooks.js'
@@ -424,6 +424,7 @@ function drive(ctx, { until = () => false, maxSteps = 4000, onPlay = null } = {}
       if (st.phase === PHASE.DEAD) startNextPlay(ctx.roomId, ctx.io, { quiet: true })
       continue
     }
+    if (st.onsideChoicePending) { resolveOnsideChoice(st, ctx.io, 'kickoff'); continue }
     if (st.phase === PHASE.DEAD) { startNextPlay(ctx.roomId, ctx.io, { quiet: true }); continue }
     const r = playDown(ctx, {})
     if (!r.ok) {

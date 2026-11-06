@@ -194,6 +194,9 @@ export function initGame(roomId, offenseSlot, { mode, difficulty, quarterSeconds
     // try. conversionPending pauses pre-snap like the 4th-down menu; twoPointActive flags a 2-pt play.
     conversionPending: false,
     conversionTimer:   0,
+    // [onside] The scoring team is choosing how to kick off. Pauses pre-snap the same way.
+    onsideChoicePending: false,
+    onsideChoiceTimer:   0,
     twoPointActive:    null,
 
     // ── Play design (set when offense locks formation) ───────────────────────

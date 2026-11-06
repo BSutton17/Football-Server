@@ -14,9 +14,10 @@
 // and renders what serializeSpecialTeams reports.
 
 import { getRoom, slotIsAi } from './roomManager.js'
-import { RULES, FIELD, FIELD_CENTER_X } from '../constants.js'
+import { RULES, FIELD, FIELD_CENTER_X, ONSIDE_METER } from '../constants.js'
 import { PHASE } from './stateMachine.js'
 import { MAX_PUSH_YARDS } from './kickEngine.js'
+import { yardsPerPlay } from './stats.js'
 
 // The four special-teams scenarios.
 export const KICK = {
@@ -24,6 +25,7 @@ export const KICK = {
   PUNT:        'punt',
   FIELD_GOAL:  'field_goal',
   EXTRA_POINT: 'extra_point',
+  ONSIDE:      'onside_kick',
 }
 
 // Sub-phases of a special-teams play. These mirror the scrimmage phase flow (pre_snap → live →
@@ -63,6 +65,9 @@ export const KICK_CONFIG = {
   [KICK.PUNT]:        { label: 'Punt',         points: 0,                returnable: true,  contested: true,  liveBall: true,  playerControlled: true  },
   [KICK.FIELD_GOAL]:  { label: 'Field Goal',   points: RULES.FG_POINTS,  returnable: false, contested: false, liveBall: false, playerControlled: true  },
   [KICK.EXTRA_POINT]: { label: 'Extra Point',  points: RULES.XP_POINTS,  returnable: false, contested: false, liveBall: false, playerControlled: true  },
+  // [onside] Player-controlled so the kicker gets the normal meter, but the meter decides nothing: the receiving
+  // team's tap does. See "Onside kick" below.
+  [KICK.ONSIDE]:      { label: 'Onside Kick',  points: 0,                returnable: false, contested: true,  liveBall: false, playerControlled: true  },
 }
 
 // [7][8][9][10] Kicking interface constants.
@@ -273,7 +278,7 @@ export function serializeSpecialTeams(state, viewerSlot) {
       ? fieldGoalDistance(state)
       : null,
     // [46][49] Defensive block — true once the defender has committed their one timing attempt (the
-    // client locks the bar on this).
+    // client locks the bar on this). [onside] The same one tap, on the recovery meter.
     blockAttempted:   !!st.blockAttempted,
     // How far the punt actually travelled, shown to BOTH players once the kick is determined.
     kickDistance:     (st.kickType === KICK.PUNT && st.result) ? Math.round(st.result.distance) : null,
@@ -375,6 +380,75 @@ export function canAttemptBlock(state, slot) {
   if (st.phase !== ST_PHASE.SETUP || !st.started || st.blockAttempted) return false
   return slot === (1 - st.kickingSlot)   // only the defending team
 }
+
+// ── Onside kick ─────────────────────────────────────────────────────────────────
+//
+// "If you are losing with 1:30 or less in the 4th quarter and you score a touchdown or field goal you should have
+// the option to go for an onside kick."
+//
+// ⚠️ LOSING WHEN IT IS TIME TO KICK OFF, so after the try. A team that has just tied it or taken the lead has no
+// reason to give the ball away, and every rule the computer plays by starts with "trailing".
+//
+// The scoring team gets a menu. On an onside kick the kicker works the normal meter, which changes nothing, and
+// the receiver gets one tap at the meter while the kicker's timer runs. No tap is a failed recovery.
+export const KICKOFF_CHOICE = {
+  NORMAL: 'kickoff',
+  ONSIDE: 'onside_kick',
+}
+
+export function isValidKickoffChoice(option) {
+  return option === KICKOFF_CHOICE.NORMAL || option === KICKOFF_CHOICE.ONSIDE
+}
+
+export function canChooseOnside(state, kickingSlot) {
+  return state.quarter === RULES.QUARTERS
+    && !state.overtime
+    && state.clock > 0
+    && state.clock <= RULES.ONSIDE_WINDOW_SECONDS
+    && (state.score[kickingSlot] ?? 0) < (state.score[1 - kickingSlot] ?? 0)
+}
+
+export function onsideRegion(position) {
+  const d = Math.abs(clamp(position, 0, 1) - 0.5)
+  if (d <= ONSIDE_METER.GREEN_HALF)  return 'green'
+  if (d <= ONSIDE_METER.YELLOW_HALF) return 'yellow'
+  return 'red'
+}
+
+export function onsideRecoveryProbability(region) {
+  return region === 'green'  ? ONSIDE_METER.GREEN_PROB
+       : region === 'yellow' ? ONSIDE_METER.YELLOW_PROB
+       :                       ONSIDE_METER.RED_PROB
+}
+
+export function canAttemptOnsideRecovery(state, slot) {
+  const st = state.specialTeams
+  if (!st || st.kickType !== KICK.ONSIDE) return false
+  if (st.phase !== ST_PHASE.SETUP || !st.started || st.blockAttempted) return false
+  return slot === (1 - st.kickingSlot)
+}
+
+// The kick-off menu, for the scoring team. `form` is how the game has gone so far, which anybody can read off the
+// box score, and it is what the computer's choice leans on.
+export function serializeOnsideChoice(state, viewerSlot) {
+  if (!state.onsideChoicePending) return null
+  if (state.possession !== viewerSlot) return null
+  return {
+    context:          'onside',
+    secondsRemaining: Math.max(0, Math.ceil(state.onsideChoiceTimer ?? 0)),
+    defaultOption:    KICKOFF_CHOICE.NORMAL,
+    form: {
+      ownYardsPerPlay: yardsPerPlay(state.stats, viewerSlot, ONSIDE_FORM_MIN_PLAYS),
+      oppYardsPerPlay: yardsPerPlay(state.stats, 1 - viewerSlot, ONSIDE_FORM_MIN_PLAYS),
+    },
+    options: [
+      { id: KICKOFF_CHOICE.NORMAL, label: 'Kick Off',    legal: true },
+      { id: KICKOFF_CHOICE.ONSIDE, label: 'Onside Kick', legal: true },
+    ],
+  }
+}
+
+const ONSIDE_FORM_MIN_PLAYS = 12
 
 // ── Fourth-down decision ([Special Teams][2][3][4]) ──────────────────────────────
 //
