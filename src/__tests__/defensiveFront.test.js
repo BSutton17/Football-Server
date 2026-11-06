@@ -44,4 +44,13 @@ describe('the two defensive front tables', () => {
     const t = table(SERVER)
     expect(t).toContain('4:[-3.25,-1.25,1.25,3.25]')
   })
+
+  // [field check] The server moves a row that is not this far off the ball, so a client drawing it anywhere
+  // else would have its linemen moved at every snap.
+  it('stands the same distance off the ball on both sides', () => {
+    if (!existsSync(CLIENT)) return
+    const depth = (file, name) => Number(readFileSync(file, 'utf8').match(new RegExp(`${name} = (\\d+)`))?.[1])
+    expect(depth(SERVER, 'FRONT_DEPTH')).toBeGreaterThan(0)
+    expect(depth(SERVER, 'FRONT_DEPTH')).toBe(depth(CLIENT, 'DL_DEPTH'))
+  })
 })

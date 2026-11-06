@@ -11,6 +11,7 @@
 
 import { makeRng } from './utils/rng.js'
 import { PHASE } from './stateMachine.js'
+import { saveIsPlayable, verifyLoadedGame } from './fieldLegality.js'
 
 export const SNAPSHOT_VERSION = 1
 
@@ -65,6 +66,10 @@ export function hydrateGame(state, json) {
     return false
   }
   if (parsed?.v !== SNAPSHOT_VERSION || !parsed.state) return false
+  if (!saveIsPlayable(parsed.state)) {
+    console.error('[season] a save with no ball position or no possession cannot be resumed')
+    return false
+  }
 
   const { roomId, season } = state
   Object.assign(state, parsed.state, { roomId, season })
@@ -80,5 +85,7 @@ export function hydrateGame(state, json) {
   // A fresh stream, differing per play so that replaying from a save is not a fixed fate.
   state.seed = ((state.seed ?? 1) ^ Math.imul((state.playSerial ?? 0) + 1, 0x9e3779b1)) >>> 0
   state.rng = makeRng(state.seed)
+  // [field check] "When loading in a save... the game should verify whether the field is in a legal position."
+  verifyLoadedGame(state, { prePlay: state.phase === PHASE.PRE_SNAP })
   return true
 }

@@ -7,6 +7,7 @@ import { resetRpo } from './rpo.js'
 import { getLosY } from '../gameState.js'
 import { getRatings, ratingOf, speedFromRating } from '../../data/ratings.js'
 import { onSnapXFactors } from './xFactors.js'
+import { enforceFieldLegality } from '../fieldLegality.js'
 
 // Fraction of top speed the running back is already moving at when a run play begins —
 // it takes the handoff with momentum rather than from a dead stop, then accelerates up.
@@ -76,6 +77,10 @@ export function initLivePhase(state) {
   resetThrowawayWindow(state)
   // [rpo] Fresh play — reopen the read window (or clear a stale one from the last play).
   resetRpo(state)
+
+  // [field check] The one moment every play passes through, and it has to come first: routes are built
+  // from where each receiver stands, below.
+  enforceFieldLegality(state)
 
   const dir   = state.direction
   const isRun = state.playDesign.playType === 'run'
