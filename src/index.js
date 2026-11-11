@@ -45,6 +45,7 @@ const allowedOrigins = new Set(
     ...CLIENT_ORIGIN.split(','),
     'http://localhost:5173',
     'https://electric-football.netlify.app',
+    'https://electric-football.vercel.app',
   ].map(norm).filter(Boolean),
 );
 
